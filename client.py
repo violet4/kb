@@ -4,7 +4,7 @@ import socket
 from pathlib import Path
 from typing import Any
 
-SOCKET_PATH = Path(__file__).parent / "kb.sock"
+SOCKET_PATH = Path(__file__).parent / "data" / "kb.sock"
 
 
 class KBClient:

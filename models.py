@@ -1,4 +1,4 @@
-"""Personal knowledge base ORM. Single SQLite database at ~/kb/kb.db."""
+"""Personal knowledge base ORM. Single SQLite database at ~/kb/data/kb.db."""
 from __future__ import annotations
 
 import enum
@@ -19,7 +19,7 @@ from sqlalchemy.orm import (
 )
 from sqlalchemy.orm.attributes import NO_VALUE, NEVER_SET
 
-_DB_PATH = Path(__file__).parent / "kb.db"
+_DB_PATH = Path(__file__).parent / "data" / "kb.db"
 _engine = create_engine(f"sqlite:///{_DB_PATH}", echo=False)
 
 

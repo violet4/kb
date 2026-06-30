@@ -1,9 +1,9 @@
-*.db
-*.db-shm
-*.db-wal
-backups/
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/backups/
 .venv/
 __pycache__/
 *.pyc
-kb.sock
-kb.pid
+data/kb.sock
+data/kb.pid

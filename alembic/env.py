@@ -11,7 +11,7 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-_DB_PATH = Path(__file__).parent.parent / "kb.db"
+_DB_PATH = Path(__file__).parent.parent / "data" / "kb.db"
 config.set_main_option("sqlalchemy.url", f"sqlite:///{_DB_PATH}")
 
 from models import Base  # noqa: E402

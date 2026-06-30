@@ -6,7 +6,7 @@ Protocol: newline-delimited JSON.
   Response: {"ok": true, "result": ...} | {"ok": false, "error": "..."}
 
 Run:   uv run server.py
-Stop:  kill $(cat kb.pid)  or  Ctrl-C
+Stop:  kill $(cat data/kb.pid)  or  Ctrl-C
 """
 import json
 import logging
@@ -20,8 +20,8 @@ from pathlib import Path
 from models import Collection, Note, sess
 from embed import embed, model_name
 
-SOCKET_PATH = Path(__file__).parent / "kb.sock"
-PID_PATH = Path(__file__).parent / "kb.pid"
+SOCKET_PATH = Path(__file__).parent / "data" / "kb.sock"
+PID_PATH = Path(__file__).parent / "data" / "kb.pid"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("kb.server")

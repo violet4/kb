@@ -44,7 +44,8 @@ if top_wishes:
             lo = f"${w.price_min}" if w.price_min is not None else ""
             hi = f"${w.price_max}" if w.price_max is not None else ""
             price = f" ({lo}–{hi})" if lo and hi else f" ({lo or hi})"
-        lines.append(f"- {w.title}{price} [{w.effort.value}] priority={w.priority_score}")
+        rank = w.priority if w.priority is not None else w.score
+        lines.append(f"- {w.title}{price} [{w.effort.value}] priority={rank}")
     sections.append("\n".join(lines))
 
 if not sections:

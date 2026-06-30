@@ -4,6 +4,8 @@ import argparse
 import code
 import sys
 
+from sqlalchemy import select
+
 from models import (
     Base, ChangeLog, Context, Goal, GoalStatus, Person, PersonTier,
     Reference, Todo, TodoStatus, WishlistEffort, WishlistStatus, Wishlist,
@@ -17,6 +19,7 @@ args = parser.parse_args()
 
 ns = {
     "sess": sess,
+    "select": select,
     "ChangeLog": ChangeLog,
     "Context": Context,
     "Goal": Goal,

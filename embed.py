@@ -1,4 +1,6 @@
 """Embedding model singleton. Swap _MODEL_NAME + reembed to upgrade."""
+import os
+os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
 from sentence_transformers import SentenceTransformer
 
 _MODEL_NAME = "all-MiniLM-L6-v2"

@@ -1,0 +1,14 @@
+[Unit]
+Description=KB personal knowledge base server
+After=default.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/violet/kb
+Environment=HF_HUB_DISABLE_TELEMETRY=1
+ExecStart=/home/violet/.local/bin/uv run devserver.py
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

@@ -5,3 +5,5 @@ backups/
 .venv/
 __pycache__/
 *.pyc
+kb.sock
+kb.pid

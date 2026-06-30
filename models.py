@@ -2,14 +2,16 @@
 from __future__ import annotations
 
 import enum
+import struct
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Optional
 
+import sqlite_vec
 from sqlalchemy import (
     Boolean, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text,
-    create_engine, event, select,
+    create_engine, event, inspect, select,
 )
 from sqlalchemy.orm import (
     DeclarativeBase, Mapped, MappedColumn, mapped_column, object_session,
@@ -23,6 +25,9 @@ _engine = create_engine(f"sqlite:///{_DB_PATH}", echo=False)
 
 @event.listens_for(_engine, "connect")
 def _set_pragma(conn, _):
+    conn.enable_load_extension(True)
+    sqlite_vec.load(conn)
+    conn.enable_load_extension(False)
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA journal_mode=WAL")
 
@@ -103,6 +108,15 @@ event.listen(Base, "mapper_configured", _register_tracked_listeners, propagate=T
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
+
+class Collection(enum.Enum):
+    ENGINEERING = "engineering"
+    PERSONAL = "personal"
+    GORGON = "gorgon"
+    WORK = "work"
+
+    ALL = "all"  # search-only sentinel — not a valid storage collection
+
 
 class PersonTier(enum.Enum):
     CLOSE = "close"
@@ -367,6 +381,81 @@ class WorkingMemory(Base):
     def __repr__(self) -> str:
         domain_str = f" [{self.domain}]" if self.domain else ""
         return f"<WorkingMemory {self.topic!r}{domain_str}>"
+
+
+# ---------------------------------------------------------------------------
+# Note (RAG)
+# ---------------------------------------------------------------------------
+
+_STORAGE_COLLECTIONS = {c for c in Collection if c != Collection.ALL}
+
+
+def _embed_text(title: str, body: str) -> bytes:
+    from embed import embed
+    vec = embed(f"{title}\n\n{body}")
+    return struct.pack(f"{len(vec)}f", *vec)
+
+
+class Note(Base):
+    __tablename__ = "note"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    collection: Mapped[Collection] = mapped_column(Enum(Collection), nullable=False)
+    tags: Mapped[Optional[str]] = mapped_column(String, nullable=True)   # comma-separated
+    embedding_model: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    embedding: Mapped[Optional[bytes]] = mapped_column(Text, nullable=True)
+
+    @classmethod
+    def create(cls, title: str, body: str, collection: Collection, tags: Optional[str] = None) -> Note:
+        if collection == Collection.ALL:
+            raise ValueError("Collection.ALL is a search sentinel and cannot be used for storage.")
+        from embed import model_name
+        note = cls(title=title, body=body, collection=collection, tags=tags)
+        note.embedding = _embed_text(title, body)
+        note.embedding_model = model_name()
+        sess.add(note)
+        sess.flush()
+        return note
+
+    @classmethod
+    def search(cls, query: str, collection: Collection) -> list[tuple[Note, float]]:
+        from embed import embed, model_name
+        raw = embed(query)
+        vec = struct.pack(f"{len(raw)}f", *raw)
+        mn = model_name()
+        if collection == Collection.ALL:
+            sql = "SELECT id, vec_distance_cosine(embedding, ?) AS dist FROM note WHERE embedding_model = ? ORDER BY dist ASC LIMIT 10"
+            params = (vec, mn)
+        else:
+            sql = "SELECT id, vec_distance_cosine(embedding, ?) AS dist FROM note WHERE embedding_model = ? AND collection = ? ORDER BY dist ASC LIMIT 10"
+            params = (vec, mn, collection.name)
+        raw = sess.connection().connection
+        raw.enable_load_extension(True)
+        sqlite_vec.load(raw)
+        raw.enable_load_extension(False)
+        rows = raw.execute(sql, params).fetchall()
+        notes = {n.id: n for n in sess.scalars(select(cls).where(cls.id.in_([r[0] for r in rows]))).all()}
+        return [(notes[r[0]], r[1]) for r in rows if r[0] in notes]
+
+    def reembed(self) -> None:
+        from embed import model_name
+        self.embedding = _embed_text(self.title, self.body)
+        self.embedding_model = model_name()
+
+    def __repr__(self) -> str:
+        tags_str = f" #{self.tags}" if self.tags else ""
+        return f"<Note {self.collection.value}/{self.title!r}{tags_str}>"
+
+
+@event.listens_for(sess, "before_flush")
+def _reembed_dirty_notes(session, flush_context, instances):
+    for obj in session.dirty:
+        if isinstance(obj, Note):
+            changed = {attr.key for attr in inspect(obj).attrs if attr.history.has_changes()}
+            if "title" in changed or "body" in changed:
+                obj.reembed()
 
 
 # ---------------------------------------------------------------------------

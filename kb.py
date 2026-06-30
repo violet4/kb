@@ -7,7 +7,7 @@ import sys
 from sqlalchemy import select
 
 from models import (
-    Base, ChangeLog, Context, Goal, GoalStatus, Person, PersonTier,
+    Base, ChangeLog, Collection, Context, Goal, GoalStatus, Note, Person, PersonTier,
     Reference, Todo, TodoStatus, WishlistEffort, WishlistStatus, Wishlist,
     WorkingMemory, init_db, sess,
 )
@@ -20,6 +20,8 @@ args = parser.parse_args()
 ns = {
     "sess": sess,
     "select": select,
+    "Collection": Collection,
+    "Note": Note,
     "ChangeLog": ChangeLog,
     "Context": Context,
     "Goal": Goal,

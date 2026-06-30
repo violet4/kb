@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Personal knowledge base REPL/runner."""
 import argparse
+import ast
 import code
 import sys
 
@@ -38,7 +39,17 @@ ns = {
 }
 
 if args.command:
-    exec(args.command, ns)  # noqa: S102
+    tree = ast.parse(args.command)
+    last_expr = None
+    if tree.body and isinstance(tree.body[-1], ast.Expr):
+        last_expr = ast.Expression(tree.body.pop().value)
+
+    exec(compile(tree, "<kb>", "exec"), ns)  # noqa: S102
+    if last_expr is not None:
+        result = eval(compile(last_expr, "<kb>", "eval"), ns)  # noqa: S307
+        if result is not None:
+            print(repr(result))
+
     if not args.no_commit:
         sess.commit()
 else:

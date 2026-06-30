@@ -431,11 +431,8 @@ class Note(Base):
         else:
             sql = "SELECT id, vec_distance_cosine(embedding, ?) AS dist FROM note WHERE embedding_model = ? AND collection = ? ORDER BY dist ASC LIMIT 10"
             params = (vec, mn, collection.name)
-        raw = sess.connection().connection
-        raw.enable_load_extension(True)
-        sqlite_vec.load(raw)
-        raw.enable_load_extension(False)
-        rows = raw.execute(sql, params).fetchall()
+        with _engine.connect() as conn:
+            rows = conn.connection.execute(sql, params).fetchall()
         notes = {n.id: n for n in sess.scalars(select(cls).where(cls.id.in_([r[0] for r in rows]))).all()}
         return [(notes[r[0]], r[1]) for r in rows if r[0] in notes]
 

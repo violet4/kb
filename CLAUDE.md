@@ -26,4 +26,4 @@ uv run scripts/gen-api.py   # regenerate api.py after every schema change
 
 ## Commits
 
-Use `with: Sonnet 5` instead of `Co-Authored-By:`.
+Use `with:<model>` instead of `Co-Authored-By:`.

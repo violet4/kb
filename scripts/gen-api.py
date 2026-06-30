@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+"""Generate api.py — concise API surface for models.py. Run after any models.py change.
+
+    uv run scripts/gen-api.py
+"""
+import enum
+import inspect
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+import sqlalchemy
+from sqlalchemy.orm import RelationshipProperty
+
+import models
+
+OUTPUT = Path(__file__).parent.parent / "api.py"
+
+SKIP_METHODS = {
+    "__init__", "__repr__", "__str__", "__class__", "__dict__",
+    "__doc__", "__module__", "__weakref__", "metadata", "registry",
+    "__tablename__", "__table__", "__mapper__", "__mapper_cls__",
+}
+
+SKIP_CLASSES = {"Base"}
+
+MODEL_CLASSES = sorted(
+    {
+        obj for name, obj in inspect.getmembers(models, inspect.isclass)
+        if issubclass(obj, models.Base) and name not in SKIP_CLASSES
+    },
+    key=lambda c: c.__name__,
+)
+
+
+def type_label(annotation) -> str:
+    if annotation is inspect.Parameter.empty:
+        return ""
+    ann = str(annotation)
+    for prefix in ("typing.", "sqlalchemy.orm.base.", "<class '", "'>"):
+        ann = ann.replace(prefix, "")
+    return ann.strip("'")
+
+
+def format_sig(name: str, method) -> str:
+    try:
+        sig = inspect.signature(method)
+    except (ValueError, TypeError):
+        return f".{name}(...)"
+    params = []
+    for pname, param in sig.parameters.items():
+        if pname == "self":
+            continue
+        ann = type_label(param.annotation)
+        default = "" if param.default is inspect.Parameter.empty else f"={param.default!r}"
+        params.append(f"{pname}: {ann}{default}" if ann else f"{pname}{default}")
+    ret = sig.return_annotation
+    ret_str = f" -> {type_label(ret)}" if ret is not inspect.Parameter.empty else ""
+    return f".{name}({', '.join(params)}){ret_str}"
+
+
+def doc_line(obj) -> str:
+    doc = inspect.getdoc(obj)
+    return f"  # {doc.splitlines()[0]}" if doc else ""
+
+
+lines = [
+    "# Auto-generated API surface — REFERENCE ONLY, not an importable module.",
+    "# Import from models.py instead: `from models import Note, sess, ...`",
+    "# Run `uv run scripts/gen-api.py` to regenerate after changing models.py.",
+    "",
+    "# Session",
+    "sess  # scoped_session — pre-loaded in kb.py and scripts",
+    "",
+    "# Enums",
+]
+
+for name, obj in inspect.getmembers(models, inspect.isclass):
+    if issubclass(obj, enum.Enum) and obj.__module__ == "models":
+        values = " | ".join(m.value for m in obj)
+        lines.append(f"{name}: {values}")
+
+lines.append("")
+
+for cls in MODEL_CLASSES:
+    lines.append(cls.__name__)
+
+    try:
+        mapper = sqlalchemy.inspect(cls)
+        for col in mapper.columns:
+            nullable = "?" if col.nullable else ""
+            col_type = col.type
+            if hasattr(col_type, "enum_class") and col_type.enum_class is not None:
+                type_name = col_type.enum_class.__name__
+            else:
+                type_name = col_type.__class__.__name__
+            lines.append(f"  .{col.key}: {type_name}{nullable}")
+        for rel in mapper.relationships:
+            prop: RelationshipProperty = rel
+            lines.append(f"  .{prop.key}: {prop.argument}  # relationship")
+    except Exception:
+        pass
+
+    lines.append("")
+
+    for mname, _ in inspect.getmembers(cls, predicate=lambda v: callable(v) or isinstance(v, classmethod)):
+        if mname in SKIP_METHODS or mname.startswith("_"):
+            continue
+        static_attr = inspect.getattr_static(cls, mname, None)
+        if static_attr is None:
+            continue
+        is_cm = isinstance(static_attr, classmethod)
+        actual = getattr(cls, mname)
+        sig = format_sig(mname, actual)
+        doc = doc_line(actual)
+        prefix = "  @classmethod " if is_cm else "  "
+        lines.append(f"{prefix}{sig}{doc}")
+
+    lines.append("")
+
+OUTPUT.write_text("\n".join(lines))
+print(f"Written: {OUTPUT}")

@@ -148,7 +148,7 @@ class Context(Base):
 
     @classmethod
     def get_or_create(cls, name: str, description: Optional[str] = None) -> Context:
-        obj = sess.execute(select(cls).filter_by(name=name)).scalar_one_or_none()
+        obj = sess.scalars(select(cls).filter_by(name=name)).one_or_none()
         if obj is None:
             obj = cls(name=name, description=description)
             sess.add(obj)
@@ -176,7 +176,7 @@ class Person(Base):
 
     @classmethod
     def get(cls, name: str) -> Optional[Person]:
-        return sess.execute(select(cls).filter_by(name=name)).scalar_one_or_none()
+        return sess.scalars(select(cls).filter_by(name=name)).one_or_none()
 
     @classmethod
     def get_or_create(cls, name: str, tier: PersonTier = PersonTier.ACQUAINTANCE) -> Person:
@@ -190,19 +190,19 @@ class Person(Base):
     @classmethod
     def in_my_life(cls) -> list[Person]:
         """People who are part of my immediate surrounding life (excludes public figures)."""
-        return sess.execute(
+        return sess.scalars(
             select(cls).where(cls.tier != PersonTier.PUBLIC_FIGURE).order_by(cls.closeness.desc())
-        ).scalars().all()
+        ).all()
 
     @classmethod
     def overdue_for_contact(cls) -> list[Person]:
         """People I should have reached out to by now, ordered by most overdue."""
         now = _now()
-        candidates = sess.execute(
+        candidates = sess.scalars(
             select(cls)
             .where(cls.tier != PersonTier.PUBLIC_FIGURE)
             .where(cls.reach_out_every_days.isnot(None))
-        ).scalars().all()
+        ).all()
         overdue = []
         for p in candidates:
             if p.last_contacted is None:
@@ -241,7 +241,7 @@ class Goal(Base):
         q = select(cls).where(cls.status == GoalStatus.ACTIVE)
         if context is not None:
             q = q.where(cls.context_id == context.id)
-        return sess.execute(q).scalars().all()
+        return sess.scalars(q).all()
 
     @classmethod
     def create(cls, title: str, description: Optional[str] = None, context: Optional[Context] = None, notes: Optional[str] = None) -> Goal:
@@ -276,7 +276,7 @@ class Todo(Base):
         q = select(cls).where(cls.status.in_([TodoStatus.PENDING, TodoStatus.IN_PROGRESS]))
         if context is not None:
             q = q.where(cls.context_id == context.id)
-        return sess.execute(q).scalars().all()
+        return sess.scalars(q).all()
 
     @classmethod
     def create(cls, title: str, goal: Optional[Goal] = None, context: Optional[Context] = None, notes: Optional[str] = None) -> Todo:
@@ -309,7 +309,7 @@ class Reference(Base):
     def search(cls, query: str) -> list[Reference]:
         q = query.lower()
         return [
-            r for r in sess.execute(select(cls)).scalars().all()
+            r for r in sess.scalars(select(cls)).all()
             if q in r.title.lower()
             or (r.tags and q in r.tags.lower())
             or (r.notes and q in r.notes.lower())
@@ -343,13 +343,13 @@ class WorkingMemory(Base):
 
     @classmethod
     def get(cls, topic: str) -> Optional[WorkingMemory]:
-        return sess.execute(select(cls).filter_by(topic=topic)).scalar_one_or_none()
+        return sess.scalars(select(cls).filter_by(topic=topic)).one_or_none()
 
     @classmethod
     def search(cls, query: str) -> list[WorkingMemory]:
         q = query.lower()
         return [
-            m for m in sess.execute(select(cls)).scalars().all()
+            m for m in sess.scalars(select(cls)).all()
             if q in m.topic.lower()
             or (m.domain and q in m.domain.lower())
             or q in m.body.lower()
@@ -381,10 +381,11 @@ class Wishlist(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     price_min: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
     price_max: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
-    importance: Mapped[int] = mapped_column(Integer, nullable=False, default=50)  # 0–100
-    urgency: Mapped[int] = mapped_column(Integer, nullable=False, default=50)     # 0–100
+    importance: Mapped[int] = mapped_column(Integer, nullable=False, default=50)      # 0–100
+    urgency: Mapped[int] = mapped_column(Integer, nullable=False, default=50)         # 0–100
     effort: Mapped[WishlistEffort] = mapped_column(Enum(WishlistEffort), nullable=False, default=WishlistEffort.GRAB)
-    clarity: Mapped[int] = mapped_column(Integer, nullable=False, default=50)     # 0–100: how well-defined the need is
+    clarity: Mapped[int] = mapped_column(Integer, nullable=False, default=50)         # 0–100: how well-defined the need is
+    priority: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)           # 0–100: explicit deliberate rank
     status: Mapped[WishlistStatus] = mapped_column(Enum(WishlistStatus), nullable=False, default=WishlistStatus.ACTIVE)
     context_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("context.id"), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -392,7 +393,7 @@ class Wishlist(Base):
     context: Mapped[Optional[Context]] = relationship("Context")
 
     @property
-    def priority_score(self) -> int:
+    def score(self) -> int:
         return self.importance * self.urgency * self.clarity // 10000
 
     @classmethod
@@ -400,13 +401,13 @@ class Wishlist(Base):
         q = select(cls).where(cls.status == WishlistStatus.ACTIVE)
         if effort is not None:
             q = q.where(cls.effort == effort)
-        return sess.execute(q).scalars().all()
+        return sess.scalars(q).all()
 
     @classmethod
     def top(cls, n: int = 10) -> list[Wishlist]:
-        """Active items sorted by priority score descending."""
+        """Active items: explicit priority first (nulls last), then score as tiebreaker."""
         items = cls.active()
-        return sorted(items, key=lambda w: w.priority_score, reverse=True)[:n]
+        return sorted(items, key=lambda w: (w.priority is None, -(w.priority or 0), -w.score))[:n]
 
     def __repr__(self) -> str:
         price = ""
@@ -414,7 +415,8 @@ class Wishlist(Base):
             lo = f"${self.price_min}" if self.price_min is not None else ""
             hi = f"${self.price_max}" if self.price_max is not None else ""
             price = f" {lo}–{hi}" if lo and hi else f" {lo or hi}"
-        return f"<Wishlist {self.title!r}{price} effort={self.effort.value} priority={self.priority_score}>"
+        priority_str = f" priority={self.priority}" if self.priority is not None else f" score={self.score}"
+        return f"<Wishlist {self.title!r}{price} effort={self.effort.value}{priority_str}>"
 
 
 # ---------------------------------------------------------------------------

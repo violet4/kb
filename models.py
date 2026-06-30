@@ -182,7 +182,7 @@ class Person(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
-    tier: Mapped[PersonTier] = mapped_column(Enum(PersonTier), nullable=False, default=PersonTier.ACQUAINTANCE)
+    tier: Mapped[PersonTier] = mapped_column(Enum(PersonTier, create_constraint=True, validate_strings=True), nullable=False, default=PersonTier.ACQUAINTANCE)
     closeness: Mapped[int] = tracked_column(Integer, nullable=False, default=0)
     last_contacted: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     reach_out_every_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
@@ -243,7 +243,7 @@ class Goal(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     title: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    status: Mapped[GoalStatus] = tracked_column(Enum(GoalStatus), nullable=False, default=GoalStatus.ACTIVE)
+    status: Mapped[GoalStatus] = tracked_column(Enum(GoalStatus, create_constraint=True, validate_strings=True), nullable=False, default=GoalStatus.ACTIVE)
     context_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("context.id"), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
@@ -277,7 +277,7 @@ class Todo(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     title: Mapped[str] = mapped_column(String, nullable=False)
-    status: Mapped[TodoStatus] = tracked_column(Enum(TodoStatus), nullable=False, default=TodoStatus.PENDING)
+    status: Mapped[TodoStatus] = tracked_column(Enum(TodoStatus, create_constraint=True, validate_strings=True), nullable=False, default=TodoStatus.PENDING)
     goal_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("goal.id"), nullable=True)
     context_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("context.id"), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -402,7 +402,7 @@ class Note(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     title: Mapped[str] = mapped_column(String, nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
-    collection: Mapped[Collection] = mapped_column(Enum(Collection), nullable=False)
+    collection: Mapped[Collection] = mapped_column(Enum(Collection, create_constraint=True, validate_strings=True), nullable=False)
     tags: Mapped[Optional[str]] = mapped_column(String, nullable=True)   # comma-separated
     embedding_model: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     embedding: Mapped[Optional[bytes]] = mapped_column(Text, nullable=True)
@@ -485,10 +485,10 @@ class Wishlist(Base):
     price_max: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
     importance: Mapped[int] = mapped_column(Integer, nullable=False, default=50)      # 0–100
     urgency: Mapped[int] = mapped_column(Integer, nullable=False, default=50)         # 0–100
-    effort: Mapped[WishlistEffort] = mapped_column(Enum(WishlistEffort), nullable=False, default=WishlistEffort.GRAB)
+    effort: Mapped[WishlistEffort] = mapped_column(Enum(WishlistEffort, create_constraint=True, validate_strings=True), nullable=False, default=WishlistEffort.GRAB)
     clarity: Mapped[int] = mapped_column(Integer, nullable=False, default=50)         # 0–100: how well-defined the need is
     priority: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)           # 0–100: explicit deliberate rank
-    status: Mapped[WishlistStatus] = mapped_column(Enum(WishlistStatus), nullable=False, default=WishlistStatus.ACTIVE)
+    status: Mapped[WishlistStatus] = mapped_column(Enum(WishlistStatus, create_constraint=True, validate_strings=True), nullable=False, default=WishlistStatus.ACTIVE)
     context_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("context.id"), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 

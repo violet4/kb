@@ -43,6 +43,26 @@ class KBClient:
             raise RuntimeError(r["error"])
         return r["result"]
 
+    def note_update(self, id: int | None = None, find: str | None = None,
+                    title: str | None = None, body: str | None = None, tags: str | None = None) -> str:
+        req = {"cmd": "note.update"}
+        if id is not None:
+            req["id"] = id
+        elif find is not None:
+            req["find"] = find
+        else:
+            raise ValueError("id or find required")
+        if title is not None:
+            req["title"] = title
+        if body is not None:
+            req["body"] = body
+        if tags is not None:
+            req["tags"] = tags
+        r = self._send(req)
+        if not r["ok"]:
+            raise RuntimeError(r["error"])
+        return r["result"]
+
     def close(self):
         if self._sock:
             self._sock.close()

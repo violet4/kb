@@ -61,8 +61,11 @@ Note
   .updated_at: DateTime
 
   @classmethod .create(title: str, body: str, collection: Collection, tags: Optional[str]=None) -> Note
+  @classmethod .find(title: str) -> Optional[Note]
+  @classmethod .get(id: int) -> Optional[Note]
   .reembed() -> None
   @classmethod .search(query: str, collection: Collection) -> list[tuple[Note, float]]
+  .update(title: Optional[str]=None, body: Optional[str]=None, tags: Optional[str]=None) -> None
 
 Person
   .id: Integer

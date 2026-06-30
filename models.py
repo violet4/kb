@@ -420,6 +420,22 @@ class Note(Base):
         return note
 
     @classmethod
+    def get(cls, id: int) -> Optional[Note]:
+        return sess.scalars(select(cls).filter_by(id=id)).one_or_none()
+
+    @classmethod
+    def find(cls, title: str) -> Optional[Note]:
+        return sess.scalars(select(cls).filter_by(title=title)).one_or_none()
+
+    def update(self, title: Optional[str] = None, body: Optional[str] = None, tags: Optional[str] = None) -> None:
+        if title is not None:
+            self.title = title
+        if body is not None:
+            self.body = body
+        if tags is not None:
+            self.tags = tags
+
+    @classmethod
     def search(cls, query: str, collection: Collection) -> list[tuple[Note, float]]:
         from embed import embed, model_name
         raw = embed(query)

@@ -69,6 +69,18 @@ def _handle(request: dict) -> dict:
         sess.commit()
         return {"ok": True, "result": repr(note)}
 
+    if cmd == "note.update":
+        note = Note.get(request["id"]) if "id" in request else Note.find(request.get("find"))
+        if note is None:
+            return {"ok": False, "error": "Note not found"}
+        note.update(
+            title=request.get("title"),
+            body=request.get("body"),
+            tags=request.get("tags"),
+        )
+        sess.commit()
+        return {"ok": True, "result": repr(note)}
+
     return {"ok": False, "error": f"Unknown command: {cmd!r}"}
 
 

@@ -434,6 +434,8 @@ class Note(Base):
             self.body = body
         if tags is not None:
             self.tags = tags
+        if title is not None or body is not None:
+            self.reembed()
 
     @classmethod
     def search(cls, query: str, collection: Collection) -> list[tuple[Note, float]]:

@@ -10,7 +10,7 @@ from typing import Optional
 
 import sqlite_vec
 from sqlalchemy import (
-    Boolean, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text,
+    Boolean, DateTime, Enum, ForeignKey, Integer, MetaData, Numeric, String, Text,
     create_engine, event, inspect, select,
 )
 from sqlalchemy.orm import (
@@ -44,7 +44,18 @@ def _now() -> datetime:
 # Base
 # ---------------------------------------------------------------------------
 
+_NAMING_CONVENTION = {
+    "ix": "ix_%(column_0_label)s",
+    "uq": "uq_%(table_name)s_%(column_0_name)s",
+    "ck": "ck_%(table_name)s_%(constraint_name)s",
+    "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+    "pk": "pk_%(table_name)s",
+}
+
+
 class Base(DeclarativeBase):
+    metadata = MetaData(naming_convention=_NAMING_CONVENTION)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
 
@@ -280,10 +291,12 @@ class Todo(Base):
     status: Mapped[TodoStatus] = tracked_column(Enum(TodoStatus, create_constraint=True, validate_strings=True), nullable=False, default=TodoStatus.PENDING)
     goal_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("goal.id"), nullable=True)
     context_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("context.id"), nullable=True)
+    blocked_by_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("todo.id"), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     goal: Mapped[Optional[Goal]] = relationship("Goal", back_populates="todos")
     context: Mapped[Optional[Context]] = relationship("Context")
+    blocked_by: Mapped[Optional[Todo]] = relationship("Todo", remote_side=[id])
 
     @classmethod
     def pending(cls, context: Optional[Context] = None) -> list[Todo]:
@@ -293,8 +306,10 @@ class Todo(Base):
         return sess.scalars(q).all()
 
     @classmethod
-    def create(cls, title: str, goal: Optional[Goal] = None, context: Optional[Context] = None, notes: Optional[str] = None) -> Todo:
-        todo = cls(title=title, goal_id=goal.id if goal else None, context_id=context.id if context else None, notes=notes)
+    def create(cls, title: str, goal: Optional[Goal] = None, context: Optional[Context] = None,
+               notes: Optional[str] = None, blocked_by: Optional[Todo] = None) -> Todo:
+        todo = cls(title=title, goal_id=goal.id if goal else None, context_id=context.id if context else None,
+                   notes=notes, blocked_by_id=blocked_by.id if blocked_by else None)
         sess.add(todo)
         sess.flush()
         return todo

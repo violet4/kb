@@ -103,13 +103,15 @@ Todo
   .status: TodoStatus
   .goal_id: Integer?
   .context_id: Integer?
+  .blocked_by_id: Integer?
   .notes: Text?
   .created_at: DateTime
   .updated_at: DateTime
   .goal: Goal  # relationship
   .context: Context  # relationship
+  .blocked_by: Todo  # relationship
 
-  @classmethod .create(title: str, goal: Optional[Goal]=None, context: Optional[Context]=None, notes: Optional[str]=None) -> Todo
+  @classmethod .create(title: str, goal: Optional[Goal]=None, context: Optional[Context]=None, notes: Optional[str]=None, blocked_by: Optional[Todo]=None) -> Todo
   @classmethod .pending(context: Optional[Context]=None) -> list[Todo]
 
 Wishlist

@@ -17,6 +17,13 @@ Bare `kb.py` (no command, `-f`, or `-i`) errors instead of silently dropping int
 
 Enum columns take the member (uppercase name, e.g. `Collection.GORGON`), not the lowercase `.value` shown in old muscle memory — e.g. `Note.search(query, Collection.GORGON)`. `api.py` lists valid members per enum.
 
+## Goals and Todos
+
+```bash
+uv run scripts/todo/show ID [ID ...]       # print Todo(s): title, status, goal, context, blocked_by, notes
+uv run scripts/todo/complete ID [ID ...]   # mark Todo(s) done, prints each title
+```
+
 ## Before creating or updating notes
 
 Check for existing related notes first with `Note.search(query, collection)` — semantic search surfaces related notes even when you don't know the exact title. Use `Note.find(title)` only once you already know/suspect an exact title (e.g. confirming before an update).

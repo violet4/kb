@@ -1,0 +1,28 @@
+#!/usr/bin/env python3
+"""Show one or more Todos. Usage: show ID [ID ...]"""
+import argparse
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from models import Todo, sess
+
+parser = argparse.ArgumentParser(description="Show Todo details")
+parser.add_argument("ids", nargs="+", type=int, help="Todo id(s) to show")
+args = parser.parse_args()
+
+for todo_id in args.ids:
+    todo = sess.get(Todo, todo_id)
+    if todo is None:
+        print(f"Todo #{todo_id}: not found", file=sys.stderr)
+        continue
+    print(f"Todo #{todo.id}: {todo.title!r} [{todo.status.value}]")
+    if todo.goal:
+        print(f"  goal: {todo.goal.title!r}")
+    if todo.context:
+        print(f"  context: {todo.context.name!r}")
+    if todo.blocked_by:
+        print(f"  blocked by: #{todo.blocked_by.id} {todo.blocked_by.title!r} [{todo.blocked_by.status.value}]")
+    if todo.notes:
+        print(f"  notes: {todo.notes}")

@@ -12,6 +12,8 @@ uv run kb.py                                       # interactive REPL
 
 `sess` and all models are pre-loaded. No imports needed.
 
+Enum columns take the member (uppercase name, e.g. `Collection.GORGON`), not the lowercase `.value` shown in old muscle memory — e.g. `Note.search(query, Collection.GORGON)`. `api.py` lists valid members per enum.
+
 ## Before creating or updating notes
 
 Check for existing related notes first with `Note.find(title)` or `Note.search(query, collection)` — never dump full note bodies or list a whole collection to survey it.

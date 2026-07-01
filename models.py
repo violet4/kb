@@ -276,7 +276,7 @@ class Goal(Base):
         return goal
 
     def __repr__(self) -> str:
-        return f"<Goal {self.title!r} [{self.status.value}]>"
+        return f"<Goal #{self.id} {self.title!r} [{self.status.value}]>"
 
 
 # ---------------------------------------------------------------------------
@@ -315,7 +315,7 @@ class Todo(Base):
         return todo
 
     def __repr__(self) -> str:
-        return f"<Todo {self.title!r} [{self.status.value}]>"
+        return f"<Todo #{self.id} {self.title!r} [{self.status.value}]>"
 
 
 # ---------------------------------------------------------------------------

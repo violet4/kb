@@ -56,11 +56,18 @@ if args.command:
     if tree.body and isinstance(tree.body[-1], ast.Expr):
         last_expr = ast.Expression(tree.body.pop().value)
 
-    exec(compile(tree, "<kb>", "exec"), ns)  # noqa: S102
-    if last_expr is not None:
-        result = eval(compile(last_expr, "<kb>", "eval"), ns)  # noqa: S307
-        if result is not None:
-            print(repr(result))
+    exec_ran = False
+    try:
+        exec(compile(tree, "<kb>", "exec"), ns)  # noqa: S102
+        exec_ran = True
+        if last_expr is not None:
+            result = eval(compile(last_expr, "<kb>", "eval"), ns)  # noqa: S307
+            if result is not None:
+                print(repr(result))
+    except Exception:
+        state = "ran but NOT committed (mutations may be visible only in-session)" if exec_ran else "did not run"
+        print(f"kb.py: command raised; command {state}.", file=sys.stderr)
+        raise
 
     if not args.no_commit:
         sess.commit()

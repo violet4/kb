@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 from models import Collection, Note, sess
-from embed import embed, model_name
+from embed import _local_embed as embed, model_name
 
 SOCKET_PATH = Path(__file__).parent / "data" / "kb.sock"
 PID_PATH = Path(__file__).parent / "data" / "kb.pid"

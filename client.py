@@ -30,6 +30,12 @@ class KBClient:
         r = self._send({"cmd": "ping"})
         return r["result"]
 
+    def embed(self, text: str) -> list[float]:
+        r = self._send({"cmd": "embed", "text": text})
+        if not r["ok"]:
+            raise RuntimeError(r["error"])
+        return r["result"]
+
     def search(self, query: str, collection: str) -> list[dict]:
         r = self._send({"cmd": "search", "query": query, "collection": collection})
         if not r["ok"]:

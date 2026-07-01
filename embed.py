@@ -11,8 +11,15 @@ def model_name() -> str:
     return _MODEL_NAME
 
 
-def embed(text: str) -> list[float]:
+def _local_embed(text: str) -> list[float]:
     global _model
     if _model is None:
         _model = SentenceTransformer(_MODEL_NAME, local_files_only=True)
     return _model.encode(text).tolist()
+
+
+def embed(text: str) -> list[float]:
+    from client import KBClient, is_server_running
+    if is_server_running():
+        return KBClient().embed(text)
+    return _local_embed(text)

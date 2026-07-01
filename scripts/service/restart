@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+systemctl --user restart kb.service
+sleep 2
+systemctl --user is-active kb.service

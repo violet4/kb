@@ -6,12 +6,12 @@
 sess  # scoped_session — pre-loaded in kb.py and scripts
 
 # Enums
-Collection: engineering | personal | gorgon | work | all
-GoalStatus: active | completed | abandoned
-PersonTier: close | acquaintance | public_figure
-TodoStatus: pending | in_progress | done | dropped
-WishlistEffort: grab | research | project
-WishlistStatus: active | acquired | dropped
+Collection: ENGINEERING | PERSONAL | GORGON | WORK | ALL
+GoalStatus: ACTIVE | COMPLETED | ABANDONED
+PersonTier: CLOSE | ACQUAINTANCE | PUBLIC_FIGURE
+TodoStatus: PENDING | IN_PROGRESS | DONE | DROPPED
+WishlistEffort: GRAB | RESEARCH | PROJECT
+WishlistStatus: ACTIVE | ACQUIRED | DROPPED
 
 ChangeLog
   .id: Integer

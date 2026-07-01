@@ -78,7 +78,7 @@ lines = [
 
 for name, obj in inspect.getmembers(models, inspect.isclass):
     if issubclass(obj, enum.Enum) and obj.__module__ == "models":
-        values = " | ".join(m.value for m in obj)
+        values = " | ".join(m.name for m in obj)
         lines.append(f"{name}: {values}")
 
 lines.append("")

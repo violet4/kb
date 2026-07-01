@@ -15,8 +15,20 @@ from models import (
 
 parser = argparse.ArgumentParser(description="KB runner")
 parser.add_argument("command", nargs="?", help="Python expression to execute")
+parser.add_argument("-f", "--file", help="Read command from a script file instead of the command arg (auto-commits like inline commands)")
 parser.add_argument("--no-commit", action="store_true", help="Skip auto-commit")
+parser.add_argument(
+    "-i", "--interactive", action="store_true",
+    help="Start an interactive REPL. Changes are NOT auto-committed — call sess.commit() explicitly.",
+)
 args = parser.parse_args()
+
+if not args.command and not args.file and not args.interactive:
+    parser.error("one of: command, -f/--file, or -i/--interactive is required")
+
+if args.file:
+    with open(args.file) as f:
+        args.command = f.read()
 
 ns = {
     "sess": sess,
@@ -53,5 +65,5 @@ if args.command:
     if not args.no_commit:
         sess.commit()
 else:
-    banner = "KB | All models and `sess` are pre-loaded. Changes are NOT auto-committed — call sess.commit() explicitly."
+    banner = "KB interactive mode | All models and `sess` are pre-loaded. Changes are NOT auto-committed — call sess.commit() explicitly."
     code.interact(banner=banner, local=ns, exitmsg="")

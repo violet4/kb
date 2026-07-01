@@ -6,9 +6,12 @@ Personal knowledge base. SQLite + SQLAlchemy 2.0. Read `api.py` for the full mod
 
 ```bash
 uv run kb.py "sess.scalars(select(Note)).all()"   # single command, auto-commits
+uv run kb.py -f script.py                          # run a script file, auto-commits (use for multi-line bodies)
 uv run kb.py --no-commit "..."                     # dry-run
-uv run kb.py                                       # interactive REPL
+uv run kb.py -i                                    # interactive REPL, explicit opt-in — does NOT auto-commit
 ```
+
+Bare `kb.py` (no command, `-f`, or `-i`) errors instead of silently dropping into the REPL — always pass `-i` explicitly if you want manual-commit interactive mode.
 
 `sess` and all models are pre-loaded. No imports needed.
 

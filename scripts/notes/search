@@ -1,0 +1,21 @@
+#!/usr/bin/env python3
+"""Semantic search over notes. Usage: search-notes COLLECTION QUERY"""
+import argparse
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from models import Collection, Note
+
+parser = argparse.ArgumentParser(description="Search knowledge base notes")
+parser.add_argument("collection", choices=[c.value for c in Collection])
+parser.add_argument("query")
+args = parser.parse_args()
+
+collection = Collection(args.collection)
+results = Note.search(args.query, collection)
+if not results:
+    print("No results.")
+for note, dist in results:
+    print(f"#{note.id} {note.title!r} [{note.collection.value}] (dist={dist:.3f})")

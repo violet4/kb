@@ -19,11 +19,22 @@ Enum columns take the member (uppercase name, e.g. `Collection.GORGON`), not the
 
 ## Before creating or updating notes
 
-Check for existing related notes first with `Note.find(title)` or `Note.search(query, collection)` — never dump full note bodies or list a whole collection to survey it.
+Check for existing related notes first with `client.search(query, collection)` — semantic search surfaces related notes even when you don't know the exact title. Use `Note.find(title)` only once you already know/suspect an exact title (e.g. confirming before an update).
+
+Route anything that embeds text — search, note creation, note title/body/tag updates — through `client.py`'s `KBClient`, which talks to the always-warm `kb.service` process over a JSON socket. `KBClient` methods take the plain lowercase collection string (e.g. `"gorgon"`), not the `Collection.GORGON` enum member used in direct `sess`/model calls. Example `kb.py -f script.py` pattern:
+
+```python
+from client import KBClient
+client = KBClient()
+client.search("query text", "gorgon")
+client.note_create(title="...", body="...", collection="gorgon", tags="...")
+```
+
+If `KBClient` can't connect (`kb.service` down — check `systemctl --user status kb.service`), fall back to the direct model methods (`Note.create`, `.search`, `.reembed`), which load their own copy of the embedding model.
 
 ## Server
 
-The embedding server runs as a systemd user service (`kb.service`). For Note search and creation, prefer `client.py` when the server is running — it keeps the model warm. Fall back to direct model calls if the server is down.
+The embedding server runs as a systemd user service (`kb.service`) and stays warm for `client.py` to use.
 
 ## Schema changes
 

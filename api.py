@@ -34,6 +34,31 @@ Context
 
   @classmethod .get_or_create(name: str, description: Optional[str]=None) -> Context
 
+CurrentContext
+  .id: Integer
+  .context_id: Integer?
+  .created_at: DateTime
+  .updated_at: DateTime
+  .context: Context  # relationship
+
+  @classmethod .get() -> Optional[Context]
+  @classmethod .set(context: Optional[Context]) -> None
+
+Daily
+  .id: Integer
+  .description: String
+  .context_id: Integer?
+  .location: String?
+  .reward: Text?
+  .is_active: Boolean
+  .notes: Text?
+  .created_at: DateTime
+  .updated_at: DateTime
+  .context: Context  # relationship
+
+  @classmethod .active(context: Optional[Context]=None) -> list[Daily]
+  @classmethod .create(description: str, context: Optional[Context]=None, location: Optional[str]=None, reward: Optional[str]=None, notes: Optional[str]=None) -> Daily
+
 Goal
   .id: Integer
   .title: String
@@ -48,6 +73,18 @@ Goal
 
   @classmethod .active(context: Optional[Context]=None) -> list[Goal]
   @classmethod .create(title: str, description: Optional[str]=None, context: Optional[Context]=None, notes: Optional[str]=None) -> Goal
+
+Item
+  .id: Integer
+  .game: String
+  .name: String
+  .context_id: Integer?
+  .notes: Text?
+  .created_at: DateTime
+  .updated_at: DateTime
+  .context: Context  # relationship
+
+  @classmethod .by_game(game: str) -> list[Item]
 
 Note
   .id: Integer
@@ -82,6 +119,22 @@ Person
   @classmethod .get_or_create(name: str, tier: PersonTier=<PersonTier.ACQUAINTANCE: 'acquaintance'>) -> Person
   @classmethod .in_my_life() -> list[Person]  # People who are part of my immediate surrounding life (excludes public figures).
   @classmethod .overdue_for_contact() -> list[Person]  # People I should have reached out to by now, ordered by most overdue.
+
+PgItem
+  .id: Integer
+  .game: String
+  .name: String
+  .context_id: Integer?
+  .notes: Text?
+  .created_at: DateTime
+  .updated_at: DateTime
+  .id: Integer
+  .kind: String?
+  .sources: Text?
+  .max_stack_size: Integer?
+  .context: Context  # relationship
+
+  @classmethod .by_game(game: str) -> list[Item]
 
 Reference
   .id: Integer

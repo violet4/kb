@@ -17,8 +17,7 @@ if goals:
     lines = ["=== GOALS ==="]
     for g in goals:
         ctx = f" [{g.context.name}]" if g.context else ""
-        note = f" | {g.notes}" if g.notes else ""
-        lines.append(f"- {g.title}{ctx}{note}")
+        lines.append(f"- #{g.id} {g.title}{ctx}")
     sections.append("\n".join(lines))
 
 if todos:
@@ -26,7 +25,7 @@ if todos:
     for t in todos:
         goal = f" → {t.goal.title}" if t.goal else ""
         ctx = f" [{t.context.name}]" if t.context else ""
-        lines.append(f"- [{t.status.value}] {t.title}{goal}{ctx}")
+        lines.append(f"- #{t.id} [{t.status.value}] {t.title}{goal}{ctx}")
     sections.append("\n".join(lines))
 
 if overdue:

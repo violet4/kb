@@ -10,14 +10,17 @@ from typing import Optional
 
 import sqlite_vec
 from sqlalchemy import (
-    Boolean, DateTime, Enum, ForeignKey, Integer, MetaData, Numeric, String, Text,
+    Boolean, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text,
     create_engine, event, inspect, select,
 )
 from sqlalchemy.orm import (
-    DeclarativeBase, Mapped, MappedColumn, mapped_column, object_session,
+    Mapped, MappedColumn, mapped_column, object_session,
     relationship, scoped_session, sessionmaker,
 )
 from sqlalchemy.orm.attributes import NO_VALUE, NEVER_SET
+
+from base import Base, _now
+from mixins import HasStackSize
 
 _DB_PATH = Path(__file__).parent / "data" / "kb.db"
 _engine = create_engine(f"sqlite:///{_DB_PATH}", echo=False)
@@ -34,30 +37,6 @@ def _set_pragma(conn, _):
 
 _Session = scoped_session(sessionmaker(bind=_engine))
 sess = _Session()
-
-
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-# ---------------------------------------------------------------------------
-# Base
-# ---------------------------------------------------------------------------
-
-_NAMING_CONVENTION = {
-    "ix": "ix_%(column_0_label)s",
-    "uq": "uq_%(table_name)s_%(column_0_name)s",
-    "ck": "ck_%(table_name)s_%(constraint_name)s",
-    "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
-    "pk": "pk_%(table_name)s",
-}
-
-
-class Base(DeclarativeBase):
-    metadata = MetaData(naming_convention=_NAMING_CONVENTION)
-
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
 
 
 # ---------------------------------------------------------------------------
@@ -182,6 +161,34 @@ class Context(Base):
 
     def __repr__(self) -> str:
         return f"<Context {self.name!r}>"
+
+
+class CurrentContext(Base):
+    """Single-row table: which Context is active by default. See context.py for resolution logic."""
+    __tablename__ = "current_context"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    context_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("context.id"), nullable=True)
+
+    context: Mapped[Optional[Context]] = relationship("Context")
+
+    @classmethod
+    def get(cls) -> Optional[Context]:
+        row = sess.scalars(select(cls).filter_by(id=1)).one_or_none()
+        return row.context if row else None
+
+    @classmethod
+    def set(cls, context: Optional[Context]) -> None:
+        row = sess.scalars(select(cls).filter_by(id=1)).one_or_none()
+        if row is None:
+            row = cls(id=1, context_id=context.id if context else None)
+            sess.add(row)
+        else:
+            row.context_id = context.id if context else None
+        sess.flush()
+
+    def __repr__(self) -> str:
+        return f"<CurrentContext {self.context.name if self.context else None!r}>"
 
 
 # ---------------------------------------------------------------------------
@@ -316,6 +323,82 @@ class Todo(Base):
 
     def __repr__(self) -> str:
         return f"<Todo #{self.id} {self.title!r} [{self.status.value}]>"
+
+
+# ---------------------------------------------------------------------------
+# Daily
+# ---------------------------------------------------------------------------
+
+class Daily(Base):
+    """A recurring/optional item — distinct from Goal (a purpose/end-state) and Todo (a step toward one)."""
+    __tablename__ = "daily"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    description: Mapped[str] = mapped_column(String, nullable=False)
+    context_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("context.id"), nullable=True)
+    location: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    reward: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    context: Mapped[Optional[Context]] = relationship("Context")
+
+    @classmethod
+    def active(cls, context: Optional[Context] = None) -> list[Daily]:
+        q = select(cls).where(cls.is_active.is_(True))
+        if context is not None:
+            q = q.where(cls.context_id == context.id)
+        return sess.scalars(q).all()
+
+    @classmethod
+    def create(cls, description: str, context: Optional[Context] = None, location: Optional[str] = None,
+               reward: Optional[str] = None, notes: Optional[str] = None) -> Daily:
+        daily = cls(description=description, context_id=context.id if context else None,
+                    location=location, reward=reward, notes=notes)
+        sess.add(daily)
+        sess.flush()
+        return daily
+
+    def __repr__(self) -> str:
+        return f"<Daily #{self.id} {self.description!r}>"
+
+
+# ---------------------------------------------------------------------------
+# Item
+# ---------------------------------------------------------------------------
+
+class Item(Base):
+    """JTI base for game-specific items. Game side tables below join 1:1 via id, each composing
+    whichever mixins.py traits it actually needs (weight, grid size, stack size, ...)."""
+    __tablename__ = "item"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    game: Mapped[str] = mapped_column(String, nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    context_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("context.id"), nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    context: Mapped[Optional[Context]] = relationship("Context")
+
+    __mapper_args__ = {"polymorphic_on": "game", "polymorphic_identity": "item"}
+
+    @classmethod
+    def by_game(cls, game: str) -> list[Item]:
+        return sess.scalars(select(cls).filter_by(game=game)).all()
+
+    def __repr__(self) -> str:
+        return f"<Item #{self.id} {self.name!r} [{self.game}]>"
+
+
+class PgItem(Item, HasStackSize):
+    """Project Gorgon items."""
+    __tablename__ = "pg_item"
+
+    id: Mapped[int] = mapped_column(Integer, ForeignKey("item.id"), primary_key=True)
+    kind: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    sources: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    __mapper_args__ = {"polymorphic_identity": "pg"}
 
 
 # ---------------------------------------------------------------------------

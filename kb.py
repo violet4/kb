@@ -7,10 +7,12 @@ import sys
 
 from sqlalchemy import select
 
+from context import resolve_context
 from models import (
-    Base, ChangeLog, Collection, Context, Goal, GoalStatus, Note, Person, PersonTier,
-    Reference, Todo, TodoStatus, WishlistEffort, WishlistStatus, Wishlist,
-    WorkingMemory, init_db, sess,
+    Base, ChangeLog, Collection, Context, CurrentContext, Daily, Goal, GoalStatus,
+    Item, Note, PgDungeon, PgFriendlyPlayer, PgItem, PgNpc, PgNpcRace, PgNpcRelation,
+    PgPlayer, PgQuest, Person, PersonTier, Reference, Todo, TodoStatus, WishlistEffort,
+    WishlistStatus, Wishlist, WorkingMemory, init_db, sess,
 )
 
 parser = argparse.ArgumentParser(description="KB runner")
@@ -20,6 +22,11 @@ parser.add_argument("--no-commit", action="store_true", help="Skip auto-commit")
 parser.add_argument(
     "-i", "--interactive", action="store_true",
     help="Start an interactive REPL. Changes are NOT auto-committed — call sess.commit() explicitly.",
+)
+parser.add_argument(
+    "--context", metavar="NAME",
+    help="Act in context NAME for this command only, without changing the persisted current context. "
+         "Pre-loaded as `context` in the namespace.",
 )
 args = parser.parse_args()
 
@@ -33,12 +40,24 @@ if args.file:
 ns = {
     "sess": sess,
     "select": select,
+    "context": resolve_context(args.context),
     "Collection": Collection,
     "Note": Note,
     "ChangeLog": ChangeLog,
     "Context": Context,
+    "CurrentContext": CurrentContext,
+    "Daily": Daily,
     "Goal": Goal,
     "GoalStatus": GoalStatus,
+    "Item": Item,
+    "PgDungeon": PgDungeon,
+    "PgFriendlyPlayer": PgFriendlyPlayer,
+    "PgItem": PgItem,
+    "PgNpc": PgNpc,
+    "PgNpcRace": PgNpcRace,
+    "PgNpcRelation": PgNpcRelation,
+    "PgPlayer": PgPlayer,
+    "PgQuest": PgQuest,
     "Person": Person,
     "PersonTier": PersonTier,
     "Reference": Reference,

@@ -1,6 +1,6 @@
 # Auto-generated API surface — REFERENCE ONLY, not an importable module.
 # Import from models.py instead: `from models import Note, sess, ...`
-# Run `uv run scripts/gen-api.py` to regenerate after changing models.py.
+# Run `uv run scripts/dev/gen-api` to regenerate after changing models.py.
 
 # Session
 sess  # scoped_session — pre-loaded in kb.py and scripts

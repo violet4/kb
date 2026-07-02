@@ -20,13 +20,20 @@ Enum columns take the member (uppercase name, e.g. `Collection.GORGON`), not the
 ## Goals and Todos
 
 ```bash
-uv run scripts/todo/show ID [ID ...]       # print Todo(s): title, status, goal, context, blocked_by, notes
-uv run scripts/todo/complete ID [ID ...]   # mark Todo(s) done, prints each title
+uv run scripts/todo show ID [ID ...]       # print Todo(s): title, status, goal, context, blocked_by, notes
+uv run scripts/todo complete ID [ID ...]   # mark Todo(s) done, prints each title
 ```
 
 ## Before creating or updating notes
 
-Check for existing related notes first with `Note.search(query, collection)` — semantic search surfaces related notes even when you don't know the exact title. Use `Note.find(title)` only once you already know/suspect an exact title (e.g. confirming before an update).
+```bash
+uv run scripts/notes search COLLECTION QUERY                    # semantic search, prints id/title/collection/distance
+uv run scripts/notes add COLLECTION TITLE BODY [--tags t1,t2]   # add a note
+uv run scripts/notes update (--id ID | --find TITLE) [--title T] [--body B] [--tags t1,t2]  # update a note
+uv run scripts/notes reembed                                    # recompute embeddings for all notes
+```
+
+Check for existing related notes first with `scripts/notes search` — semantic search surfaces related notes even when you don't know the exact title. Use `Note.find(title)` only once you already know/suspect an exact title (e.g. confirming before an update).
 
 ## Server
 
@@ -43,7 +50,19 @@ scripts/service/is-active   # quick active/inactive check
 ```bash
 uv run alembic revision --autogenerate -m "describe"
 uv run alembic upgrade head
-uv run scripts/gen-api.py   # regenerate api.py after every schema change
+uv run scripts/dev/gen-api   # regenerate api.py after every schema change
+```
+
+## Wishlist
+
+```bash
+uv run scripts/wishlist/add   # interactively add a wishlist item
+```
+
+## Model
+
+```bash
+uv run scripts/model/download   # explicitly download the embedding model (only script that hits the network)
 ```
 
 ## Commits

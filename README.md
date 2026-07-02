@@ -24,15 +24,22 @@ Notes are partitioned by collection — searches never cross collections acciden
 ## Scripts
 
 ```bash
-uv run scripts/summary.py              # daily overview
-uv run scripts/add-note.py COLLECTION TITLE BODY [--tags x,y]
-uv run scripts/download-model.py       # fetch/update embedding model (only HF network call)
-uv run scripts/reembed.py              # recompute embeddings after model upgrade
+uv run scripts/summary                          # daily overview
+uv run scripts/notes add COLLECTION TITLE BODY [--tags x,y]
+uv run scripts/notes search COLLECTION QUERY
+uv run scripts/notes update (--id ID | --find TITLE) [--title T] [--body B] [--tags t1,t2]
+uv run scripts/notes reembed                     # recompute embeddings after model upgrade
+uv run scripts/model/download                    # fetch/update embedding model from HuggingFace; run once on setup or when upgrading models — after this, all embedding runs offline/local
+uv run scripts/wishlist/add                      # interactively add a wishlist item
+uv run scripts/todo show ID [ID ...]
+uv run scripts/todo complete ID [ID ...]
+uv run scripts/dev/gen-api                       # regenerate api.py after a models.py change
 ```
 
 ## Server
 
 ```bash
-systemctl --user status kb
-journalctl --user -u kb -f
+scripts/service/status
+scripts/service/restart
+scripts/service/is-active
 ```

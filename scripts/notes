@@ -1,0 +1,81 @@
+#!/usr/bin/env python3
+"""Note operations. Usage: notes {add,update,search,reembed} ..."""
+import argparse
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from client import KBClient
+from models import Collection, Note, sess
+
+
+def cmd_add(args):
+    client = KBClient()
+    result = client.note_create(title=args.title, body=args.body, collection=args.collection, tags=args.tags)
+    print(f"Added: {result}")
+
+
+def cmd_update(args):
+    note = Note.get(args.id) if args.id else Note.find(args.find)
+    if note is None:
+        print("Note not found.", file=sys.stderr)
+        sys.exit(1)
+    note.update(title=args.title, body=args.body, tags=args.tags)
+    sess.commit()
+    print(f"Updated: {note}")
+
+
+def cmd_search(args):
+    collection = Collection(args.collection)
+    results = Note.search(args.query, collection)
+    if not results:
+        print("No results.")
+    for note, dist in results:
+        print(f"#{note.id} {note.title!r} [{note.collection.value}] (dist={dist:.3f})")
+
+
+def cmd_reembed(args):
+    from embed import model_name
+    from sqlalchemy import select
+    notes = sess.scalars(select(Note)).all()
+    if not notes:
+        print("No notes to reembed.")
+        return
+    print(f"Reembedding {len(notes)} notes with model '{model_name()}'...")
+    for i, note in enumerate(notes, 1):
+        note.reembed()
+        print(f"  [{i}/{len(notes)}] {note.title!r}")
+    sess.commit()
+    print("Done.")
+
+
+parser = argparse.ArgumentParser(description="Note operations")
+sub = parser.add_subparsers(dest="cmd", required=True)
+
+p_add = sub.add_parser("add", help="Add a note")
+p_add.add_argument("collection", choices=[c.value for c in Collection if c != Collection.ALL])
+p_add.add_argument("title")
+p_add.add_argument("body")
+p_add.add_argument("--tags", default=None, help="Comma-separated tags")
+p_add.set_defaults(func=cmd_add)
+
+p_update = sub.add_parser("update", help="Update a note by id or title")
+lookup = p_update.add_mutually_exclusive_group(required=True)
+lookup.add_argument("--id", type=int, help="Note id")
+lookup.add_argument("--find", metavar="TITLE", help="Find note by exact title")
+p_update.add_argument("--title", help="New title")
+p_update.add_argument("--body", help="New body")
+p_update.add_argument("--tags", help="New tags (comma-separated)")
+p_update.set_defaults(func=cmd_update)
+
+p_search = sub.add_parser("search", help="Semantic search over notes")
+p_search.add_argument("collection", choices=[c.value for c in Collection])
+p_search.add_argument("query")
+p_search.set_defaults(func=cmd_search)
+
+p_reembed = sub.add_parser("reembed", help="Recompute embeddings for all notes")
+p_reembed.set_defaults(func=cmd_reembed)
+
+args = parser.parse_args()
+args.func(args)

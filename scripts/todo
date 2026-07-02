@@ -10,20 +10,24 @@ from models import Todo, TodoStatus, sess
 
 
 def cmd_show(args):
-    for todo_id in args.ids:
+    for i, todo_id in enumerate(args.ids):
+        if i > 0:
+            print()
         todo = sess.get(Todo, todo_id)
         if todo is None:
-            print(f"Todo #{todo_id}: not found", file=sys.stderr)
+            print(f"id: {todo_id}\nerror: not found", file=sys.stderr)
             continue
-        print(f"Todo #{todo.id}: {todo.title!r} [{todo.status.value}]")
+        print(f"id: {todo.id}")
+        print(f"title: {todo.title}")
+        print(f"status: {todo.status.value}")
         if todo.goal:
-            print(f"  goal: {todo.goal.title!r}")
+            print(f"goal: {todo.goal.title}")
         if todo.context:
-            print(f"  context: {todo.context.name!r}")
+            print(f"context: {todo.context.name}")
         if todo.blocked_by:
-            print(f"  blocked by: #{todo.blocked_by.id} {todo.blocked_by.title!r} [{todo.blocked_by.status.value}]")
+            print(f"blocked_by: #{todo.blocked_by.id} {todo.blocked_by.title} [{todo.blocked_by.status.value}]")
         if todo.notes:
-            print(f"  notes: {todo.notes}")
+            print(f"notes: {todo.notes}")
 
 
 def cmd_complete(args):

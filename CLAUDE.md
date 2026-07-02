@@ -17,12 +17,18 @@ Bare `kb.py` (no command, `-f`, or `-i`) errors instead of silently dropping int
 
 Enum columns take the member (uppercase name, e.g. `Collection.GORGON`), not the lowercase `.value` shown in old muscle memory — e.g. `Note.search(query, Collection.GORGON)`. `api.py` lists valid members per enum.
 
-## Goals and Todos
+## Goals, Todos, and Context
 
 ```bash
-uv run scripts/todo show ID [ID ...]       # print Todo(s): title, status, goal, context, blocked_by, notes
+uv run scripts/todo show ID [ID ...]       # print Todo(s), one field per line
 uv run scripts/todo complete ID [ID ...]   # mark Todo(s) done, prints each title
+
+uv run scripts/context current       # show the active context
+uv run scripts/context switch NAME   # change the active context (persists)
+uv run scripts/context list          # list all known contexts, marks the active one
 ```
+
+`Goal`/`Todo`/`Daily`/`Item` all take an optional `context`. Context names are a flat string convention (`"pg"`, `"pg.violet"`) — no hierarchy enforcement in the schema, just dot-separated naming. `context.py`'s `resolve_context(cli_override=None)` is the single place "what context are we acting in" is resolved: with no override it returns the persisted current context (`CurrentContext`); an override name is looked up/created via `Context.get_or_create` and does **not** change what's persisted. Any script that needs to know the active context should call `resolve_context()` rather than querying `CurrentContext`/`Context` directly.
 
 ## Before creating or updating notes
 

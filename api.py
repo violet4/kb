@@ -120,6 +120,25 @@ Person
   @classmethod .in_my_life() -> list[Person]  # People who are part of my immediate surrounding life (excludes public figures).
   @classmethod .overdue_for_contact() -> list[Person]  # People I should have reached out to by now, ordered by most overdue.
 
+PgDungeon
+  .id: Integer
+  .name: String
+  .location: String?
+  .level_min: Integer?
+  .level_max: Integer?
+  .notes: Text
+  .created_at: DateTime
+  .updated_at: DateTime
+
+
+PgFriendlyPlayer
+  .id: Integer
+  .name: String
+  .notes: Text
+  .created_at: DateTime
+  .updated_at: DateTime
+
+
 PgItem
   .id: Integer
   .game: String
@@ -135,6 +154,62 @@ PgItem
   .context: Context  # relationship
 
   @classmethod .by_game(game: str) -> list[Item]
+
+PgNpc
+  .id: Integer
+  .name: String
+  .race_id: Integer?
+  .location: String?
+  .notes: Text
+  .created_at: DateTime
+  .updated_at: DateTime
+  .race: PgNpcRace  # relationship
+
+
+PgNpcRace
+  .id: Integer
+  .name: String
+  .created_at: DateTime
+  .updated_at: DateTime
+
+
+PgNpcRelation
+  .id: Integer
+  .player_id: Integer
+  .npc_id: Integer
+  .favor: String
+  .notes: Text
+  .created_at: DateTime
+  .updated_at: DateTime
+  .player: PgPlayer  # relationship
+  .npc: PgNpc  # relationship
+
+
+PgPlayer
+  .id: Integer
+  .name: String
+  .race: Text
+  .is_druid: Boolean
+  .is_vampire: Boolean
+  .notes: Text
+  .created_at: DateTime
+  .updated_at: DateTime
+
+
+PgQuest
+  .id: Integer
+  .title: String
+  .giver_npc_id: Integer
+  .completion_npc_id: Integer?
+  .status: String
+  .objectives: Text?
+  .rewards: Text?
+  .notes: Text
+  .created_at: DateTime
+  .updated_at: DateTime
+  .giver: PgNpc  # relationship
+  .completion_npc: PgNpc  # relationship
+
 
 Reference
   .id: Integer

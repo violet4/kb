@@ -402,6 +402,112 @@ class PgItem(Item, HasStackSize):
 
 
 # ---------------------------------------------------------------------------
+# Project Gorgon (pg-specific — no universal/MMO base yet, see mixins.py docstring
+# for the layering rationale: start narrow at the game layer, generalize upward
+# only once a second game's real data proves something is actually shared)
+# ---------------------------------------------------------------------------
+
+class PgPlayer(Base):
+    __tablename__ = "pg_player"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    race: Mapped[str] = mapped_column(Text, nullable=False)
+    is_druid: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_vampire: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    def __repr__(self) -> str:
+        extras = "+".join(e for e, v in [("druid", self.is_druid), ("vampire", self.is_vampire)] if v)
+        return f"<PgPlayer {self.name} {self.race}{' ' + extras if extras else ''}>"
+
+
+class PgNpcRace(Base):
+    __tablename__ = "pg_npc_race"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+
+    def __repr__(self) -> str:
+        return f"<PgNpcRace {self.name!r}>"
+
+
+class PgNpc(Base):
+    __tablename__ = "pg_npc"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    race_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("pg_npc_race.id"), nullable=True)
+    location: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    race: Mapped[Optional[PgNpcRace]] = relationship("PgNpcRace")
+
+    def __repr__(self) -> str:
+        return f"<PgNpc {self.name!r}>"
+
+
+class PgNpcRelation(Base):
+    __tablename__ = "pg_npc_relation"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    player_id: Mapped[int] = mapped_column(Integer, ForeignKey("pg_player.id"), nullable=False)
+    npc_id: Mapped[int] = mapped_column(Integer, ForeignKey("pg_npc.id"), nullable=False)
+    favor: Mapped[str] = mapped_column(String, nullable=False)
+    notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    player: Mapped[PgPlayer] = relationship("PgPlayer")
+    npc: Mapped[PgNpc] = relationship("PgNpc")
+
+    def __repr__(self) -> str:
+        return f"<PgNpcRelation {self.player.name if self.player else '?'} -> {self.npc.name if self.npc else '?'} [{self.favor}]>"
+
+
+class PgQuest(Base):
+    __tablename__ = "pg_quest"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    giver_npc_id: Mapped[int] = mapped_column(Integer, ForeignKey("pg_npc.id"), nullable=False)
+    completion_npc_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("pg_npc.id"), nullable=True)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="available")
+    objectives: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    rewards: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    giver: Mapped[PgNpc] = relationship("PgNpc", foreign_keys=[giver_npc_id])
+    completion_npc: Mapped[Optional[PgNpc]] = relationship("PgNpc", foreign_keys=[completion_npc_id])
+
+    def __repr__(self) -> str:
+        return f"<PgQuest {self.title!r} [{self.status}]>"
+
+
+class PgDungeon(Base):
+    __tablename__ = "pg_dungeon"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    location: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    level_min: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    level_max: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    def __repr__(self) -> str:
+        return f"<PgDungeon {self.name!r}>"
+
+
+class PgFriendlyPlayer(Base):
+    __tablename__ = "pg_friendly_player"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    def __repr__(self) -> str:
+        return f"<PgFriendlyPlayer {self.name!r}>"
+
+
+# ---------------------------------------------------------------------------
 # Reference
 # ---------------------------------------------------------------------------
 

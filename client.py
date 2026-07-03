@@ -5,25 +5,42 @@ from pathlib import Path
 from typing import Any
 
 SOCKET_PATH = Path(__file__).parent / "data" / "kb.sock"
+DEFAULT_TIMEOUT = 15  # seconds — without this, a wedged/slow server call hangs forever with
+                       # no error and no way to notice, let alone recover
+
+
+class KBServerTimeout(RuntimeError):
+    """The server didn't respond within the timeout — it may be wedged. Check
+    `journalctl --user -u kb.service` for the last logged command, and consider
+    `scripts/service/restart`."""
 
 
 class KBClient:
-    def __init__(self):
+    def __init__(self, timeout: float = DEFAULT_TIMEOUT):
         self._sock = None
+        self._timeout = timeout
 
     def _connect(self):
         if self._sock is not None:
             return
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(self._timeout)
         sock.connect(str(SOCKET_PATH))
         self._sock = sock
         self._file = sock.makefile("rwb")
 
     def _send(self, request: dict) -> dict:
         self._connect()
-        self._file.write((json.dumps(request) + "\n").encode())
-        self._file.flush()
-        line = self._file.readline()
+        try:
+            self._file.write((json.dumps(request) + "\n").encode())
+            self._file.flush()
+            line = self._file.readline()
+        except (TimeoutError, socket.timeout) as e:
+            raise KBServerTimeout(
+                f"kb.service did not respond to {request.get('cmd')!r} within {self._timeout}s"
+            ) from e
+        if not line:
+            raise KBServerTimeout(f"kb.service closed the connection without responding to {request.get('cmd')!r}")
         return json.loads(line)
 
     def ping(self) -> str:

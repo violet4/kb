@@ -15,6 +15,7 @@ import signal
 import socket
 import socketserver
 import sys
+import time
 from pathlib import Path
 
 from models import Collection, Note, sess
@@ -93,17 +94,21 @@ class _Handler(socketserver.StreamRequestHandler):
                 line = line.strip()
                 if not line:
                     continue
+                start = time.monotonic()
                 try:
                     request = json.loads(line)
                 except json.JSONDecodeError as e:
                     response = {"ok": False, "error": f"Invalid JSON: {e}"}
                 else:
-                    log.info("cmd=%s", request.get("cmd"))
+                    cmd = request.get("cmd")
+                    log.info("cmd=%s start", cmd)
                     try:
                         response = _handle(request)
                     except Exception as e:
-                        log.exception("error handling request")
+                        log.exception("cmd=%s error after %.3fs", cmd, time.monotonic() - start)
                         response = {"ok": False, "error": str(e)}
+                    else:
+                        log.info("cmd=%s done in %.3fs", cmd, time.monotonic() - start)
                 self.wfile.write((json.dumps(response) + "\n").encode())
                 self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError):
@@ -111,8 +116,12 @@ class _Handler(socketserver.StreamRequestHandler):
         log.info("connection closed")
 
 
-class _Server(socketserver.UnixStreamServer):
+class _Server(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
+    # ThreadingMixIn: `sess` is a scoped_session (thread-local), so this is safe, and it means
+    # one slow/wedged request no longer blocks every other client indefinitely (previously a
+    # single-threaded UnixStreamServer — see kb-engineering-17).
     allow_reuse_address = True
+    daemon_threads = True
 
 
 def _cleanup(signum=None, frame=None):

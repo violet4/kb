@@ -33,7 +33,7 @@ uv run scripts/model/download                    # fetch/update embedding model 
 uv run scripts/wishlist/add                      # interactively add a wishlist item
 uv run scripts/todo show ID [ID ...]
 uv run scripts/todo complete ID [ID ...]
-uv run scripts/dev/gen-api                       # regenerate api.py after a models.py change
+uv run scripts/dev/gen-api [ClassName ...]       # print the API surface, live from models.py
 ```
 
 ## Server

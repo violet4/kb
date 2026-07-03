@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --project /home/violet/kb python3
 """Note operations. Usage: notes {get,add,update,search,reembed} ..."""
 import argparse
 import sys

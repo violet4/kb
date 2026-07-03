@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --project /home/violet/kb python3
 """Print the API surface for models.py — concise, no implementation. Run any time; not cached
 to a file, so it's always current with models.py.
 

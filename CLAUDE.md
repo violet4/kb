@@ -1,6 +1,6 @@
 # KB — Claude instructions
 
-Personal knowledge base. SQLite + SQLAlchemy 2.0. Run `uv run scripts/dev/gen-api` for the full model/method surface before making any queries or updates. All `scripts/` commands below assume `uv run` as a prefix (omitted throughout).
+Personal knowledge base. SQLite + SQLAlchemy 2.0. Run `scripts/dev/gen-api` for the full model/method surface before making any queries or updates. Every script here (including `kb.py`) is directly executable from any directory — no `uv run` prefix needed, the shebang handles it.
 
 kb is not a fixed system to work around — it's meant to be continuously refined. When a real access pattern doesn't fit cleanly (a script that's clunky to drive, a field that's always empty or always guessed, a query that has to be re-derived each time), that's a signal to change the schema/script/doc, not a one-off workaround to route past it. Treat friction encountered while using kb as input to kb's own design, the same way Goal #14 (kbui) treats interaction friction as input to that design.
 
@@ -29,7 +29,7 @@ Bare `kb.py` (no command, `-f`, or `-i`) errors instead of silently dropping int
 
 `sess` and all models are pre-loaded, including game-specific ones (`PgPlayer`, `PgNpc`, `PgQuest`, `PgItem`, ...). No imports needed. Everything shares a single database and session.
 
-`--context NAME` acts in that context for one command only (pre-loaded as `context` in the namespace) without changing the persisted current context — e.g. `kb.py --context pg.violet "Goal.active(context)"`.
+`--context NAME` acts in that context for one command only (pre-loaded as `context` in the namespace) without changing the persisted current context — e.g. `./kb.py --context pg.violet "Goal.active(context)"`.
 
 Enum columns take the member (uppercase name, e.g. `Collection.GORGON`), not the lowercase `.value` shown in old muscle memory. `scripts/dev/gen-api` lists valid members per enum.
 

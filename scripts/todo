@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --project /home/violet/kb python3
 """Todo operations. Usage: todo {show,complete} ID [ID ...]"""
 import argparse
 import sys

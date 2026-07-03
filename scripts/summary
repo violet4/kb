@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --project /home/violet/kb python3
 """Print an overview of active Goals/Todos/overdue contacts/wishlist. Usage: summary [SECTION ...]"""
 import argparse
 import sys

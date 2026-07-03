@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --project /home/violet/kb python3
 """Personal knowledge base REPL/runner."""
 import argparse
 import ast

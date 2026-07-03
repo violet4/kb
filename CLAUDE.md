@@ -41,6 +41,8 @@ todo show ID [ID ...] | add TITLE [--effort grab|research|project] [--notes N] |
 context current | switch NAME | list
 ```
 
+`goal show`/`todo show` print a one-line "N history entries" hint when Journal history exists, without dumping it — pass `--history` to expand it inline, or `--history N` for just the last N entries.
+
 `Todo.effort` (reusing `WishlistEffort`) marks how much a Todo actually takes — `grab` for something quick/batchable now, `research`/`project` for bigger asks — so `todo pending --effort grab` finds exactly the small stuff worth batching, without it getting lost among everything else.
 
 `Goal`/`Todo`/`Daily`/`Item` all take an optional `context`. Context names are a flat string convention (`"pg"`, `"pg.violet"`) — no hierarchy enforcement in the schema, just dot-separated naming. `context.py`'s `resolve_context(cli_override=None)` is the single place "what context are we acting in" is resolved: with no override it returns the persisted current context (`CurrentContext`); an override name is looked up/created via `Context.get_or_create` and does **not** change what's persisted. Any script that needs to know the active context should call `resolve_context()` rather than querying `CurrentContext`/`Context` directly.

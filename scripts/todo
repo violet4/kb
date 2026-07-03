@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from models import Todo, TodoStatus, WishlistEffort, sess
+from models import Journal, Todo, TodoStatus, WishlistEffort, sess
 
 
 def cmd_show(args):
@@ -30,6 +30,20 @@ def cmd_show(args):
             print(f"blocked_by: #{todo.blocked_by.id} {todo.blocked_by.title} [{todo.blocked_by.status.value}]")
         if todo.notes:
             print(f"notes: {todo.notes}")
+
+        history = Journal.for_entity("Todo", todo.id)
+        if args.history is not None:
+            shown = history[-args.history:] if args.history else history
+            for e in shown:
+                when = e.created_at.strftime("%Y-%m-%d %H:%M")
+                if e.field:
+                    print(f"  [{when}] {e.field}: {e.old_value!r} -> {e.new_value!r}")
+                    if e.note:
+                        print(f"    {e.note}")
+                else:
+                    print(f"  [{when}] {e.note}")
+        elif history:
+            print(f"history: {len(history)} entries — journal show Todo {todo.id} or todo show {todo.id} --history [N]")
 
 
 def cmd_add(args):
@@ -65,6 +79,8 @@ sub = parser.add_subparsers(dest="cmd", required=True)
 
 p_show = sub.add_parser("show", help="Show Todo details")
 p_show.add_argument("ids", nargs="+", type=int)
+p_show.add_argument("--history", nargs="?", type=int, const=0, default=None,
+                     metavar="N", help="Expand journal history inline; optionally show only the last N entries")
 p_show.set_defaults(func=cmd_show)
 
 p_add = sub.add_parser("add", help="Add a Todo")

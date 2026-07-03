@@ -1,12 +1,12 @@
 #!/usr/bin/env -S uv run --project /home/violet/kb python3
-"""Print an overview of active Goals/Todos/overdue contacts/wishlist. Usage: summary [SECTION ...]"""
+"""Print an overview of active Goals/Todos/overdue contacts/wishlist/inbox. Usage: summary [SECTION ...]"""
 import argparse
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from models import Goal, Person, Todo, Wishlist, sess
+from models import Goal, InboxItem, Person, Todo, Wishlist, sess
 
 
 def goals_section():
@@ -59,11 +59,23 @@ def wishlist_section():
     return "\n".join(lines)
 
 
+def inbox_section():
+    items = InboxItem.pending()
+    if not items:
+        return None
+    lines = ["=== INBOX ==="]
+    for i in items:
+        source = f" [{i.source}]" if i.source else ""
+        lines.append(f"- #{i.id}{source} {i.body[:80]}")
+    return "\n".join(lines)
+
+
 SECTIONS = {
     "goals": goals_section,
     "todos": todos_section,
     "people": people_section,
     "wishlist": wishlist_section,
+    "inbox": inbox_section,
 }
 
 parser = argparse.ArgumentParser(description="Print an overview of active Goals/Todos/overdue contacts/wishlist")

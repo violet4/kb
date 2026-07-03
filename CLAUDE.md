@@ -11,8 +11,18 @@ Cache stable-but-frequently-referenced facts locally (e.g. game mechanics, refer
 ## Dashboard
 
 ```bash
-summary [goals|todos|people|wishlist ...]   # active/pending overview; no args shows all sections
+summary [goals|todos|people|wishlist|inbox ...]   # active/pending overview; no args shows all sections
 ```
+
+## Inbox
+
+```bash
+inbox add BODY [--source S]   # raw, untriaged capture — e.g. --source email|idea|quick-note
+inbox pending                 # list untriaged items
+inbox triage ID [ID ...]      # mark triaged, after creating whatever real record it became
+```
+
+`InboxItem` is for anything whose eventual home isn't known yet — unlike every other kb table, you don't decide up front whether it's a `Todo`, a `Purchase`, a `LogEntry`, or nothing at all. Triage means: create the real record it turns out to be, then `inbox triage` the item. Don't let ideas-in-passing get lost while mid-task — `inbox add` them and keep moving.
 
 ## Running commands
 

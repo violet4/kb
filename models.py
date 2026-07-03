@@ -752,6 +752,41 @@ class LogEntry(Base):
 
 
 # ---------------------------------------------------------------------------
+# InboxItem
+# ---------------------------------------------------------------------------
+
+class InboxItem(Base):
+    """Raw, untriaged capture — the GTD inbox. Unlike everything else in kb, an InboxItem's
+    eventual home isn't known at capture time: it might become a Todo, a Purchase, a LogEntry,
+    a Note, or get discarded. Triage means deciding what it becomes, then marking triaged_at —
+    triage is not a special mechanism, just create the right real record and mark this done."""
+    __tablename__ = "inbox_item"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # e.g. "email", "idea", "quick-note"
+    triaged_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    @classmethod
+    def pending(cls) -> list[InboxItem]:
+        return sess.scalars(select(cls).where(cls.triaged_at.is_(None)).order_by(cls.created_at)).all()
+
+    @classmethod
+    def create(cls, body: str, source: Optional[str] = None) -> InboxItem:
+        item = cls(body=body, source=source)
+        sess.add(item)
+        sess.flush()
+        return item
+
+    def triage(self) -> None:
+        self.triaged_at = _now()
+
+    def __repr__(self) -> str:
+        state = "triaged" if self.triaged_at else "pending"
+        return f"<InboxItem #{self.id} [{state}]{' ' + self.source if self.source else ''}: {self.body[:60]!r}>"
+
+
+# ---------------------------------------------------------------------------
 # Note (RAG)
 # ---------------------------------------------------------------------------
 

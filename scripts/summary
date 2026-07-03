@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Print an overview of active Goals/Todos/overdue contacts/wishlist. Usage: summary [SECTION ...]"""
+import argparse
 import sys
 from pathlib import Path
 
@@ -6,36 +8,45 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from models import Goal, Person, Todo, Wishlist, sess
 
-goals = Goal.active()
-todos = Todo.pending()
-overdue = Person.overdue_for_contact()
-top_wishes = Wishlist.top(5)
 
-sections = []
-
-if goals:
+def goals_section():
+    goals = Goal.active()
+    if not goals:
+        return None
     lines = ["=== GOALS ==="]
     for g in goals:
         ctx = f" [{g.context.name}]" if g.context else ""
         lines.append(f"- #{g.id} {g.title}{ctx}")
-    sections.append("\n".join(lines))
+    return "\n".join(lines)
 
-if todos:
+
+def todos_section():
+    todos = Todo.pending()
+    if not todos:
+        return None
     lines = ["=== TODOS ==="]
     for t in todos:
         goal = f" → {t.goal.title}" if t.goal else ""
         ctx = f" [{t.context.name}]" if t.context else ""
         lines.append(f"- #{t.id} [{t.status.value}] {t.title}{goal}{ctx}")
-    sections.append("\n".join(lines))
+    return "\n".join(lines)
 
-if overdue:
+
+def people_section():
+    overdue = Person.overdue_for_contact()
+    if not overdue:
+        return None
     lines = ["=== REACH OUT ==="]
     for p in overdue:
         last = p.last_contacted.strftime("%Y-%m-%d") if p.last_contacted else "never"
         lines.append(f"- {p.name} (last: {last}, every {p.reach_out_every_days}d)")
-    sections.append("\n".join(lines))
+    return "\n".join(lines)
 
-if top_wishes:
+
+def wishlist_section():
+    top_wishes = Wishlist.top(5)
+    if not top_wishes:
+        return None
     lines = ["=== WISHLIST (top 5) ==="]
     for w in top_wishes:
         price = ""
@@ -45,7 +56,28 @@ if top_wishes:
             price = f" ({lo}–{hi})" if lo and hi else f" ({lo or hi})"
         rank = w.priority if w.priority is not None else w.score
         lines.append(f"- {w.title}{price} [{w.effort.value}] priority={rank}")
-    sections.append("\n".join(lines))
+    return "\n".join(lines)
+
+
+SECTIONS = {
+    "goals": goals_section,
+    "todos": todos_section,
+    "people": people_section,
+    "wishlist": wishlist_section,
+}
+
+parser = argparse.ArgumentParser(description="Print an overview of active Goals/Todos/overdue contacts/wishlist")
+parser.add_argument("section", nargs="*", metavar="SECTION",
+                     help=f"Only show these sections ({'/'.join(SECTIONS)}); default: all")
+args = parser.parse_args()
+
+unknown = [s for s in args.section if s not in SECTIONS]
+if unknown:
+    parser.error(f"invalid section(s) {unknown}; choose from {', '.join(SECTIONS)}")
+
+names = args.section or list(SECTIONS)
+rendered = [SECTIONS[name]() for name in names]
+sections = [s for s in rendered if s is not None]
 
 if not sections:
     print("Nothing tracked yet.")

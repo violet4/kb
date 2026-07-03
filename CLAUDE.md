@@ -2,9 +2,17 @@
 
 Personal knowledge base. SQLite + SQLAlchemy 2.0. Run `uv run scripts/dev/gen-api` for the full model/method surface before making any queries or updates. All `scripts/` commands below assume `uv run` as a prefix (omitted throughout).
 
+kb is not a fixed system to work around — it's meant to be continuously refined. When a real access pattern doesn't fit cleanly (a script that's clunky to drive, a field that's always empty or always guessed, a query that has to be re-derived each time), that's a signal to change the schema/script/doc, not a one-off workaround to route past it. Treat friction encountered while using kb as input to kb's own design, the same way Goal #14 (kbui) treats interaction friction as input to that design.
+
 `scripts/dev/gen-api [ClassName ...]` prints the collapsed view — every entity, field, method, and signature, no implementation — always current since it's generated live from `models.py`, not a file to regenerate and re-read. `models.py` is the expanded view, read only when implementation details are actually needed. Load the collapsed view by default; expand only the specific piece you need.
 
 Cache stable-but-frequently-referenced facts locally (e.g. game mechanics, reference lore) rather than re-looking them up every time — that's the point of kb. Don't cache genuinely volatile info (stock prices, weather, anything that changes on its own) as if it were a stable fact; look that up fresh when it's needed instead.
+
+## Dashboard
+
+```bash
+summary [goals|todos|people|wishlist ...]   # active/pending overview; no args shows all sections
+```
 
 ## Running commands
 
@@ -69,7 +77,7 @@ Enum columns are constrained at the DB level (`Enum(..., create_constraint=True,
 ## Wishlist, Model
 
 ```bash
-wishlist/add       # interactively add a wishlist item
+wishlist/add TITLE [--description D] [--price-min N] [--price-max N] [--importance N] [--urgency N] [--clarity N] [--effort grab|research|project] [--priority N] [--notes N]
 model/download      # explicitly download the embedding model (only script that hits the network)
 ```
 

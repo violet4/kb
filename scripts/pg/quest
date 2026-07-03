@@ -1,0 +1,93 @@
+#!/usr/bin/env -S uv run --project /home/violet/kb python3
+"""Project Gorgon Quest operations. Usage: quest {show,add,complete} ..."""
+import argparse
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from sqlalchemy import select
+from models import PgNpc, PgQuest, sess
+
+
+def cmd_show(args):
+    for i, quest_id in enumerate(args.ids):
+        if i > 0:
+            print()
+        quest = sess.get(PgQuest, quest_id)
+        if quest is None:
+            print(f"id: {quest_id}\nerror: not found", file=sys.stderr)
+            continue
+        print(f"id: {quest.id}")
+        print(f"title: {quest.title}")
+        print(f"status: {quest.status}")
+        print(f"giver: {quest.giver.name}")
+        if quest.completion_npc:
+            print(f"completion_npc: {quest.completion_npc.name}")
+        if quest.objectives:
+            print(f"objectives: {quest.objectives}")
+        if quest.rewards:
+            print(f"rewards: {quest.rewards}")
+        if quest.notes:
+            print(f"notes: {quest.notes}")
+
+
+def _get_npc(name):
+    npc = sess.scalars(select(PgNpc).filter_by(name=name)).one_or_none()
+    if npc is None:
+        print(f"NPC {name!r} not found — add with: npc add {name!r}", file=sys.stderr)
+        sys.exit(1)
+    return npc
+
+
+def cmd_add(args):
+    giver = _get_npc(args.giver)
+    completion = _get_npc(args.completion) if args.completion else None
+    quest = PgQuest(
+        title=args.title,
+        giver_npc_id=giver.id,
+        completion_npc_id=completion.id if completion else None,
+        status=args.status,
+        objectives=args.objectives,
+        rewards=args.rewards,
+        notes=args.notes or "",
+    )
+    sess.add(quest)
+    sess.commit()
+    print(f"Added: #{quest.id} {quest.title!r} [{quest.status}]")
+
+
+def cmd_complete(args):
+    for quest_id in args.ids:
+        quest = sess.get(PgQuest, quest_id)
+        if quest is None:
+            print(f"Quest #{quest_id}: not found", file=sys.stderr)
+            continue
+        quest.status = "completed"
+        print(f"Quest #{quest_id}: {quest.title!r} -> completed")
+    sess.commit()
+
+
+parser = argparse.ArgumentParser(description="Project Gorgon Quest operations")
+sub = parser.add_subparsers(dest="cmd", required=True)
+
+p_show = sub.add_parser("show", help="Show Quest details")
+p_show.add_argument("ids", nargs="+", type=int)
+p_show.set_defaults(func=cmd_show)
+
+p_add = sub.add_parser("add", help="Add a Quest")
+p_add.add_argument("title")
+p_add.add_argument("--giver", required=True, help="Giver NPC name (must already exist)")
+p_add.add_argument("--completion", help="Completion NPC name, if different from giver")
+p_add.add_argument("--status", default="active", choices=["available", "active", "completed", "turned_in"])
+p_add.add_argument("--objectives")
+p_add.add_argument("--rewards")
+p_add.add_argument("--notes")
+p_add.set_defaults(func=cmd_add)
+
+p_complete = sub.add_parser("complete", help="Mark Quest(s) completed")
+p_complete.add_argument("ids", nargs="+", type=int)
+p_complete.set_defaults(func=cmd_complete)
+
+args = parser.parse_args()
+args.func(args)

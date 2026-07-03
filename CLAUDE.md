@@ -37,11 +37,15 @@ Enum columns take the member (uppercase name, e.g. `Collection.GORGON`), not the
 
 ```bash
 goal show|complete|abandon|hold|reactivate ID [ID ...]   # hold = blocked externally, not abandoned
-todo show ID [ID ...] | add TITLE [--effort grab|research|project] [--notes N] | complete ID [ID ...] | pending [--effort grab|research|project]
+todo show ID [ID ...] | add TITLE [--effort grab|research|project] [--defer-until WHEN] [--notes N] | complete ID [ID ...] | pending [--effort grab|research|project] [--all]
 context current | switch NAME | list
 ```
 
 `goal show`/`todo show` print a one-line "N history entries" hint when Journal history exists, without dumping it — pass `--history` to expand it inline, or `--history N` for just the last N entries.
+
+`Todo.defer_until` hides a Todo from `todo pending`/`scripts/summary` until that time passes — not a due date, a "don't show me this until it's actually relevant" filter (e.g. "vacuum" deferred to 19:00 today doesn't clutter the view until evening planning time). `--defer-until` accepts `HH:MM` (today, or tomorrow if that time already passed), `YYYY-MM-DD`, or `YYYY-MM-DD HH:MM`. `todo pending --all` (or `Todo.pending(include_deferred=True)`) surfaces deferred-but-not-yet-due items too, for deliberately planning ahead.
+
+SQLite silently drops timezone info on `DateTime(timezone=True)` columns on read-back (the column stores it, but the Python value comes back naive) — any code comparing a stored datetime against a fresh `datetime.now(timezone.utc)` in Python must `.replace(tzinfo=timezone.utc)` first, or the comparison raises `TypeError`. SQL-level comparisons (inside a `select(...).where(...)`) aren't affected, only Python-level comparisons after the ORM has already loaded the value.
 
 ## Log and Journal
 

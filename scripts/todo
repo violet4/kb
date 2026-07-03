@@ -2,11 +2,29 @@
 """Todo operations. Usage: todo {show,add,complete,pending} ..."""
 import argparse
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from models import Journal, Todo, TodoStatus, WishlistEffort, sess
+
+
+def _parse_defer_until(raw: str) -> datetime:
+    now = datetime.now(timezone.utc)
+    for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(raw, fmt).replace(tzinfo=timezone.utc)
+        except ValueError:
+            pass
+    try:
+        t = datetime.strptime(raw, "%H:%M").time()
+    except ValueError:
+        raise SystemExit(f"--defer-until: could not parse {raw!r} (use HH:MM, 'YYYY-MM-DD', or 'YYYY-MM-DD HH:MM')")
+    candidate = now.replace(hour=t.hour, minute=t.minute, second=0, microsecond=0)
+    if candidate <= now:
+        candidate += timedelta(days=1)
+    return candidate
 
 
 def cmd_show(args):
@@ -50,7 +68,8 @@ def cmd_show(args):
 
 def cmd_add(args):
     effort = WishlistEffort(args.effort) if args.effort else None
-    todo = Todo.create(args.title, notes=args.notes, effort=effort)
+    defer_until = _parse_defer_until(args.defer_until) if args.defer_until else None
+    todo = Todo.create(args.title, notes=args.notes, effort=effort, defer_until=defer_until)
     sess.commit()
     print(todo)
 
@@ -68,12 +87,16 @@ def cmd_complete(args):
 
 def cmd_pending(args):
     effort = WishlistEffort(args.effort) if args.effort else None
-    todos = Todo.pending(effort=effort)
+    todos = Todo.pending(effort=effort, include_deferred=args.all)
     if not todos:
         print("No pending todos.")
         return
+    now = datetime.now(timezone.utc)
     for t in todos:
-        print(t)
+        defer_until = t.defer_until.replace(tzinfo=timezone.utc) if t.defer_until and t.defer_until.tzinfo is None else t.defer_until
+        deferred = defer_until and defer_until > now
+        marker = f" (deferred until {defer_until.strftime('%Y-%m-%d %H:%M')})" if deferred else ""
+        print(f"{t!r}{marker}")
 
 
 parser = argparse.ArgumentParser(description="Todo operations")
@@ -89,6 +112,9 @@ p_add = sub.add_parser("add", help="Add a Todo")
 p_add.add_argument("title")
 p_add.add_argument("--effort", choices=[e.value for e in WishlistEffort],
                     help="grab = quick/batchable, research = needs investigation, project = multi-step")
+p_add.add_argument("--defer-until", metavar="WHEN",
+                    help="Hide from `todo pending`/summary until this time — HH:MM (today, or tomorrow if already past), "
+                         "'YYYY-MM-DD', or 'YYYY-MM-DD HH:MM'")
 p_add.add_argument("--notes")
 p_add.set_defaults(func=cmd_add)
 
@@ -98,6 +124,7 @@ p_complete.set_defaults(func=cmd_complete)
 
 p_pending = sub.add_parser("pending", help="List pending Todos, optionally filtered by effort")
 p_pending.add_argument("--effort", choices=[e.value for e in WishlistEffort])
+p_pending.add_argument("--all", action="store_true", help="Also include deferred Todos not yet due")
 p_pending.set_defaults(func=cmd_pending)
 
 args = parser.parse_args()

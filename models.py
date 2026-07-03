@@ -302,6 +302,7 @@ class Todo(Base):
     context_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("context.id"), nullable=True)
     blocked_by_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("todo.id"), nullable=True)
     effort: Mapped[Optional[WishlistEffort]] = mapped_column(Enum(WishlistEffort, create_constraint=True, validate_strings=True), nullable=True)
+    defer_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     goal: Mapped[Optional[Goal]] = relationship("Goal", back_populates="todos")
@@ -309,20 +310,24 @@ class Todo(Base):
     blocked_by: Mapped[Optional[Todo]] = relationship("Todo", remote_side=[id])
 
     @classmethod
-    def pending(cls, context: Optional[Context] = None, effort: Optional[WishlistEffort] = None) -> list[Todo]:
+    def pending(cls, context: Optional[Context] = None, effort: Optional[WishlistEffort] = None,
+                include_deferred: bool = False) -> list[Todo]:
         q = select(cls).where(cls.status.in_([TodoStatus.PENDING, TodoStatus.IN_PROGRESS]))
         if context is not None:
             q = q.where(cls.context_id == context.id)
         if effort is not None:
             q = q.where(cls.effort == effort)
+        if not include_deferred:
+            q = q.where((cls.defer_until.is_(None)) | (cls.defer_until <= _now()))
         return sess.scalars(q).all()
 
     @classmethod
     def create(cls, title: str, goal: Optional[Goal] = None, context: Optional[Context] = None,
                notes: Optional[str] = None, blocked_by: Optional[Todo] = None,
-               effort: Optional[WishlistEffort] = None) -> Todo:
+               effort: Optional[WishlistEffort] = None, defer_until: Optional[datetime] = None) -> Todo:
         todo = cls(title=title, goal_id=goal.id if goal else None, context_id=context.id if context else None,
-                   notes=notes, blocked_by_id=blocked_by.id if blocked_by else None, effort=effort)
+                   notes=notes, blocked_by_id=blocked_by.id if blocked_by else None, effort=effort,
+                   defer_until=defer_until)
         sess.add(todo)
         sess.flush()
         return todo

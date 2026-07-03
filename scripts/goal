@@ -30,7 +30,9 @@ def cmd_show(args):
         history = Journal.for_entity("Goal", goal.id)
         if args.history is not None:
             shown = history[-args.history:] if args.history else history
-            for e in shown:
+            for j, e in enumerate(shown):
+                if j > 0:
+                    print()
                 when = e.created_at.strftime("%Y-%m-%d %H:%M")
                 if e.field:
                     print(f"  [{when}] {e.field}: {e.old_value!r} -> {e.new_value!r}")

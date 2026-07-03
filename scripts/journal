@@ -14,7 +14,9 @@ def cmd_show(args):
     if not entries:
         print("No journal entries.")
         return
-    for e in entries:
+    for i, e in enumerate(entries):
+        if i > 0:
+            print()
         when = e.created_at.strftime("%Y-%m-%d %H:%M")
         if e.field:
             print(f"[{when}] {e.field}: {e.old_value!r} -> {e.new_value!r}")

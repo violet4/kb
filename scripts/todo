@@ -1,12 +1,12 @@
 #!/usr/bin/env -S uv run --project /home/violet/kb python3
-"""Todo operations. Usage: todo {show,complete} ID [ID ...]"""
+"""Todo operations. Usage: todo {show,add,complete,pending} ..."""
 import argparse
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from models import Todo, TodoStatus, sess
+from models import Todo, TodoStatus, WishlistEffort, sess
 
 
 def cmd_show(args):
@@ -20,6 +20,8 @@ def cmd_show(args):
         print(f"id: {todo.id}")
         print(f"title: {todo.title}")
         print(f"status: {todo.status.value}")
+        if todo.effort:
+            print(f"effort: {todo.effort.value}")
         if todo.goal:
             print(f"goal: {todo.goal.title}")
         if todo.context:
@@ -28,6 +30,13 @@ def cmd_show(args):
             print(f"blocked_by: #{todo.blocked_by.id} {todo.blocked_by.title} [{todo.blocked_by.status.value}]")
         if todo.notes:
             print(f"notes: {todo.notes}")
+
+
+def cmd_add(args):
+    effort = WishlistEffort(args.effort) if args.effort else None
+    todo = Todo.create(args.title, notes=args.notes, effort=effort)
+    sess.commit()
+    print(todo)
 
 
 def cmd_complete(args):
@@ -41,6 +50,16 @@ def cmd_complete(args):
     sess.commit()
 
 
+def cmd_pending(args):
+    effort = WishlistEffort(args.effort) if args.effort else None
+    todos = Todo.pending(effort=effort)
+    if not todos:
+        print("No pending todos.")
+        return
+    for t in todos:
+        print(t)
+
+
 parser = argparse.ArgumentParser(description="Todo operations")
 sub = parser.add_subparsers(dest="cmd", required=True)
 
@@ -48,9 +67,20 @@ p_show = sub.add_parser("show", help="Show Todo details")
 p_show.add_argument("ids", nargs="+", type=int)
 p_show.set_defaults(func=cmd_show)
 
+p_add = sub.add_parser("add", help="Add a Todo")
+p_add.add_argument("title")
+p_add.add_argument("--effort", choices=[e.value for e in WishlistEffort],
+                    help="grab = quick/batchable, research = needs investigation, project = multi-step")
+p_add.add_argument("--notes")
+p_add.set_defaults(func=cmd_add)
+
 p_complete = sub.add_parser("complete", help="Mark Todo(s) done")
 p_complete.add_argument("ids", nargs="+", type=int)
 p_complete.set_defaults(func=cmd_complete)
+
+p_pending = sub.add_parser("pending", help="List pending Todos, optionally filtered by effort")
+p_pending.add_argument("--effort", choices=[e.value for e in WishlistEffort])
+p_pending.set_defaults(func=cmd_pending)
 
 args = parser.parse_args()
 args.func(args)

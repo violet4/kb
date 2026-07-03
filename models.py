@@ -284,7 +284,8 @@ class Goal(Base):
         return goal
 
     def __repr__(self) -> str:
-        return f"<Goal #{self.id} {self.title!r} [{self.status.value}]>"
+        size = len(self.title) + len(self.description or "") + len(self.notes or "")
+        return f"<Goal #{self.id} {self.title!r} [{self.status.value}] {size}b>"
 
 
 # ---------------------------------------------------------------------------
@@ -300,6 +301,7 @@ class Todo(Base):
     goal_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("goal.id"), nullable=True)
     context_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("context.id"), nullable=True)
     blocked_by_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("todo.id"), nullable=True)
+    effort: Mapped[Optional[WishlistEffort]] = mapped_column(Enum(WishlistEffort, create_constraint=True, validate_strings=True), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     goal: Mapped[Optional[Goal]] = relationship("Goal", back_populates="todos")
@@ -307,23 +309,27 @@ class Todo(Base):
     blocked_by: Mapped[Optional[Todo]] = relationship("Todo", remote_side=[id])
 
     @classmethod
-    def pending(cls, context: Optional[Context] = None) -> list[Todo]:
+    def pending(cls, context: Optional[Context] = None, effort: Optional[WishlistEffort] = None) -> list[Todo]:
         q = select(cls).where(cls.status.in_([TodoStatus.PENDING, TodoStatus.IN_PROGRESS]))
         if context is not None:
             q = q.where(cls.context_id == context.id)
+        if effort is not None:
+            q = q.where(cls.effort == effort)
         return sess.scalars(q).all()
 
     @classmethod
     def create(cls, title: str, goal: Optional[Goal] = None, context: Optional[Context] = None,
-               notes: Optional[str] = None, blocked_by: Optional[Todo] = None) -> Todo:
+               notes: Optional[str] = None, blocked_by: Optional[Todo] = None,
+               effort: Optional[WishlistEffort] = None) -> Todo:
         todo = cls(title=title, goal_id=goal.id if goal else None, context_id=context.id if context else None,
-                   notes=notes, blocked_by_id=blocked_by.id if blocked_by else None)
+                   notes=notes, blocked_by_id=blocked_by.id if blocked_by else None, effort=effort)
         sess.add(todo)
         sess.flush()
         return todo
 
     def __repr__(self) -> str:
-        return f"<Todo #{self.id} {self.title!r} [{self.status.value}]>"
+        effort_str = f" ({self.effort.value})" if self.effort else ""
+        return f"<Todo #{self.id} {self.title!r} [{self.status.value}]{effort_str}>"
 
 
 # ---------------------------------------------------------------------------

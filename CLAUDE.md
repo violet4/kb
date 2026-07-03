@@ -37,9 +37,11 @@ Enum columns take the member (uppercase name, e.g. `Collection.GORGON`), not the
 
 ```bash
 goal show|complete|abandon|hold|reactivate ID [ID ...]   # hold = blocked externally, not abandoned
-todo show|complete ID [ID ...]
+todo show ID [ID ...] | add TITLE [--effort grab|research|project] [--notes N] | complete ID [ID ...] | pending [--effort grab|research|project]
 context current | switch NAME | list
 ```
+
+`Todo.effort` (reusing `WishlistEffort`) marks how much a Todo actually takes — `grab` for something quick/batchable now, `research`/`project` for bigger asks — so `todo pending --effort grab` finds exactly the small stuff worth batching, without it getting lost among everything else.
 
 `Goal`/`Todo`/`Daily`/`Item` all take an optional `context`. Context names are a flat string convention (`"pg"`, `"pg.violet"`) — no hierarchy enforcement in the schema, just dot-separated naming. `context.py`'s `resolve_context(cli_override=None)` is the single place "what context are we acting in" is resolved: with no override it returns the persisted current context (`CurrentContext`); an override name is looked up/created via `Context.get_or_create` and does **not** change what's persisted. Any script that needs to know the active context should call `resolve_context()` rather than querying `CurrentContext`/`Context` directly.
 

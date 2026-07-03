@@ -116,6 +116,7 @@ class PersonTier(enum.Enum):
 
 class GoalStatus(enum.Enum):
     ACTIVE = "active"
+    ON_HOLD = "on_hold"
     COMPLETED = "completed"
     ABANDONED = "abandoned"
 

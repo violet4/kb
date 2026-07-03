@@ -80,7 +80,7 @@ Enum columns are constrained at the DB level (`Enum(..., create_constraint=True,
 
 `Vendor`/`VendorItem`/`Purchase` track price and quantity over time for anything transactable, real or in-game — a grocery store and a PG player-shop NPC are both a `Vendor` (`domain="irl"`/`"pg"`), since neither shows a full price history at once, only snippets over time. `Item.upc` is the universal barcode (same everywhere); `VendorItem.vendor_sku` is that vendor's own code for the item (may differ store to store). Look up a scanned/typed code against `Item.upc` first, then `VendorItem.vendor_sku` for that vendor, before prompting to create a new `Item`. Real-world items are `IrlItem(Item, HasWeight)`, matching `PgItem`'s JTI pattern — every `Item` subtype needs its own `polymorphic_identity`, a bare `Item(game="whatever")` with no matching subclass breaks reads.
 
-`Journal` is structured change history for any entity (`entity_type`, `entity_id`, optional `field`/`old_value`/`new_value`/`note`) — distinct from `LogEntry` (a fact about the world, not tied to a record) and `Note` (durable reference knowledge, not history).
+`Journal` is structured change history for any entity (`entity_type`, `entity_id`, optional `field`/`old_value`/`new_value`/`note`) — distinct from `LogEntry` (a fact about the world, not tied to a record) and `Note` (durable reference knowledge, not history). `journal show ENTITY_TYPE ENTITY_ID` (e.g. `journal show Goal 14`) reads it. Keep a `Goal`/`Todo`'s `description`/`notes` as lean, current understanding — move decision-by-decision history into `Journal` entries instead of letting it accumulate in the record itself.
 
 ## Wishlist, Model
 

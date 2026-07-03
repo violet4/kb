@@ -2,6 +2,7 @@
 """Log operations. Usage: log {add,recent} ..."""
 import argparse
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -12,7 +13,10 @@ from models import LogEntry, sess
 
 def cmd_add(args):
     context = resolve_context(args.context)
-    entry = LogEntry.create(body=args.body, domain=args.domain, context=context)
+    occurred_at = None
+    if args.date:
+        occurred_at = datetime.strptime(args.date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    entry = LogEntry.create(body=args.body, domain=args.domain, context=context, occurred_at=occurred_at)
     sess.commit()
     print(entry)
 
@@ -36,6 +40,7 @@ p_add = sub.add_parser("add", help="Add a log entry")
 p_add.add_argument("body")
 p_add.add_argument("--domain", help="Loose category label, e.g. 'health', 'cat', 'work'")
 p_add.add_argument("--context", metavar="NAME", help="Attach to a specific context instead of the current one")
+p_add.add_argument("--date", metavar="YYYY-MM-DD", help="Backdate the entry (default: now)")
 p_add.set_defaults(func=cmd_add)
 
 p_recent = sub.add_parser("recent", help="Show recent log entries")

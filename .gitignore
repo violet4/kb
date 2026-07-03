@@ -7,6 +7,3 @@ __pycache__/
 *.pyc
 data/kb.sock
 data/kb.pid
-
-# temporary: pg/ is project_gorgon, being merged in; remove this line once pg/ dir is deleted post-migration
-pg/

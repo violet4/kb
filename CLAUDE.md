@@ -66,15 +66,21 @@ service/status | restart | is-active
 Add a column when something needs to be filtered or sorted on; use a `notes: Text` field for anything you just want to remember. Start with more in `notes` and promote to a real column once a real query need shows up.
 
 ```bash
-alembic revision --autogenerate -m "describe"   # review before applying — autogenerate misses column
-                                                  # renames (sees drop+add, write those by hand), data
-                                                  # migrations (add a manual step), and Enum CHECK
-                                                  # constraint changes on SQLite (see kb-engineering-10)
-alembic upgrade head
-alembic current | history | downgrade -1
+dev/check-schema             # verify models.py builds cleanly (in-memory) before generating a migration
+db/migrate "describe"        # check-schema, then alembic revision --autogenerate — review the file before applying
+db/upgrade                   # alembic upgrade head
+db/status                    # alembic current
 ```
 
+Autogenerate misses column renames (sees drop+add, write those by hand), data migrations (add a manual step), and Enum CHECK constraint changes on SQLite (see kb-engineering-10).
+
 Enum columns are constrained at the DB level (`Enum(..., create_constraint=True, validate_strings=True)`) — see kb-engineering-10 before adding a new `Enum(...)` column. Adding a new *value* to an existing enum still needs a migration to update the CHECK constraint; use a raw-SQL table recreate (CREATE + INSERT SELECT + DROP + RENAME), not `batch_alter_table`/`alter_column` — see kb-engineering-16 and `alembic/versions/752237ed2641_add_on_hold_to_goalstatus.py` for why and a worked example.
+
+## Price/purchase history
+
+`Vendor`/`VendorItem`/`Purchase` track price and quantity over time for anything transactable, real or in-game — a grocery store and a PG player-shop NPC are both a `Vendor` (`domain="irl"`/`"pg"`), since neither shows a full price history at once, only snippets over time. `Item.upc` is the universal barcode (same everywhere); `VendorItem.vendor_sku` is that vendor's own code for the item (may differ store to store). Look up a scanned/typed code against `Item.upc` first, then `VendorItem.vendor_sku` for that vendor, before prompting to create a new `Item`. Real-world items are `IrlItem(Item, HasWeight)`, matching `PgItem`'s JTI pattern — every `Item` subtype needs its own `polymorphic_identity`, a bare `Item(game="whatever")` with no matching subclass breaks reads.
+
+`Journal` is structured change history for any entity (`entity_type`, `entity_id`, optional `field`/`old_value`/`new_value`/`note`) — distinct from `LogEntry` (a fact about the world, not tied to a record) and `Note` (durable reference knowledge, not history).
 
 ## Wishlist, Model
 

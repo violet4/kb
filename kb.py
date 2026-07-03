@@ -10,9 +10,10 @@ from sqlalchemy import select
 from context import resolve_context
 from models import (
     Base, ChangeLog, Collection, Context, CurrentContext, Daily, Goal, GoalStatus,
-    Item, LogEntry, Note, PgDungeon, PgFriendlyPlayer, PgItem, PgNpc, PgNpcRace,
-    PgNpcRelation, PgPlayer, PgQuest, Person, PersonTier, Reference, Todo, TodoStatus,
-    WishlistEffort, WishlistStatus, Wishlist, WorkingMemory, init_db, sess,
+    IrlItem, Item, Journal, LogEntry, Note, PgDungeon, PgFriendlyPlayer, PgItem, PgNpc,
+    PgNpcRace, PgNpcRelation, PgPlayer, PgQuest, Person, PersonTier, Purchase, Reference,
+    Todo, TodoStatus, Vendor, VendorItem, WishlistEffort, WishlistStatus, Wishlist,
+    WorkingMemory, init_db, sess,
 )
 
 parser = argparse.ArgumentParser(description="KB runner")
@@ -49,7 +50,9 @@ ns = {
     "Daily": Daily,
     "Goal": Goal,
     "GoalStatus": GoalStatus,
+    "IrlItem": IrlItem,
     "Item": Item,
+    "Journal": Journal,
     "LogEntry": LogEntry,
     "PgDungeon": PgDungeon,
     "PgFriendlyPlayer": PgFriendlyPlayer,
@@ -61,9 +64,12 @@ ns = {
     "PgQuest": PgQuest,
     "Person": Person,
     "PersonTier": PersonTier,
+    "Purchase": Purchase,
     "Reference": Reference,
     "Todo": Todo,
     "TodoStatus": TodoStatus,
+    "Vendor": Vendor,
+    "VendorItem": VendorItem,
     "Wishlist": Wishlist,
     "WishlistEffort": WishlistEffort,
     "WishlistStatus": WishlistStatus,

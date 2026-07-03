@@ -1,0 +1,23 @@
+#!/usr/bin/env -S uv run --project /home/violet/kb python3
+"""Verify models.py builds a valid schema. Usage: check-schema"""
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from sqlalchemy import create_engine
+
+from base import Base
+import models  # noqa: F401 — import needed so all Base subclasses register
+
+engine = create_engine("sqlite:///:memory:")
+try:
+    Base.metadata.create_all(engine)
+except Exception as e:
+    print(f"Schema build FAILED: {e}", file=sys.stderr)
+    sys.exit(1)
+
+tables = sorted(Base.metadata.tables.keys())
+print(f"OK — {len(tables)} tables:")
+for t in tables:
+    print(f"  {t}")

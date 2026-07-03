@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Generate + review + apply an alembic migration. Usage: migrate "description of change"
+set -euo pipefail
+cd "$(dirname "$0")/../.."
+
+if [ -z "${1:-}" ]; then
+  echo "Usage: migrate \"description of change\"" >&2
+  exit 1
+fi
+
+scripts/dev/check-schema > /dev/null
+uv run alembic revision --autogenerate -m "$1"
+echo
+echo "Review the generated file in alembic/versions/ before applying."
+echo "Then run: scripts/db/upgrade"

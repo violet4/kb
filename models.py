@@ -10,7 +10,7 @@ from typing import Optional
 
 import sqlite_vec
 from sqlalchemy import (
-    Boolean, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text,
+    Boolean, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint,
     create_engine, event, inspect, select,
 )
 from sqlalchemy.orm import (
@@ -20,7 +20,7 @@ from sqlalchemy.orm import (
 from sqlalchemy.orm.attributes import NO_VALUE, NEVER_SET
 
 from base import Base, _now
-from mixins import HasStackSize
+from mixins import HasStackSize, HasWeight
 
 _DB_PATH = Path(__file__).parent / "data" / "kb.db"
 _engine = create_engine(f"sqlite:///{_DB_PATH}", echo=False)
@@ -382,6 +382,7 @@ class Item(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     game: Mapped[str] = mapped_column(String, nullable=False)
     name: Mapped[str] = mapped_column(String, nullable=False)
+    upc: Mapped[Optional[str]] = mapped_column(String, nullable=True, unique=True)
     context_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("context.id"), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
@@ -406,6 +407,114 @@ class PgItem(Item, HasStackSize):
     sources: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     __mapper_args__ = {"polymorphic_identity": "pg"}
+
+
+class IrlItem(Item, HasWeight):
+    """Real-world items — groceries, household goods, etc. Tracked the same way as game
+    items (Vendor/VendorItem/Purchase apply equally): we can never see a store's whole
+    price history at once, only snippets over time, same as an in-game player market."""
+    __tablename__ = "irl_item"
+
+    id: Mapped[int] = mapped_column(Integer, ForeignKey("item.id"), primary_key=True)
+    brand: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    size: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # free text, e.g. "5.5oz can"
+
+    __mapper_args__ = {"polymorphic_identity": "irl"}
+
+
+# ---------------------------------------------------------------------------
+# Vendor / VendorItem / Purchase — price/quantity history for anything
+# transactable, real or in-game. A grocery store and a PG player-shop NPC
+# are both "somewhere you buy Items from"; domain distinguishes them.
+# ---------------------------------------------------------------------------
+
+class Vendor(Base):
+    __tablename__ = "vendor"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    domain: Mapped[str] = mapped_column(String, nullable=False)  # "irl", "pg", ...
+    kind: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # e.g. "grocery", "npc", "player_shop"
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    def __repr__(self) -> str:
+        return f"<Vendor {self.name!r} [{self.domain}]>"
+
+
+class VendorItem(Base):
+    """A vendor's own code for an Item — may differ from Item.upc (store-internal SKU vs.
+    universal barcode), and differs vendor to vendor for the same Item."""
+    __tablename__ = "vendor_item"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    vendor_id: Mapped[int] = mapped_column(Integer, ForeignKey("vendor.id"), nullable=False)
+    item_id: Mapped[int] = mapped_column(Integer, ForeignKey("item.id"), nullable=False)
+    vendor_sku: Mapped[str] = mapped_column(String, nullable=False)
+
+    vendor: Mapped[Vendor] = relationship("Vendor")
+    item: Mapped[Item] = relationship("Item")
+
+    __table_args__ = (UniqueConstraint("vendor_id", "vendor_sku"),)
+
+    def __repr__(self) -> str:
+        return f"<VendorItem {self.vendor.name if self.vendor else '?'}:{self.vendor_sku} -> {self.item.name if self.item else '?'}>"
+
+
+class Purchase(Base):
+    __tablename__ = "purchase"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    vendor_item_id: Mapped[int] = mapped_column(Integer, ForeignKey("vendor_item.id"), nullable=False)
+    quantity: Mapped[float] = mapped_column(Numeric(10, 3), nullable=False, default=1)
+    unit_price: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
+    total_price: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
+    purchased_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    vendor_item: Mapped[VendorItem] = relationship("VendorItem")
+
+    def __repr__(self) -> str:
+        return f"<Purchase {self.quantity}x {self.vendor_item.item.name if self.vendor_item else '?'} @ {self.unit_price}>"
+
+
+# ---------------------------------------------------------------------------
+# Journal — structured change history for any entity, keyed by (entity_type,
+# entity_id). Distinct from LogEntry (a fact about the world, not about a
+# specific record) and from Note (durable reference knowledge, not history).
+# ---------------------------------------------------------------------------
+
+class Journal(Base):
+    __tablename__ = "journal"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    entity_type: Mapped[str] = mapped_column(String, nullable=False)
+    entity_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    field: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    old_value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    new_value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    @classmethod
+    def for_entity(cls, entity_type: str, entity_id: int) -> list[Journal]:
+        return sess.scalars(
+            select(cls).filter_by(entity_type=entity_type, entity_id=entity_id).order_by(cls.created_at)
+        ).all()
+
+    @classmethod
+    def record(cls, entity_type: str, entity_id: int, field: Optional[str] = None,
+               old_value: Optional[str] = None, new_value: Optional[str] = None,
+               note: Optional[str] = None) -> Journal:
+        entry = cls(entity_type=entity_type, entity_id=entity_id, field=field,
+                    old_value=old_value, new_value=new_value, note=note)
+        sess.add(entry)
+        sess.flush()
+        return entry
+
+    def __repr__(self) -> str:
+        target = f"{self.entity_type}#{self.entity_id}"
+        if self.field:
+            return f"<Journal {target}.{self.field}>"
+        return f"<Journal {target}>"
 
 
 # ---------------------------------------------------------------------------

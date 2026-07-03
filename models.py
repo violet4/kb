@@ -588,6 +588,49 @@ class WorkingMemory(Base):
 
 
 # ---------------------------------------------------------------------------
+# LogEntry
+# ---------------------------------------------------------------------------
+
+class LogEntry(Base):
+    """A timestamped observation — a fact or set of facts about a moment, not durable reference
+    knowledge and not work with a status. Append-only; the point is to build a queryable history
+    (health, events, commits referenced by free text) that reveals patterns over time. domain is
+    a loose, unenforced label (e.g. "health", "cat", "work") — let structure emerge from actual
+    use rather than pre-defining categories."""
+    __tablename__ = "log_entry"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    domain: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    context_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("context.id"), nullable=True)
+
+    context: Mapped[Optional[Context]] = relationship("Context")
+
+    @classmethod
+    def create(cls, body: str, domain: Optional[str] = None, context: Optional[Context] = None,
+               occurred_at: Optional[datetime] = None) -> LogEntry:
+        entry = cls(body=body, domain=domain, context_id=context.id if context else None,
+                    occurred_at=occurred_at or _now())
+        sess.add(entry)
+        sess.flush()
+        return entry
+
+    @classmethod
+    def recent(cls, domain: Optional[str] = None, context: Optional[Context] = None, limit: int = 20) -> list[LogEntry]:
+        q = select(cls).order_by(cls.occurred_at.desc()).limit(limit)
+        if domain is not None:
+            q = q.where(cls.domain == domain)
+        if context is not None:
+            q = q.where(cls.context_id == context.id)
+        return sess.scalars(q).all()
+
+    def __repr__(self) -> str:
+        when = self.occurred_at.strftime("%Y-%m-%d")
+        return f"<LogEntry #{self.id} [{when}]{' ' + self.domain if self.domain else ''}: {self.body[:60]!r}>"
+
+
+# ---------------------------------------------------------------------------
 # Note (RAG)
 # ---------------------------------------------------------------------------
 

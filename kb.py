@@ -10,9 +10,9 @@ from sqlalchemy import select
 from context import resolve_context
 from models import (
     Base, ChangeLog, Collection, Context, CurrentContext, Daily, Goal, GoalStatus,
-    Item, Note, PgDungeon, PgFriendlyPlayer, PgItem, PgNpc, PgNpcRace, PgNpcRelation,
-    PgPlayer, PgQuest, Person, PersonTier, Reference, Todo, TodoStatus, WishlistEffort,
-    WishlistStatus, Wishlist, WorkingMemory, init_db, sess,
+    Item, LogEntry, Note, PgDungeon, PgFriendlyPlayer, PgItem, PgNpc, PgNpcRace,
+    PgNpcRelation, PgPlayer, PgQuest, Person, PersonTier, Reference, Todo, TodoStatus,
+    WishlistEffort, WishlistStatus, Wishlist, WorkingMemory, init_db, sess,
 )
 
 parser = argparse.ArgumentParser(description="KB runner")
@@ -50,6 +50,7 @@ ns = {
     "Goal": Goal,
     "GoalStatus": GoalStatus,
     "Item": Item,
+    "LogEntry": LogEntry,
     "PgDungeon": PgDungeon,
     "PgFriendlyPlayer": PgFriendlyPlayer,
     "PgItem": PgItem,

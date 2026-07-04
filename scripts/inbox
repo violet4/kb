@@ -10,13 +10,13 @@ from models import InboxItem, sess
 
 
 def cmd_add(args):
-    item = InboxItem.create(args.body, source=args.source)
+    item = InboxItem.create(args.body, source=args.source, category=args.category)
     sess.commit()
     print(item)
 
 
 def cmd_pending(args):
-    items = InboxItem.pending()
+    items = InboxItem.pending(category=args.category)
     if not items:
         print("Inbox empty.")
         return
@@ -40,10 +40,12 @@ sub = parser.add_subparsers(dest="cmd", required=True)
 
 p_add = sub.add_parser("add", help="Add a raw, untriaged item")
 p_add.add_argument("body")
-p_add.add_argument("--source", help="e.g. 'email', 'idea', 'quick-note'")
+p_add.add_argument("--source", help="capture channel, e.g. 'email', 'mobile', 'quick-note'")
+p_add.add_argument("--category", help="kind of content, e.g. 'project-idea', 'purchase'")
 p_add.set_defaults(func=cmd_add)
 
 p_pending = sub.add_parser("pending", help="List untriaged items")
+p_pending.add_argument("--category", help="filter to items of this category")
 p_pending.set_defaults(func=cmd_pending)
 
 p_triage = sub.add_parser("triage", help="Mark item(s) triaged (after creating whatever real record they became)")

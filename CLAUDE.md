@@ -21,12 +21,14 @@ summary [goals|todos|people|wishlist|inbox ...]   # active/pending overview; no 
 ## Inbox
 
 ```bash
-inbox add BODY [--source S]   # raw, untriaged capture — e.g. --source email|idea|quick-note
-inbox pending                 # list untriaged items
-inbox triage ID [ID ...]      # mark triaged, after creating whatever real record it became
+inbox add BODY [--source S] [--category C]   # raw, untriaged capture
+inbox pending [--category C]                 # list untriaged items, optionally filtered
+inbox triage ID [ID ...]                     # mark triaged, after creating whatever real record it became
 ```
 
 `InboxItem` is for anything whose eventual home isn't known yet — unlike every other kb table, you don't decide up front whether it's a `Todo`, a `Purchase`, a `LogEntry`, or nothing at all. Triage means: create the real record it turns out to be, then `inbox triage` the item. Don't let ideas-in-passing get lost while mid-task — `inbox add` them and keep moving.
+
+`source` (capture channel: `email`, `mobile`, `quick-note`) and `category` (kind of content: `project-idea`, `purchase`) are separate axes — filter `pending` by `category` to triage a large backlog in batches by kind before deciding each item's final home.
 
 ## Running commands
 

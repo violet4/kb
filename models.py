@@ -647,16 +647,20 @@ class InboxItem(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     body: Mapped[str] = mapped_column(Text, nullable=False)
-    source: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # e.g. "email", "idea", "quick-note"
+    source: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # capture channel, e.g. "email", "mobile", "quick-note"
+    category: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # kind of content, e.g. "project-idea", "purchase"
     triaged_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     @classmethod
-    def pending(cls) -> list[InboxItem]:
-        return sess.scalars(select(cls).where(cls.triaged_at.is_(None)).order_by(cls.created_at)).all()
+    def pending(cls, category: Optional[str] = None) -> list[InboxItem]:
+        q = select(cls).where(cls.triaged_at.is_(None))
+        if category is not None:
+            q = q.where(cls.category == category)
+        return sess.scalars(q.order_by(cls.created_at)).all()
 
     @classmethod
-    def create(cls, body: str, source: Optional[str] = None) -> InboxItem:
-        item = cls(body=body, source=source)
+    def create(cls, body: str, source: Optional[str] = None, category: Optional[str] = None) -> InboxItem:
+        item = cls(body=body, source=source, category=category)
         sess.add(item)
         sess.flush()
         return item
@@ -666,7 +670,8 @@ class InboxItem(Base):
 
     def __repr__(self) -> str:
         state = "triaged" if self.triaged_at else "pending"
-        return f"<InboxItem #{self.id} [{state}]{' ' + self.source if self.source else ''}: {self.body[:60]!r}>"
+        tags = " ".join(f"[{t}]" for t in (self.category, self.source) if t)
+        return f"<InboxItem #{self.id} [{state}]{' ' + tags if tags else ''}: {self.body[:60]!r}>"
 
 
 # ---------------------------------------------------------------------------

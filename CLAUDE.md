@@ -6,6 +6,8 @@ kb is not a fixed system to work around — it's meant to be continuously refine
 
 `scripts/dev/gen-api [ClassName ...]` prints the collapsed view — every entity, field, method, and signature, no implementation — always current since it's generated live from `models.py`, not a file to regenerate and re-read. `models.py` is the expanded view, read only when implementation details are actually needed. Load the collapsed view by default; expand only the specific piece you need.
 
+`models_pg.py` holds every Project Gorgon-specific table (`PgPlayer`, `PgNpc`, `PgQuest`, `PgItem`, ...) — split out from `models.py` since it's a large, rarely-needed chunk when working on kb's shared core. Read `models.py` for anything domain-agnostic; only read `models_pg.py` when actually working on pg-specific tables. Any file that imports `Base`/`Item` and registers new tables at import time (alembic's `env.py`, `scripts/dev/check-schema`) must import `models_pg` too, or its tables won't be seen by migrations/schema checks.
+
 Cache stable-but-frequently-referenced facts locally (e.g. game mechanics, reference lore) rather than re-looking them up every time — that's the point of kb. Don't cache genuinely volatile info (stock prices, weather, anything that changes on its own) as if it were a stable fact; look that up fresh when it's needed instead.
 
 ## Dashboard

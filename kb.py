@@ -10,11 +10,11 @@ from sqlalchemy import select
 from context import resolve_context
 from models import (
     Base, ChangeLog, Collection, Context, CurrentContext, Daily, Goal, GoalStatus,
-    InboxItem, IrlItem, Item, Journal, LogEntry, Note, PgDungeon, PgFriendlyPlayer, PgItem,
-    PgNpc, PgNpcRace, PgNpcRelation, PgPlayer, PgQuest, Person, PersonTier, Purchase,
+    InboxItem, IrlItem, Item, Journal, LogEntry, Note, Person, PersonTier, Purchase,
     Reference, Todo, TodoStatus, Vendor, VendorItem, WishlistEffort, WishlistStatus,
     Wishlist, WorkingMemory, init_db, sess,
 )
+from models_pg import PgDungeon, PgFriendlyPlayer, PgItem, PgNpc, PgNpcRace, PgNpcRelation, PgPlayer, PgQuest
 
 parser = argparse.ArgumentParser(description="KB runner")
 parser.add_argument("command", nargs="?", help="Python expression to execute")

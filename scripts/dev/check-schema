@@ -9,6 +9,7 @@ from sqlalchemy import create_engine
 
 from base import Base
 import models  # noqa: F401 — import needed so all Base subclasses register
+import models_pg  # noqa: F401 — every domain module must be imported so its tables are known to Base.metadata
 
 engine = create_engine("sqlite:///:memory:")
 try:

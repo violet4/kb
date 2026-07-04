@@ -26,8 +26,9 @@ class PgItem(Item, HasStackSize):
 
 
 
-class PgPlayer(Base):
-    __tablename__ = "pg_player"
+class PgCharacter(Base):
+    """A character you (the player) control."""
+    __tablename__ = "pg_character"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
@@ -38,7 +39,7 @@ class PgPlayer(Base):
 
     def __repr__(self) -> str:
         extras = "+".join(e for e, v in [("druid", self.is_druid), ("vampire", self.is_vampire)] if v)
-        return f"<PgPlayer {self.name} {self.race}{' ' + extras if extras else ''}>"
+        return f"<PgCharacter {self.name} {self.race}{' ' + extras if extras else ''}>"
 
 
 class PgNpcRace(Base):
@@ -70,12 +71,12 @@ class PgNpcRelation(Base):
     __tablename__ = "pg_npc_relation"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    player_id: Mapped[int] = mapped_column(Integer, ForeignKey("pg_player.id"), nullable=False)
+    player_id: Mapped[int] = mapped_column(Integer, ForeignKey("pg_character.id"), nullable=False)
     npc_id: Mapped[int] = mapped_column(Integer, ForeignKey("pg_npc.id"), nullable=False)
     favor: Mapped[str] = mapped_column(String, nullable=False)
     notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
 
-    player: Mapped[PgPlayer] = relationship("PgPlayer")
+    player: Mapped[PgCharacter] = relationship("PgCharacter")
     npc: Mapped[PgNpc] = relationship("PgNpc")
 
     def __repr__(self) -> str:

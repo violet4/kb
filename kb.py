@@ -14,7 +14,7 @@ from models import (
     Reference, Todo, TodoStatus, Vendor, VendorItem, WishlistEffort, WishlistStatus,
     Wishlist, WorkingMemory, init_db, sess,
 )
-from models_pg import PgDungeon, PgFriendlyPlayer, PgItem, PgNpc, PgNpcRace, PgNpcRelation, PgPlayer, PgQuest
+from models_pg import PgCharacter, PgDungeon, PgFriendlyPlayer, PgItem, PgNpc, PgNpcRace, PgNpcRelation, PgQuest
 
 parser = argparse.ArgumentParser(description="KB runner")
 parser.add_argument("command", nargs="?", help="Python expression to execute")
@@ -55,13 +55,13 @@ ns = {
     "Item": Item,
     "Journal": Journal,
     "LogEntry": LogEntry,
+    "PgCharacter": PgCharacter,
     "PgDungeon": PgDungeon,
     "PgFriendlyPlayer": PgFriendlyPlayer,
     "PgItem": PgItem,
     "PgNpc": PgNpc,
     "PgNpcRace": PgNpcRace,
     "PgNpcRelation": PgNpcRelation,
-    "PgPlayer": PgPlayer,
     "PgQuest": PgQuest,
     "Person": Person,
     "PersonTier": PersonTier,

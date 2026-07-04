@@ -2,6 +2,8 @@
 
 Personal knowledge base. SQLite + SQLAlchemy 2.0. Run `scripts/dev/gen-api` for the full model/method surface before making any queries or updates. Every script here (including `kb.py`) is directly executable from any directory — no `uv run` prefix needed, the shebang handles it.
 
+If asked "what were we working on" (or similar) at the start of a session, answer from the database before git history: `scripts/summary` for active Goals/Todos/wishlist/inbox, `scripts/goal show ID --history`/`scripts/journal show ENTITY_TYPE ID` for a specific Goal or Todo's full design history, `scripts/inbox pending` for unfiled ideas. `git log` shows what code changed; it doesn't show what's still open or why — kb's own tables are the actual answer to "what were we working on."
+
 kb is not a fixed system to work around — it's meant to be continuously refined. When a real access pattern doesn't fit cleanly (a script that's clunky to drive, a field that's always empty or always guessed, a query that has to be re-derived each time), that's a signal to change the schema/script/doc, not a one-off workaround to route past it. Treat friction encountered while using kb as input to kb's own design, the same way Goal #14 (kbui) treats interaction friction as input to that design.
 
 `scripts/dev/gen-api [ClassName ...]` prints the collapsed view — every entity, field, method, and signature, no implementation — always current since it's generated live from `models.py`, not a file to regenerate and re-read. `models.py` is the expanded view, read only when implementation details are actually needed. Load the collapsed view by default; expand only the specific piece you need.

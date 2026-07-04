@@ -4,6 +4,7 @@ import argparse
 import ast
 import code
 import sys
+from datetime import datetime
 
 from sqlalchemy import select
 
@@ -44,6 +45,7 @@ if args.file:
 ns = {
     "sess": sess,
     "select": select,
+    "datetime": datetime,
     "context": resolve_context(args.context),
     "Collection": Collection,
     "Note": Note,

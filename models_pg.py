@@ -116,13 +116,16 @@ class PgDungeon(Base):
         return f"<PgDungeon {self.name!r}>"
 
 
-class PgFriendlyPlayer(Base):
-    __tablename__ = "pg_friendly_player"
+class PgPlayer(Base):
+    """Another player's character you've encountered. One row per character name met —
+    the same person under multiple aliases gets multiple rows, linked via notes."""
+    __tablename__ = "pg_player"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    friendly: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
 
     def __repr__(self) -> str:
-        return f"<PgFriendlyPlayer {self.name!r}>"
+        return f"<PgPlayer {self.name!r}{'' if self.friendly else ' [unfriendly]'}>"
 

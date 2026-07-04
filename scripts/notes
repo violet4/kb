@@ -45,7 +45,8 @@ def cmd_search(args):
     if not results:
         print("No results.")
     for note, dist in results:
-        print(f"#{note.id} {note.title!r} [{note.collection.value}] (dist={dist:.3f})")
+        tags = f" #{note.tags}" if note.tags else ""
+        print(f"#{note.id} {note.title!r} [{note.collection.value}]{tags} (dist={dist:.3f})")
 
 
 def cmd_reembed(args):

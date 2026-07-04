@@ -104,9 +104,11 @@ db/upgrade                   # alembic upgrade head
 db/status                    # alembic current
 ```
 
-Autogenerate misses column renames (sees drop+add, write those by hand), data migrations (add a manual step), and Enum CHECK constraint changes on SQLite (see kb-engineering-10).
+Autogenerate misses column renames (sees drop+add, write those by hand), table renames' own constraints (see below), data migrations (add a manual step), and Enum CHECK constraint changes on SQLite (see kb-engineering-10).
 
 Enum columns are constrained at the DB level (`Enum(..., create_constraint=True, validate_strings=True)`) — see kb-engineering-10 before adding a new `Enum(...)` column. Adding a new *value* to an existing enum still needs a migration to update the CHECK constraint; use a raw-SQL table recreate (CREATE + INSERT SELECT + DROP + RENAME), not `batch_alter_table`/`alter_column` — see kb-engineering-16 and `alembic/versions/752237ed2641_add_on_hold_to_goalstatus.py` for why and a worked example.
+
+Read kb-engineering-20 before renaming any table's `__tablename__` (e.g. a `PgFoo`->`PgBar` rename): `op.rename_table` renames only the table, never its own PK/UNIQUE/CHECK constraints, so the same raw-SQL table recreate as kb-engineering-16 is needed in the same migration to bring those constraint names in line with what the naming convention now expects. Autogenerate does not flag this drift until a much later, unrelated migration surfaces it as a confusing diff — fix it immediately in the rename's own migration, not later.
 
 ## Price/purchase history
 

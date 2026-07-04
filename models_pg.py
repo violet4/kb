@@ -116,6 +116,34 @@ class PgDungeon(Base):
         return f"<PgDungeon {self.name!r}>"
 
 
+class PgMob(Base):
+    """A killable enemy, distinct from PgNpc (interactable: trainer/shop/quest-giver/lore)."""
+    __tablename__ = "pg_mob"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    location: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    def __repr__(self) -> str:
+        return f"<PgMob {self.name!r}>"
+
+
+class PgMobDrop(Base):
+    __tablename__ = "pg_mob_drop"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    mob_id: Mapped[int] = mapped_column(Integer, ForeignKey("pg_mob.id"), nullable=False)
+    item_id: Mapped[int] = mapped_column(Integer, ForeignKey("pg_item.id"), nullable=False)
+    notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    mob: Mapped[PgMob] = relationship("PgMob")
+    item: Mapped["PgItem"] = relationship("PgItem")
+
+    def __repr__(self) -> str:
+        return f"<PgMobDrop {self.mob.name if self.mob else '?'} -> {self.item.name if self.item else '?'}>"
+
+
 class PgPlayer(Base):
     """Another player's character you've encountered. One row per character name met —
     the same person under multiple aliases gets multiple rows, linked via notes."""

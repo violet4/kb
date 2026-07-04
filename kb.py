@@ -14,7 +14,7 @@ from models import (
     Reference, Todo, TodoStatus, Vendor, VendorItem, WishlistEffort, WishlistStatus,
     Wishlist, WorkingMemory, init_db, sess,
 )
-from models_pg import PgCharacter, PgDungeon, PgItem, PgNpc, PgNpcRace, PgNpcRelation, PgPlayer, PgQuest
+from models_pg import PgCharacter, PgDungeon, PgItem, PgMob, PgMobDrop, PgNpc, PgNpcRace, PgNpcRelation, PgPlayer, PgQuest
 
 parser = argparse.ArgumentParser(description="KB runner")
 parser.add_argument("command", nargs="?", help="Python expression to execute")
@@ -35,8 +35,11 @@ if not args.command and not args.file and not args.interactive:
     parser.error("one of: command, -f/--file, or -i/--interactive is required")
 
 if args.file:
-    with open(args.file) as f:
-        args.command = f.read()
+    if args.file == "-":
+        args.command = sys.stdin.read()
+    else:
+        with open(args.file) as f:
+            args.command = f.read()
 
 ns = {
     "sess": sess,
@@ -58,6 +61,8 @@ ns = {
     "PgCharacter": PgCharacter,
     "PgDungeon": PgDungeon,
     "PgItem": PgItem,
+    "PgMob": PgMob,
+    "PgMobDrop": PgMobDrop,
     "PgNpc": PgNpc,
     "PgNpcRace": PgNpcRace,
     "PgNpcRelation": PgNpcRelation,

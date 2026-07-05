@@ -71,16 +71,16 @@ class PgNpcRelation(Base):
     __tablename__ = "pg_npc_relation"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    player_id: Mapped[int] = mapped_column(Integer, ForeignKey("pg_character.id"), nullable=False)
+    character_id: Mapped[int] = mapped_column(Integer, ForeignKey("pg_character.id"), nullable=False)
     npc_id: Mapped[int] = mapped_column(Integer, ForeignKey("pg_npc.id"), nullable=False)
     favor: Mapped[str] = mapped_column(String, nullable=False)
     notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
 
-    player: Mapped[PgCharacter] = relationship("PgCharacter")
+    character: Mapped[PgCharacter] = relationship("PgCharacter")
     npc: Mapped[PgNpc] = relationship("PgNpc")
 
     def __repr__(self) -> str:
-        return f"<PgNpcRelation {self.player.name if self.player else '?'} -> {self.npc.name if self.npc else '?'} [{self.favor}]>"
+        return f"<PgNpcRelation {self.character.name if self.character else '?'} -> {self.npc.name if self.npc else '?'} [{self.favor}]>"
 
 
 class PgQuest(Base):

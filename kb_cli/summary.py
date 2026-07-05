@@ -74,11 +74,12 @@ def inbox_section():
     items = InboxItem.pending()
     if not items:
         return None
-    lines = ["=== INBOX ==="]
+    by_category = {}
     for i in items:
-        source = f" [{i.source}]" if i.source else ""
-        lines.append(f"- #{i.id}{source} {i.body[:80]}")
-    return "\n".join(lines)
+        by_category.setdefault(i.category or "(uncategorized)", 0)
+        by_category[i.category or "(uncategorized)"] += 1
+    breakdown = ", ".join(f"{count} {cat}" for cat, count in sorted(by_category.items()))
+    return f"=== INBOX ({len(items)}) ===\n{breakdown} — kb inbox pending [--category C]"
 
 
 SECTIONS = {

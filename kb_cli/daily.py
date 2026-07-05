@@ -4,7 +4,7 @@ import sys
 from sqlalchemy import select
 
 from context import resolve_context
-from models import Daily, sess
+from models import Daily, DailyTier, sess
 
 from kb_cli._util import print_fields
 
@@ -18,6 +18,9 @@ def cmd_show(args):
         ("id", daily.id),
         ("description", daily.description),
         ("active", daily.is_active),
+        ("domain", daily.domain),
+        ("tier", daily.tier.value),
+        ("last_completed_at", daily.last_completed_at.strftime("%Y-%m-%d %H:%M") if daily.last_completed_at else None),
         ("context", daily.context.name if daily.context else None),
         ("location", daily.location),
         ("reward", daily.reward),
@@ -26,19 +29,35 @@ def cmd_show(args):
 
 
 def cmd_list(args):
-    context = resolve_context(args.context) if args.context else None
-    dailies = Daily.active(context=context) if not args.all else sess.scalars(select(Daily)).all()
+    if args.all:
+        dailies = sess.scalars(select(Daily)).all()
+    else:
+        domain = args.domain
+        tier = DailyTier(args.tier) if args.tier else None
+        dailies = Daily.due(domain=domain, tier=tier)
     if not dailies:
-        print("No dailies.")
+        print("No dailies due." if not args.all else "No dailies.")
         return
     for d in dailies:
         marker = "" if d.is_active else " [inactive]"
         print(f"{d!r}{marker}")
 
 
+def cmd_complete(args):
+    for daily_id in args.ids:
+        daily = sess.get(Daily, daily_id)
+        if daily is None:
+            print(f"Daily #{daily_id}: not found", file=sys.stderr)
+            continue
+        daily.complete()
+        print(f"Daily #{daily_id}: {daily.description!r} -> completed for today")
+    sess.commit()
+
+
 def cmd_add(args):
     context = resolve_context(args.context)
-    daily = Daily.create(args.description, context=context, location=args.location, reward=args.reward, notes=args.notes)
+    daily = Daily.create(args.description, context=context, domain=args.domain, tier=DailyTier(args.tier),
+                         location=args.location, reward=args.reward, notes=args.notes)
     sess.commit()
     print(daily)
 
@@ -50,6 +69,10 @@ def cmd_update(args):
         sys.exit(1)
     if args.description is not None:
         daily.description = args.description
+    if args.domain is not None:
+        daily.domain = args.domain
+    if args.tier is not None:
+        daily.tier = DailyTier(args.tier)
     if args.location is not None:
         daily.location = args.location
     if args.reward is not None:
@@ -92,13 +115,16 @@ def add_subparser(subparsers):
     p_show.add_argument("id", type=int)
     p_show.set_defaults(func=cmd_show)
 
-    p_list = sub.add_parser("list", help="List dailies (active by default)")
-    p_list.add_argument("--context", metavar="NAME", help="Only show dailies in this context")
-    p_list.add_argument("--all", action="store_true", help="Include inactive dailies too")
+    p_list = sub.add_parser("list", help="List dailies due today (default: irl+critical only, per --domain/--tier)")
+    p_list.add_argument("--domain", help="Filter to this domain, e.g. 'irl' or 'pg'")
+    p_list.add_argument("--tier", choices=[t.value for t in DailyTier], help="Filter to this tier")
+    p_list.add_argument("--all", action="store_true", help="Show every daily regardless of domain/tier/completion")
     p_list.set_defaults(func=cmd_list)
 
     p_add = sub.add_parser("add", help="Add a Daily")
     p_add.add_argument("description")
+    p_add.add_argument("--domain", default="irl", help="'irl' (default) or 'pg'")
+    p_add.add_argument("--tier", default="critical", choices=[t.value for t in DailyTier])
     p_add.add_argument("--location")
     p_add.add_argument("--reward")
     p_add.add_argument("--notes")
@@ -108,11 +134,17 @@ def add_subparser(subparsers):
     p_update = sub.add_parser("update", help="Update fields on an existing Daily")
     p_update.add_argument("id", type=int)
     p_update.add_argument("--description")
+    p_update.add_argument("--domain")
+    p_update.add_argument("--tier", choices=[t.value for t in DailyTier])
     p_update.add_argument("--location")
     p_update.add_argument("--reward")
     p_update.add_argument("--notes")
     p_update.add_argument("--context", metavar="NAME")
     p_update.set_defaults(func=cmd_update)
+
+    p_complete = sub.add_parser("complete", help="Mark Daily(s) completed for the current day-boundary window")
+    p_complete.add_argument("ids", nargs="+", type=int)
+    p_complete.set_defaults(func=cmd_complete)
 
     p_activate = sub.add_parser("activate", help="Mark Daily(s) active")
     p_activate.add_argument("ids", nargs="+", type=int)

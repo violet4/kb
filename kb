@@ -4,7 +4,7 @@
 Usage: kb <command> [subcommand ...] [args ...]
   kb goal add "..." | show ID | complete ID | abandon ID | hold ID | reactivate ID
   kb todo add "..." | show ID | update ID | complete ID | pending
-  kb daily add "..." | show ID | list | update ID | activate ID | deactivate ID
+  kb daily add "..." | show ID | list | update ID | complete ID | activate ID | deactivate ID
   kb inbox add ... | pending | triage ID
   kb journal add ENTITY_TYPE ID NOTE | show ENTITY_TYPE ID
   kb notes get ID | add ... | update ... | search ... | reembed

@@ -2,7 +2,22 @@
 import sys
 from datetime import datetime
 
-from models import Goal, InboxItem, Person, Todo, Wishlist
+from models import Daily, DailyTier, Goal, InboxItem, Person, Todo, Wishlist
+
+
+def dailies_section():
+    critical = Daily.due(domain="irl", tier=DailyTier.CRITICAL)
+    lines = []
+    if critical:
+        lines.append("=== DAILIES ===")
+        for d in critical:
+            lines.append(f"- #{d.id} {d.description}")
+
+    other_count = len(Daily.due()) - len(critical)
+    if other_count > 0:
+        lines.append(f"({other_count} other daily(s) pending — kb daily list --all)")
+
+    return "\n".join(lines) if lines else None
 
 
 def goals_section():
@@ -67,6 +82,7 @@ def inbox_section():
 
 
 SECTIONS = {
+    "dailies": dailies_section,
     "goals": goals_section,
     "todos": todos_section,
     "people": people_section,

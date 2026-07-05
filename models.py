@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import enum
 import struct
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Optional
@@ -134,6 +134,11 @@ class WishlistStatus(enum.Enum):
     DROPPED = "dropped"
 
 
+class DailyTier(enum.Enum):
+    CRITICAL = "critical"   # always surfaces in summary until completed today
+    OPTIONAL = "optional"   # hidden by default, needs an explicit request (e.g. kb daily list --all)
+
+
 class WishlistEffort(enum.Enum):
     GRAB = "grab"        # next time you're out
     RESEARCH = "research"  # needs investigation before buying
@@ -190,6 +195,27 @@ class CurrentContext(Base):
 
     def __repr__(self) -> str:
         return f"<CurrentContext {self.context.name if self.context else None!r}>"
+
+
+class Settings(Base):
+    """Single-row table (id=1) for small standalone config values that don't belong on any
+    other model. Start here before adding a dedicated settings table for a new value."""
+    __tablename__ = "settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    day_boundary_hour: Mapped[int] = mapped_column(Integer, nullable=False, default=4)
+
+    @classmethod
+    def get(cls) -> Settings:
+        row = sess.scalars(select(cls).filter_by(id=1)).one_or_none()
+        if row is None:
+            row = cls(id=1)
+            sess.add(row)
+            sess.flush()
+        return row
+
+    def __repr__(self) -> str:
+        return f"<Settings day_boundary_hour={self.day_boundary_hour}>"
 
 
 # ---------------------------------------------------------------------------
@@ -344,18 +370,36 @@ class Todo(Base):
 # ---------------------------------------------------------------------------
 
 class Daily(Base):
-    """A recurring/optional item — distinct from Goal (a purpose/end-state) and Todo (a step toward one)."""
+    """A recurring/optional item — distinct from Goal (a purpose/end-state) and Todo (a step toward one).
+
+    domain ("irl"/"pg", mirrors Vendor.domain) separates life-maintenance dailies from game dailies.
+    tier controls default summary visibility: CRITICAL always surfaces until completed today,
+    OPTIONAL stays hidden unless explicitly requested. last_completed_at + Settings.day_boundary_hour
+    is what "completed today" is checked against, so a late bedtime doesn't immediately re-surface
+    the next day's dailies at literal midnight.
+    """
     __tablename__ = "daily"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     description: Mapped[str] = mapped_column(String, nullable=False)
     context_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("context.id"), nullable=True)
+    domain: Mapped[str] = mapped_column(String, nullable=False, default="irl")
+    tier: Mapped[DailyTier] = mapped_column(Enum(DailyTier, create_constraint=True, validate_strings=True), nullable=False, default=DailyTier.CRITICAL)
+    last_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     location: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     reward: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     context: Mapped[Optional[Context]] = relationship("Context")
+
+    @classmethod
+    def _day_start(cls, now: datetime) -> datetime:
+        boundary_hour = Settings.get().day_boundary_hour
+        day_start = now.replace(hour=boundary_hour, minute=0, second=0, microsecond=0)
+        if now < day_start:
+            day_start -= timedelta(days=1)
+        return day_start
 
     @classmethod
     def active(cls, context: Optional[Context] = None) -> list[Daily]:
@@ -365,13 +409,34 @@ class Daily(Base):
         return sess.scalars(q).all()
 
     @classmethod
-    def create(cls, description: str, context: Optional[Context] = None, location: Optional[str] = None,
+    def due(cls, domain: Optional[str] = None, tier: Optional[DailyTier] = None) -> list[Daily]:
+        """Active dailies not yet completed since the current day-boundary window started."""
+        now = _now()
+        day_start = cls._day_start(now)
+        q = select(cls).where(cls.is_active.is_(True))
+        if domain is not None:
+            q = q.where(cls.domain == domain)
+        if tier is not None:
+            q = q.where(cls.tier == tier)
+        dailies = sess.scalars(q).all()
+        return [
+            d for d in dailies
+            if d.last_completed_at is None
+            or (d.last_completed_at.replace(tzinfo=timezone.utc) if d.last_completed_at.tzinfo is None else d.last_completed_at) < day_start
+        ]
+
+    @classmethod
+    def create(cls, description: str, context: Optional[Context] = None, domain: str = "irl",
+               tier: DailyTier = DailyTier.CRITICAL, location: Optional[str] = None,
                reward: Optional[str] = None, notes: Optional[str] = None) -> Daily:
         daily = cls(description=description, context_id=context.id if context else None,
-                    location=location, reward=reward, notes=notes)
+                    domain=domain, tier=tier, location=location, reward=reward, notes=notes)
         sess.add(daily)
         sess.flush()
         return daily
+
+    def complete(self) -> None:
+        self.last_completed_at = _now()
 
     def __repr__(self) -> str:
         return f"<Daily #{self.id} {self.description!r}>"

@@ -1,5 +1,5 @@
 #!/usr/bin/env -S uv run --project /home/violet/kb python3
-"""Todo operations. Usage: todo {show,add,complete,pending} ..."""
+"""Todo operations. Usage: todo {show,add,update,complete,pending} ..."""
 import argparse
 import sys
 from datetime import datetime, timedelta, timezone
@@ -76,6 +76,27 @@ def cmd_add(args):
     print(todo)
 
 
+def cmd_update(args):
+    todo = sess.get(Todo, args.id)
+    if todo is None:
+        print(f"Todo #{args.id}: not found", file=sys.stderr)
+        sys.exit(1)
+    if args.title is not None:
+        todo.title = args.title
+    if args.effort is not None:
+        todo.effort = WishlistEffort(args.effort)
+    if args.defer_until is not None:
+        todo.defer_until = _parse_defer_until(args.defer_until)
+    if args.notes is not None:
+        todo.notes = args.notes
+    if args.context is not None:
+        todo.context = resolve_context(args.context)
+    if args.goal is not None:
+        todo.goal_id = args.goal
+    sess.commit()
+    print(todo)
+
+
 def cmd_complete(args):
     for todo_id in args.ids:
         todo = sess.get(Todo, todo_id)
@@ -120,6 +141,17 @@ p_add.add_argument("--defer-until", metavar="WHEN",
 p_add.add_argument("--notes")
 p_add.add_argument("--context", metavar="NAME", help="Act in context NAME for this command only")
 p_add.set_defaults(func=cmd_add)
+
+p_update = sub.add_parser("update", help="Update fields on an existing Todo")
+p_update.add_argument("id", type=int)
+p_update.add_argument("--title")
+p_update.add_argument("--effort", choices=[e.value for e in WishlistEffort])
+p_update.add_argument("--defer-until", metavar="WHEN",
+                       help="HH:MM (today, or tomorrow if already past), 'YYYY-MM-DD', or 'YYYY-MM-DD HH:MM'")
+p_update.add_argument("--notes")
+p_update.add_argument("--context", metavar="NAME")
+p_update.add_argument("--goal", type=int, metavar="GOAL_ID")
+p_update.set_defaults(func=cmd_update)
 
 p_complete = sub.add_parser("complete", help="Mark Todo(s) done")
 p_complete.add_argument("ids", nargs="+", type=int)

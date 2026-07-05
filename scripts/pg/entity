@@ -3,8 +3,9 @@
 
 Usage:
   entity npc {show,add,update} ...
-  entity mob {show,add,update} ...
+  entity mob {show,add,update,search} ...
   entity mob-drop {add,show} ...
+  entity item {show,search} ...
   entity player {show,add,update} ...
   entity character {show,update} ...
   entity relation {add,show} ...
@@ -92,6 +93,22 @@ def cmd_mob_update(args):
     print(mob)
 
 
+def cmd_mob_search(args):
+    q = select(PgMob).where(
+        PgMob.name.ilike(f"%{args.query}%") | PgMob.location.ilike(f"%{args.query}%")
+    )
+    mobs = sess.scalars(q).all()
+    if not mobs:
+        print(f"No mobs matching {args.query!r}.")
+        return
+    for mob in mobs:
+        print(mob)
+        if args.loot:
+            drops = sess.scalars(select(PgMobDrop).where(PgMobDrop.mob_id == mob.id)).all()
+            for d in drops:
+                print(f"  {d}")
+
+
 # --- mob-drop ---
 
 def cmd_mob_drop_add(args):
@@ -111,6 +128,32 @@ def cmd_mob_drop_show(args):
         return
     for d in drops:
         print(d)
+
+
+# --- item ---
+
+def cmd_item_show(args):
+    item = _get_by_name(PgItem, args.name)
+    _print_fields(item, [
+        ("id", item.id),
+        ("name", item.name),
+        ("kind", item.kind),
+        ("sources", item.sources),
+        ("notes", item.notes),
+    ])
+
+
+def cmd_item_search(args):
+    items = sess.scalars(select(PgItem).where(PgItem.name.ilike(f"%{args.query}%"))).all()
+    if not items:
+        print(f"No items matching {args.query!r}.")
+        return
+    for item in items:
+        print(item)
+        if args.mobs:
+            drops = sess.scalars(select(PgMobDrop).where(PgMobDrop.item_id == item.id)).all()
+            for d in drops:
+                print(f"  {d}")
 
 
 # --- player ---
@@ -205,12 +248,25 @@ mob_sub = p_mob.add_subparsers(dest="cmd", required=True)
 p = mob_sub.add_parser("show"); p.add_argument("name"); p.set_defaults(func=cmd_mob_show)
 p = mob_sub.add_parser("add"); p.add_argument("name"); p.add_argument("--location"); p.add_argument("--notes"); p.set_defaults(func=cmd_mob_add)
 p = mob_sub.add_parser("update"); p.add_argument("name"); p.add_argument("--location"); p.add_argument("--notes"); p.set_defaults(func=cmd_mob_update)
+p = mob_sub.add_parser("search", help="Search mobs by name/location substring")
+p.add_argument("query")
+p.add_argument("--loot", action="store_true", help="Also show each match's known drops")
+p.set_defaults(func=cmd_mob_search)
 
 # mob-drop
 p_drop = sub.add_parser("mob-drop", help="Mob -> item drop relationships")
 drop_sub = p_drop.add_subparsers(dest="cmd", required=True)
 p = drop_sub.add_parser("add"); p.add_argument("mob"); p.add_argument("item"); p.add_argument("--notes"); p.set_defaults(func=cmd_mob_drop_add)
 p = drop_sub.add_parser("show"); p.add_argument("mob"); p.set_defaults(func=cmd_mob_drop_show)
+
+# item
+p_item = sub.add_parser("item", help="PG item lookups")
+item_sub = p_item.add_subparsers(dest="cmd", required=True)
+p = item_sub.add_parser("show"); p.add_argument("name"); p.set_defaults(func=cmd_item_show)
+p = item_sub.add_parser("search", help="Search items by name substring")
+p.add_argument("query")
+p.add_argument("--mobs", action="store_true", help="Also show which mobs drop each match")
+p.set_defaults(func=cmd_item_search)
 
 # player
 p_player = sub.add_parser("player", help="Other players' characters you've encountered")

@@ -14,6 +14,7 @@ Usage: kb <command> [subcommand ...] [args ...]
   kb wishlist add ... | update ID ...
   kb games pg entity npc|mob|mob-drop|item|player|character|relation ...
   kb games pg quest show|add|complete ...
+  kb pager FILE [--lines N] [--reset]
 """
 import argparse
 import sys
@@ -21,7 +22,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from kb_cli import context_cmd, daily, goal, inbox, journal, log, notes, summary, todo, wishlist
+from kb_cli import context_cmd, daily, goal, inbox, journal, log, notes, pager, summary, todo, wishlist
 from kb_cli import games
 
 parser = argparse.ArgumentParser(prog="kb", description="Global kb CLI")
@@ -37,6 +38,7 @@ log.add_subparser(subparsers)
 context_cmd.add_subparser(subparsers)
 summary.add_subparser(subparsers)
 wishlist.add_subparser(subparsers)
+pager.add_subparser(subparsers)
 games.add_subparser(subparsers)
 
 args = parser.parse_args()

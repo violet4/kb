@@ -1,0 +1,49 @@
+"""Inbox operations."""
+import sys
+
+from models import InboxItem, sess
+
+
+def cmd_add(args):
+    item = InboxItem.create(args.body, source=args.source, category=args.category)
+    sess.commit()
+    print(item)
+
+
+def cmd_pending(args):
+    items = InboxItem.pending(category=args.category)
+    if not items:
+        print("Inbox empty.")
+        return
+    for i in items:
+        print(i)
+
+
+def cmd_triage(args):
+    for item_id in args.ids:
+        item = sess.get(InboxItem, item_id)
+        if item is None:
+            print(f"InboxItem #{item_id}: not found", file=sys.stderr)
+            continue
+        item.triage()
+        print(f"InboxItem #{item_id}: {item.body[:60]!r} -> triaged")
+    sess.commit()
+
+
+def add_subparser(subparsers):
+    parser = subparsers.add_parser("inbox", help="Inbox operations")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    p_add = sub.add_parser("add", help="Add a raw, untriaged item")
+    p_add.add_argument("body")
+    p_add.add_argument("--source", help="capture channel, e.g. 'email', 'mobile', 'quick-note'")
+    p_add.add_argument("--category", help="kind of content, e.g. 'project-idea', 'purchase'")
+    p_add.set_defaults(func=cmd_add)
+
+    p_pending = sub.add_parser("pending", help="List untriaged items")
+    p_pending.add_argument("--category", help="filter to items of this category")
+    p_pending.set_defaults(func=cmd_pending)
+
+    p_triage = sub.add_parser("triage", help="Mark item(s) triaged (after creating whatever real record they became)")
+    p_triage.add_argument("ids", nargs="+", type=int)
+    p_triage.set_defaults(func=cmd_triage)

@@ -1,13 +1,8 @@
-#!/usr/bin/env -S uv run --project /home/violet/kb python3
-"""Print an overview of active Goals/Todos/overdue contacts/wishlist/inbox. Usage: summary [SECTION ...]"""
-import argparse
+"""Print an overview of active Goals/Todos/overdue contacts/wishlist/inbox."""
 import sys
 from datetime import datetime
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from models import Goal, InboxItem, Person, Todo, Wishlist, sess
+from models import Goal, InboxItem, Person, Todo, Wishlist
 
 
 def goals_section():
@@ -79,25 +74,28 @@ SECTIONS = {
     "inbox": inbox_section,
 }
 
-parser = argparse.ArgumentParser(description="Print an overview of active Goals/Todos/overdue contacts/wishlist")
-parser.add_argument("section", nargs="*", metavar="SECTION",
-                     help=f"Only show these sections ({'/'.join(SECTIONS)}); default: all")
-args = parser.parse_args()
 
-unknown = [s for s in args.section if s not in SECTIONS]
-if unknown:
-    parser.error(f"invalid section(s) {unknown}; choose from {', '.join(SECTIONS)}")
+def cmd_summary(args):
+    unknown = [s for s in args.section if s not in SECTIONS]
+    if unknown:
+        print(f"invalid section(s) {unknown}; choose from {', '.join(SECTIONS)}", file=sys.stderr)
+        sys.exit(2)
 
-names = args.section or list(SECTIONS)
-rendered = [SECTIONS[name]() for name in names]
-sections = [s for s in rendered if s is not None]
+    names = args.section or list(SECTIONS)
+    rendered = [SECTIONS[name]() for name in names]
+    sections = [s for s in rendered if s is not None]
 
-now = datetime.now()
-print(f"{now.strftime('%Y-%m-%d %H:%M')} (week {now.isocalendar().week})\n")
+    now = datetime.now()
+    print(f"{now.strftime('%Y-%m-%d %H:%M')} (week {now.isocalendar().week})\n")
 
-if not sections:
-    print("Nothing tracked yet.")
-else:
-    print("\n\n".join(sections))
+    if not sections:
+        print("Nothing tracked yet.")
+    else:
+        print("\n\n".join(sections))
 
-sess.close()
+
+def add_subparser(subparsers):
+    parser = subparsers.add_parser("summary", help="Print an overview of active Goals/Todos/overdue contacts/wishlist")
+    parser.add_argument("section", nargs="*", metavar="SECTION",
+                         help=f"Only show these sections ({'/'.join(SECTIONS)}); default: all")
+    parser.set_defaults(func=cmd_summary)

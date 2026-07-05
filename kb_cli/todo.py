@@ -1,14 +1,11 @@
-#!/usr/bin/env -S uv run --project /home/violet/kb python3
-"""Todo operations. Usage: todo {show,add,update,complete,pending} ..."""
-import argparse
+"""Todo operations."""
 import sys
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from context import resolve_context
 from models import Journal, Todo, TodoStatus, WishlistEffort, sess
+
+from kb_cli._util import add_history_arg, print_journal_history
 
 
 def _parse_defer_until(raw: str) -> datetime:
@@ -50,21 +47,7 @@ def cmd_show(args):
         if todo.notes:
             print(f"notes: {todo.notes}")
 
-        history = Journal.for_entity("Todo", todo.id)
-        if args.history is not None:
-            shown = history[-args.history:] if args.history else history
-            for j, e in enumerate(shown):
-                if j > 0:
-                    print()
-                when = e.created_at.strftime("%Y-%m-%d %H:%M")
-                if e.field:
-                    print(f"  [{when}] {e.field}: {e.old_value!r} -> {e.new_value!r}")
-                    if e.note:
-                        print(f"    {e.note}")
-                else:
-                    print(f"  [{when}] {e.note}")
-        elif history:
-            print(f"history: {len(history)} entries — journal show Todo {todo.id} or todo show {todo.id} --history [N]")
+        print_journal_history(Journal, "Todo", todo.id, args.history, f"journal show Todo {todo.id} or kb todo show {todo.id} --history [N]")
 
 
 def cmd_add(args):
@@ -122,45 +105,42 @@ def cmd_pending(args):
         print(f"{t!r}{marker}")
 
 
-parser = argparse.ArgumentParser(description="Todo operations")
-sub = parser.add_subparsers(dest="cmd", required=True)
+def add_subparser(subparsers):
+    parser = subparsers.add_parser("todo", help="Todo operations")
+    sub = parser.add_subparsers(dest="cmd", required=True)
 
-p_show = sub.add_parser("show", help="Show Todo details")
-p_show.add_argument("ids", nargs="+", type=int)
-p_show.add_argument("--history", nargs="?", type=int, const=0, default=None,
-                     metavar="N", help="Expand journal history inline; optionally show only the last N entries")
-p_show.set_defaults(func=cmd_show)
+    p_show = sub.add_parser("show", help="Show Todo details")
+    p_show.add_argument("ids", nargs="+", type=int)
+    add_history_arg(p_show)
+    p_show.set_defaults(func=cmd_show)
 
-p_add = sub.add_parser("add", help="Add a Todo")
-p_add.add_argument("title")
-p_add.add_argument("--effort", choices=[e.value for e in WishlistEffort],
-                    help="grab = quick/batchable, research = needs investigation, project = multi-step")
-p_add.add_argument("--defer-until", metavar="WHEN",
-                    help="Hide from `todo pending`/summary until this time — HH:MM (today, or tomorrow if already past), "
-                         "'YYYY-MM-DD', or 'YYYY-MM-DD HH:MM'")
-p_add.add_argument("--notes")
-p_add.add_argument("--context", metavar="NAME", help="Act in context NAME for this command only")
-p_add.set_defaults(func=cmd_add)
+    p_add = sub.add_parser("add", help="Add a Todo")
+    p_add.add_argument("title")
+    p_add.add_argument("--effort", choices=[e.value for e in WishlistEffort],
+                        help="grab = quick/batchable, research = needs investigation, project = multi-step")
+    p_add.add_argument("--defer-until", metavar="WHEN",
+                        help="Hide from `todo pending`/summary until this time — HH:MM (today, or tomorrow if already past), "
+                             "'YYYY-MM-DD', or 'YYYY-MM-DD HH:MM'")
+    p_add.add_argument("--notes")
+    p_add.add_argument("--context", metavar="NAME", help="Act in context NAME for this command only")
+    p_add.set_defaults(func=cmd_add)
 
-p_update = sub.add_parser("update", help="Update fields on an existing Todo")
-p_update.add_argument("id", type=int)
-p_update.add_argument("--title")
-p_update.add_argument("--effort", choices=[e.value for e in WishlistEffort])
-p_update.add_argument("--defer-until", metavar="WHEN",
-                       help="HH:MM (today, or tomorrow if already past), 'YYYY-MM-DD', or 'YYYY-MM-DD HH:MM'")
-p_update.add_argument("--notes")
-p_update.add_argument("--context", metavar="NAME")
-p_update.add_argument("--goal", type=int, metavar="GOAL_ID")
-p_update.set_defaults(func=cmd_update)
+    p_update = sub.add_parser("update", help="Update fields on an existing Todo")
+    p_update.add_argument("id", type=int)
+    p_update.add_argument("--title")
+    p_update.add_argument("--effort", choices=[e.value for e in WishlistEffort])
+    p_update.add_argument("--defer-until", metavar="WHEN",
+                           help="HH:MM (today, or tomorrow if already past), 'YYYY-MM-DD', or 'YYYY-MM-DD HH:MM'")
+    p_update.add_argument("--notes")
+    p_update.add_argument("--context", metavar="NAME")
+    p_update.add_argument("--goal", type=int, metavar="GOAL_ID")
+    p_update.set_defaults(func=cmd_update)
 
-p_complete = sub.add_parser("complete", help="Mark Todo(s) done")
-p_complete.add_argument("ids", nargs="+", type=int)
-p_complete.set_defaults(func=cmd_complete)
+    p_complete = sub.add_parser("complete", help="Mark Todo(s) done")
+    p_complete.add_argument("ids", nargs="+", type=int)
+    p_complete.set_defaults(func=cmd_complete)
 
-p_pending = sub.add_parser("pending", help="List pending Todos, optionally filtered by effort")
-p_pending.add_argument("--effort", choices=[e.value for e in WishlistEffort])
-p_pending.add_argument("--all", action="store_true", help="Also include deferred Todos not yet due")
-p_pending.set_defaults(func=cmd_pending)
-
-args = parser.parse_args()
-args.func(args)
+    p_pending = sub.add_parser("pending", help="List pending Todos, optionally filtered by effort")
+    p_pending.add_argument("--effort", choices=[e.value for e in WishlistEffort])
+    p_pending.add_argument("--all", action="store_true", help="Also include deferred Todos not yet due")
+    p_pending.set_defaults(func=cmd_pending)

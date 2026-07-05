@@ -1,0 +1,41 @@
+#!/usr/bin/env -S uv run --project /home/violet/kb python3
+"""Global kb CLI entry point. Usable from any directory (see ~/bin/kb symlink).
+
+Usage: kb <command> [subcommand ...] [args ...]
+  kb goal add "..." | show ID | complete ID | abandon ID | hold ID | reactivate ID
+  kb todo add "..." | show ID | update ID | complete ID | pending
+  kb inbox add ... | pending | triage ID
+  kb journal add ENTITY_TYPE ID NOTE | show ENTITY_TYPE ID
+  kb notes get ID | add ... | update ... | search ... | reembed
+  kb log add ... | recent
+  kb context current | switch NAME | list
+  kb summary [SECTION ...]
+  kb wishlist add ... | update ID ...
+  kb games pg entity npc|mob|mob-drop|item|player|character|relation ...
+  kb games pg quest show|add|complete ...
+"""
+import argparse
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+
+from kb_cli import context_cmd, goal, inbox, journal, log, notes, summary, todo, wishlist
+from kb_cli import games
+
+parser = argparse.ArgumentParser(prog="kb", description="Global kb CLI")
+subparsers = parser.add_subparsers(dest="command", required=True)
+
+goal.add_subparser(subparsers)
+todo.add_subparser(subparsers)
+inbox.add_subparser(subparsers)
+journal.add_subparser(subparsers)
+notes.add_subparser(subparsers)
+log.add_subparser(subparsers)
+context_cmd.add_subparser(subparsers)
+summary.add_subparser(subparsers)
+wishlist.add_subparser(subparsers)
+games.add_subparser(subparsers)
+
+args = parser.parse_args()
+args.func(args)

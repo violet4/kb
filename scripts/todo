@@ -7,6 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from context import resolve_context
 from models import Journal, Todo, TodoStatus, WishlistEffort, sess
 
 
@@ -69,7 +70,8 @@ def cmd_show(args):
 def cmd_add(args):
     effort = WishlistEffort(args.effort) if args.effort else None
     defer_until = _parse_defer_until(args.defer_until) if args.defer_until else None
-    todo = Todo.create(args.title, notes=args.notes, effort=effort, defer_until=defer_until)
+    context = resolve_context(args.context)
+    todo = Todo.create(args.title, notes=args.notes, effort=effort, defer_until=defer_until, context=context)
     sess.commit()
     print(todo)
 
@@ -116,6 +118,7 @@ p_add.add_argument("--defer-until", metavar="WHEN",
                     help="Hide from `todo pending`/summary until this time — HH:MM (today, or tomorrow if already past), "
                          "'YYYY-MM-DD', or 'YYYY-MM-DD HH:MM'")
 p_add.add_argument("--notes")
+p_add.add_argument("--context", metavar="NAME", help="Act in context NAME for this command only")
 p_add.set_defaults(func=cmd_add)
 
 p_complete = sub.add_parser("complete", help="Mark Todo(s) done")

@@ -24,6 +24,8 @@ Writing down an unwanted example still puts it in front of the reader every time
 
 An instruction doesn't need a caveat qualifying that it won't always apply — that's already understood. State the rule once, plainly; add a scoped exception only when a real, specific condition is known to override it, not as a general hedge.
 
+Treat surprise as a signal, not noise to shrug off. When something behaves unexpectedly — an output that doesn't match what should have happened, a missing field, a gap between two things that should agree — pause and flag it rather than moving past it, even if the immediate task still nominally succeeded. Surprise usually means either a real bug, a stale assumption, or a design gap worth naming; the cheap moment to catch it is right when it's noticed, not later after the context that made it visible has faded.
+
 ## Network & Privacy
 
 Network calls and cloud connections are not taken lightly. Never silently suppress warnings that could indicate unexpected network activity. Code should default to offline/local operation; any network call must be explicit, intentional, and visible. Phone-home behavior, telemetry, and automatic update checks are unwelcome unless deliberately opted into.

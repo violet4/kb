@@ -335,7 +335,8 @@ class Todo(Base):
     def __repr__(self) -> str:
         effort_str = f" ({self.effort.value})" if self.effort else ""
         defer_str = f" defer_until={self.defer_until.strftime('%Y-%m-%d %H:%M')}" if self.defer_until else ""
-        return f"<Todo #{self.id} {self.title!r} [{self.status.value}]{effort_str}{defer_str}>"
+        context_str = f" [{self.context.name}]" if self.context else ""
+        return f"<Todo #{self.id} {self.title!r} [{self.status.value}]{effort_str}{defer_str}{context_str}>"
 
 
 # ---------------------------------------------------------------------------

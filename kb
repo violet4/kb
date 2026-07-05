@@ -4,6 +4,7 @@
 Usage: kb <command> [subcommand ...] [args ...]
   kb goal add "..." | show ID | complete ID | abandon ID | hold ID | reactivate ID
   kb todo add "..." | show ID | update ID | complete ID | pending
+  kb daily add "..." | show ID | list | update ID | activate ID | deactivate ID
   kb inbox add ... | pending | triage ID
   kb journal add ENTITY_TYPE ID NOTE | show ENTITY_TYPE ID
   kb notes get ID | add ... | update ... | search ... | reembed
@@ -20,7 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from kb_cli import context_cmd, goal, inbox, journal, log, notes, summary, todo, wishlist
+from kb_cli import context_cmd, daily, goal, inbox, journal, log, notes, summary, todo, wishlist
 from kb_cli import games
 
 parser = argparse.ArgumentParser(prog="kb", description="Global kb CLI")
@@ -28,6 +29,7 @@ subparsers = parser.add_subparsers(dest="command", required=True)
 
 goal.add_subparser(subparsers)
 todo.add_subparser(subparsers)
+daily.add_subparser(subparsers)
 inbox.add_subparser(subparsers)
 journal.add_subparser(subparsers)
 notes.add_subparser(subparsers)

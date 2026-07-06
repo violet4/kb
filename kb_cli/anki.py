@@ -4,6 +4,8 @@ Anki must be closed while this runs (SQLite file lock) -- this does NOT talk to 
 Anki process, unlike AnkiConnect. Requires the optional 'anki' dependency:
 uv sync --project ~/kb --extra anki
 """
+import ast
+import code
 import sys
 import time
 from pathlib import Path
@@ -140,6 +142,43 @@ def cmd_delete(args):
         col.close()
 
 
+def cmd_run(args):
+    if not args.command and not args.file and not args.interactive:
+        print("kb anki run: one of: command, -f/--file, or -i/--interactive is required", file=sys.stderr)
+        sys.exit(2)
+
+    command = args.command
+    if args.file:
+        if args.file == "-":
+            command = sys.stdin.read()
+        else:
+            with open(args.file) as f:
+                command = f.read()
+
+    col = _open_collection(args.collection)
+    try:
+        ns = {"col": col}
+        if command:
+            tree = ast.parse(command)
+            last_expr = None
+            if tree.body and isinstance(tree.body[-1], ast.Expr):
+                last_expr = ast.Expression(tree.body.pop().value)
+            try:
+                exec(compile(tree, "<kb anki run>", "exec"), ns)  # noqa: S102
+                if last_expr is not None:
+                    result = eval(compile(last_expr, "<kb anki run>", "eval"), ns)  # noqa: S307
+                    if result is not None:
+                        print(repr(result))
+            except Exception:
+                print("kb anki run: command raised", file=sys.stderr)
+                raise
+        else:
+            banner = "kb anki interactive mode | `col` (the open Collection) is pre-loaded. Anki auto-saves most mutations; col.close() happens on exit."
+            code.interact(banner=banner, local=ns, exitmsg="")
+    finally:
+        col.close()
+
+
 def add_subparser(subparsers):
     parser = subparsers.add_parser("anki", help="Read/write an Anki collection directly (Anki must be closed)")
     parser.add_argument("--collection", default=str(DEFAULT_COLLECTION), help=f"Path to collection.anki2 (default: {DEFAULT_COLLECTION})")
@@ -166,3 +205,9 @@ def add_subparser(subparsers):
     p_delete = sub.add_parser("delete", help="Delete note(s) by id")
     p_delete.add_argument("ids", nargs="+", type=int)
     p_delete.set_defaults(func=cmd_delete)
+
+    p_run = sub.add_parser("run", help="Run a Python expression/script against the open collection (like kb.py, but col instead of sess)")
+    p_run.add_argument("command", nargs="?", help="Python expression to execute")
+    p_run.add_argument("-f", "--file", help="Read command from a script file instead of the command arg (use '-' for stdin)")
+    p_run.add_argument("-i", "--interactive", action="store_true", help="Start an interactive REPL with `col` pre-loaded")
+    p_run.set_defaults(func=cmd_run)

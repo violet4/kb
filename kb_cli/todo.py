@@ -2,10 +2,12 @@
 import sys
 from datetime import datetime, timedelta, timezone
 
-from context import resolve_context
-from models import Journal, Todo, TodoStatus, WishlistEffort, sess
+from sqlalchemy import select
 
-from kb_cli._util import add_history_arg, print_journal_history
+from context import resolve_context
+from models import Journal, Todo, TodoStatus, TodoTag, WishlistEffort, sess
+
+from kb_cli._util import add_history_arg, get_by_name, print_journal_history
 
 
 def _parse_defer_until(raw: str) -> datetime:
@@ -44,6 +46,8 @@ def cmd_show(args):
             print(f"context: {todo.context.name}")
         if todo.blocked_by:
             print(f"blocked_by: #{todo.blocked_by.id} {todo.blocked_by.title} [{todo.blocked_by.status.value}]")
+        if todo.tags:
+            print(f"tags: {', '.join(t.name for t in todo.tags)}")
         if todo.notes:
             print(f"notes: {todo.notes}")
 
@@ -93,7 +97,8 @@ def cmd_complete(args):
 
 def cmd_pending(args):
     effort = WishlistEffort(args.effort) if args.effort else None
-    todos = Todo.pending(effort=effort, include_deferred=args.all)
+    tag = get_by_name(sess, TodoTag, args.tag) if args.tag else None
+    todos = Todo.pending(effort=effort, include_deferred=args.all, tag=tag)
     if not todos:
         print("No pending todos.")
         return
@@ -103,6 +108,36 @@ def cmd_pending(args):
         deferred = defer_until and defer_until > now
         marker = f" (deferred until {defer_until.strftime('%Y-%m-%d %H:%M')})" if deferred else ""
         print(f"{t!r}{marker}")
+
+
+def cmd_tag(args):
+    todo = sess.get(Todo, args.id)
+    if todo is None:
+        print(f"Todo #{args.id}: not found", file=sys.stderr)
+        sys.exit(1)
+    for name in args.tags:
+        tag = sess.scalars(select(TodoTag).where(TodoTag.name == name)).one_or_none()
+        if tag is None:
+            tag = TodoTag(name=name)
+            sess.add(tag)
+            sess.flush()
+        if tag not in todo.tags:
+            todo.tags.append(tag)
+    sess.commit()
+    print(todo)
+
+
+def cmd_untag(args):
+    todo = sess.get(Todo, args.id)
+    if todo is None:
+        print(f"Todo #{args.id}: not found", file=sys.stderr)
+        sys.exit(1)
+    for name in args.tags:
+        tag = get_by_name(sess, TodoTag, name)
+        if tag in todo.tags:
+            todo.tags.remove(tag)
+    sess.commit()
+    print(todo)
 
 
 def add_subparser(subparsers):
@@ -140,7 +175,18 @@ def add_subparser(subparsers):
     p_complete.add_argument("ids", nargs="+", type=int)
     p_complete.set_defaults(func=cmd_complete)
 
-    p_pending = sub.add_parser("pending", help="List pending Todos, optionally filtered by effort")
+    p_pending = sub.add_parser("pending", help="List pending Todos, optionally filtered by effort/tag")
     p_pending.add_argument("--effort", choices=[e.value for e in WishlistEffort])
+    p_pending.add_argument("--tag", help="Only show Todos tagged with this (or a descendant of this) TodoTag")
     p_pending.add_argument("--all", action="store_true", help="Also include deferred Todos not yet due")
     p_pending.set_defaults(func=cmd_pending)
+
+    p_tag = sub.add_parser("tag", help="Attach one or more tags to a Todo (creates tags that don't exist yet)")
+    p_tag.add_argument("id", type=int)
+    p_tag.add_argument("tags", nargs="+")
+    p_tag.set_defaults(func=cmd_tag)
+
+    p_untag = sub.add_parser("untag", help="Remove one or more tags from a Todo")
+    p_untag.add_argument("id", type=int)
+    p_untag.add_argument("tags", nargs="+")
+    p_untag.set_defaults(func=cmd_untag)

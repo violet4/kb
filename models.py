@@ -334,10 +334,11 @@ class Todo(Base):
     goal: Mapped[Optional[Goal]] = relationship("Goal", back_populates="todos")
     context: Mapped[Optional[Context]] = relationship("Context")
     blocked_by: Mapped[Optional[Todo]] = relationship("Todo", remote_side=[id])
+    tags: Mapped[list["TodoTag"]] = relationship("TodoTag", secondary="todo_tag_link")
 
     @classmethod
     def pending(cls, context: Optional[Context] = None, effort: Optional[WishlistEffort] = None,
-                include_deferred: bool = False) -> list[Todo]:
+                include_deferred: bool = False, tag: Optional["TodoTag"] = None) -> list[Todo]:
         q = select(cls).where(cls.status.in_([TodoStatus.PENDING, TodoStatus.IN_PROGRESS]))
         if context is not None:
             q = q.where(cls.context_id == context.id)
@@ -345,7 +346,12 @@ class Todo(Base):
             q = q.where(cls.effort == effort)
         if not include_deferred:
             q = q.where((cls.defer_until.is_(None)) | (cls.defer_until <= _now()))
-        return sess.scalars(q).all()
+        todos = sess.scalars(q).all()
+        if tag is not None:
+            # Match if the Todo carries `tag` itself, or any tag whose ancestor chain includes it
+            # (e.g. filtering by "grocery" also matches a Todo tagged only "winco").
+            todos = [t for t in todos if any(tag in tg.ancestors() for tg in t.tags)]
+        return todos
 
     @classmethod
     def create(cls, title: str, goal: Optional[Goal] = None, context: Optional[Context] = None,
@@ -362,7 +368,47 @@ class Todo(Base):
         effort_str = f" ({self.effort.value})" if self.effort else ""
         defer_str = f" defer_until={self.defer_until.strftime('%Y-%m-%d %H:%M')}" if self.defer_until else ""
         context_str = f" [{self.context.name}]" if self.context else ""
-        return f"<Todo #{self.id} {self.title!r} [{self.status.value}]{effort_str}{defer_str}{context_str}>"
+        tags_str = f" @{','.join(t.name for t in self.tags)}" if self.tags else ""
+        return f"<Todo #{self.id} {self.title!r} [{self.status.value}]{effort_str}{defer_str}{context_str}{tags_str}>"
+
+
+class TodoTag(Base):
+    """A GTD-style actionability tag (e.g. 'serbule-keep', 'has-carrots') -- distinct from Context
+    (which game/character), this is many-to-many: a Todo surfaces when any of its tags currently
+    applies (you're at that location, you're holding that item, etc).
+
+    parent_id forms a tag hierarchy (adjacency list) -- e.g. 'winco' has parent 'grocery', so a
+    Todo tagged only 'winco' still surfaces when filtering by the broader 'grocery' tag, without
+    needing to be tagged with both. Standard taxonomy-tree pattern, same shape as folder trees or
+    category trees; matches this project's own hierarchy-over-flat-lists principle."""
+    __tablename__ = "todo_tag"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    parent_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("todo_tag.id"), nullable=True)
+
+    parent: Mapped[Optional[TodoTag]] = relationship("TodoTag", remote_side=[id])
+
+    def ancestors(self) -> list[TodoTag]:
+        """This tag plus every parent up the chain, broadest last."""
+        chain = [self]
+        node = self
+        while node.parent is not None:
+            node = node.parent
+            chain.append(node)
+        return chain
+
+    def __repr__(self) -> str:
+        parent_str = f" -> {self.parent.name}" if self.parent else ""
+        return f"<TodoTag {self.name!r}{parent_str}>"
+
+
+class TodoTagLink(Base):
+    __tablename__ = "todo_tag_link"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    todo_id: Mapped[int] = mapped_column(Integer, ForeignKey("todo.id"), nullable=False)
+    tag_id: Mapped[int] = mapped_column(Integer, ForeignKey("todo_tag.id"), nullable=False)
 
 
 # ---------------------------------------------------------------------------

@@ -7,18 +7,20 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from decimal import Decimal
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional, Sequence
 
-import sqlite_vec
+import sqlite_vec  # type: ignore[import-untyped]  # no type stubs published for this package
 from sqlalchemy import (
     Boolean, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint,
     create_engine, event, inspect, select,
 )
 from sqlalchemy.orm import (
-    Mapped, MappedColumn, mapped_column, object_session,
+    Mapped, MappedColumn, Session, UOWTransaction, mapped_column, object_session,
     relationship, scoped_session, sessionmaker,
 )
-from sqlalchemy.orm.attributes import NO_VALUE, NEVER_SET
+from sqlalchemy.engine.interfaces import DBAPIConnection
+from sqlalchemy.orm.base import NO_VALUE, NEVER_SET
+from sqlalchemy.pool import ConnectionPoolEntry
 
 from base import Base, _now
 from mixins import HasWeight
@@ -28,7 +30,7 @@ _engine = create_engine(f"sqlite:///{_DB_PATH}", echo=False)
 
 
 @event.listens_for(_engine, "connect")
-def _set_pragma(conn, _):
+def _set_pragma(conn: DBAPIConnection, _: ConnectionPoolEntry) -> None:
     conn.enable_load_extension(True)
     sqlite_vec.load(conn)
     conn.enable_load_extension(False)
@@ -59,14 +61,14 @@ class ChangeLog(Base):
         return f"<ChangeLog {self.entity_table}#{self.entity_id}.{self.field}: {self.old_value!r} → {self.new_value!r}>"
 
 
-def tracked_column(*args, **kwargs) -> MappedColumn:
+def tracked_column(*args: Any, **kwargs: Any) -> MappedColumn[Any]:
     """Drop-in for mapped_column that records changes to ChangeLog on assignment."""
     col = mapped_column(*args, **kwargs)
     col.column.info["tracked"] = True
     return col
 
 
-def _on_tracked_set(target, value, oldvalue, initiator):
+def _on_tracked_set(target: Any, value: Any, oldvalue: Any, initiator: Any) -> None:
     if oldvalue is NO_VALUE or oldvalue is NEVER_SET:
         return
     if value == oldvalue:
@@ -86,7 +88,7 @@ def _on_tracked_set(target, value, oldvalue, initiator):
     session.add(entry)
 
 
-def _register_tracked_listeners(mapper, cls):
+def _register_tracked_listeners(mapper: Any, cls: Any) -> None:
     for attr_name, col_prop in mapper.columns.items():
         if col_prop.info.get("tracked"):
             attr = getattr(cls, attr_name)
@@ -262,7 +264,7 @@ class Person(Base):
         return obj
 
     @classmethod
-    def in_my_life(cls) -> list[Person]:
+    def in_my_life(cls) -> Sequence[Person]:
         """People who are part of my immediate surrounding life (excludes public figures)."""
         return sess.scalars(
             select(cls).where(cls.tier != PersonTier.PUBLIC_FIGURE).order_by(cls.closeness.desc())
@@ -277,13 +279,14 @@ class Person(Base):
             .where(cls.tier != PersonTier.PUBLIC_FIGURE)
             .where(cls.reach_out_every_days.isnot(None))
         ).all()
-        overdue = []
+        overdue: list[tuple[Person, Optional[int]]] = []
         for p in candidates:
             if p.last_contacted is None:
                 overdue.append((p, None))
             else:
                 last = p.last_contacted.replace(tzinfo=timezone.utc) if p.last_contacted.tzinfo is None else p.last_contacted
                 days_since = (now - last).days
+                assert p.reach_out_every_days is not None  # guaranteed by the isnot(None) filter above
                 if days_since >= p.reach_out_every_days:
                     overdue.append((p, days_since))
         overdue.sort(key=lambda x: (x[1] is None, -(x[1] or 0)))
@@ -311,7 +314,7 @@ class Goal(Base):
     todos: Mapped[list[Todo]] = relationship("Todo", back_populates="goal")
 
     @classmethod
-    def active(cls, context: Optional[Context] = None) -> list[Goal]:
+    def active(cls, context: Optional[Context] = None) -> Sequence[Goal]:
         q = select(cls).where(cls.status == GoalStatus.ACTIVE)
         if context is not None:
             q = q.where(cls.context_id == context.id)
@@ -353,7 +356,7 @@ class Todo(Base):
 
     @classmethod
     def pending(cls, context: Optional[Context] = None, effort: Optional[WishlistEffort] = None,
-                include_deferred: bool = False, tag: Optional["TodoTag"] = None) -> list[Todo]:
+                include_deferred: bool = False, tag: Optional["TodoTag"] = None) -> Sequence[Todo]:
         q = select(cls).where(cls.status.in_([TodoStatus.PENDING, TodoStatus.IN_PROGRESS]))
         if context is not None:
             q = q.where(cls.context_id == context.id)
@@ -482,7 +485,7 @@ class Daily(Base):
         return local_day_start.astimezone(timezone.utc)
 
     @classmethod
-    def active(cls, context: Optional[Context] = None) -> list[Daily]:
+    def active(cls, context: Optional[Context] = None) -> Sequence[Daily]:
         q = select(cls).where(cls.is_active.is_(True))
         if context is not None:
             q = q.where(cls.context_id == context.id)
@@ -502,10 +505,10 @@ class Daily(Base):
             q = q.where(cls.tier == tier)
         dailies = sess.scalars(q).all()
 
-        def _aware(dt):
+        def _aware(dt: datetime) -> datetime:
             return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
 
-        result = []
+        result: list[Daily] = []
         for d in dailies:
             if d.recurrence is not None:
                 if d.next_due_at is None or _aware(d.next_due_at) <= now:
@@ -529,6 +532,7 @@ class Daily(Base):
     def _compute_next_due(self, after: datetime) -> datetime:
         """The next due timestamp (UTC) per this Daily's recurrence rule, computed in local time
         so weekly/monthly targets land on the intended local calendar day."""
+        assert self.recurrence is not None, "_compute_next_due requires a recurrence rule to be set"
         settings = Settings.get()
         tz = settings.resolved_timezone()
         local_after = after.astimezone(tz)
@@ -587,7 +591,7 @@ class Item(Base):
     __mapper_args__ = {"polymorphic_on": "game", "polymorphic_identity": "item"}
 
     @classmethod
-    def by_game(cls, game: str) -> list[Item]:
+    def by_game(cls, game: str) -> Sequence[Item]:
         return sess.scalars(select(cls).filter_by(game=game)).all()
 
     def __repr__(self) -> str:
@@ -680,7 +684,7 @@ class Journal(Base):
     note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     @classmethod
-    def for_entity(cls, entity_type: str, entity_id: int) -> list[Journal]:
+    def for_entity(cls, entity_type: str, entity_id: int) -> Sequence[Journal]:
         return sess.scalars(
             select(cls).filter_by(entity_type=entity_type, entity_id=entity_id).order_by(cls.created_at)
         ).all()
@@ -812,7 +816,7 @@ class LogEntry(Base):
         return entry
 
     @classmethod
-    def recent(cls, domain: Optional[str] = None, context: Optional[Context] = None, limit: int = 20) -> list[LogEntry]:
+    def recent(cls, domain: Optional[str] = None, context: Optional[Context] = None, limit: int = 20) -> Sequence[LogEntry]:
         q = select(cls).order_by(cls.occurred_at.desc()).limit(limit)
         if domain is not None:
             q = q.where(cls.domain == domain)
@@ -844,7 +848,7 @@ class InboxItem(Base):
     triaged_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     @classmethod
-    def pending(cls, category: Optional[str] = None) -> list[InboxItem]:
+    def pending(cls, category: Optional[str] = None) -> Sequence[InboxItem]:
         q = select(cls).where(cls.triaged_at.is_(None))
         if category is not None:
             q = q.where(cls.category == category)
@@ -927,6 +931,7 @@ class Note(Base):
         raw = embed(query)
         vec = struct.pack(f"{len(raw)}f", *raw)
         mn = model_name()
+        params: tuple[bytes | str, ...]
         if collection == Collection.ALL:
             sql = "SELECT id, vec_distance_cosine(embedding, ?) AS dist FROM note WHERE embedding_model = ? ORDER BY dist ASC LIMIT 10"
             params = (vec, mn)
@@ -949,7 +954,7 @@ class Note(Base):
 
 
 @event.listens_for(sess, "before_flush")
-def _reembed_dirty_notes(session, flush_context, instances):
+def _reembed_dirty_notes(session: Session, flush_context: UOWTransaction, instances: Optional[Sequence[Any]]) -> None:
     for obj in session.dirty:
         if isinstance(obj, Note):
             changed = {attr.key for attr in inspect(obj).attrs if attr.history.has_changes()}
@@ -985,7 +990,7 @@ class Wishlist(Base):
         return self.importance * self.urgency * self.clarity // 10000
 
     @classmethod
-    def active(cls, effort: Optional[WishlistEffort] = None) -> list[Wishlist]:
+    def active(cls, effort: Optional[WishlistEffort] = None) -> Sequence[Wishlist]:
         q = select(cls).where(cls.status == WishlistStatus.ACTIVE)
         if effort is not None:
             q = q.where(cls.effort == effort)

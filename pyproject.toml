@@ -10,3 +10,6 @@ dependencies = [
     "sqlite-vec>=0.1.9",
     "watchfiles>=1.2.0",
 ]
+
+[project.optional-dependencies]
+anki = ["anki>=25.0"]

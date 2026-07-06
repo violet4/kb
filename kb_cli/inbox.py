@@ -26,7 +26,8 @@ def cmd_triage(args):
             print(f"InboxItem #{item_id}: not found", file=sys.stderr)
             continue
         item.triage()
-        print(f"InboxItem #{item_id}: {item.body[:60]!r} -> triaged")
+        body = item.body if len(item.body) <= 60 else item.body[:60] + "…"
+        print(f"InboxItem #{item_id}: {body!r} -> triaged")
     sess.commit()
 
 

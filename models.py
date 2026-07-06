@@ -744,7 +744,8 @@ class LogEntry(Base):
 
     def __repr__(self) -> str:
         when = self.occurred_at.strftime("%Y-%m-%d")
-        return f"<LogEntry #{self.id} [{when}]{' ' + self.domain if self.domain else ''}: {self.body[:60]!r}>"
+        body = self.body if len(self.body) <= 60 else self.body[:60] + "…"
+        return f"<LogEntry #{self.id} [{when}]{' ' + self.domain if self.domain else ''}: {body!r}>"
 
 
 # ---------------------------------------------------------------------------
@@ -784,7 +785,8 @@ class InboxItem(Base):
     def __repr__(self) -> str:
         state = "triaged" if self.triaged_at else "pending"
         tags = " ".join(f"[{t}]" for t in (self.category, self.source) if t)
-        return f"<InboxItem #{self.id} [{state}]{' ' + tags if tags else ''}: {self.body[:60]!r}>"
+        body = self.body if len(self.body) <= 60 else self.body[:60] + "…"
+        return f"<InboxItem #{self.id} [{state}]{' ' + tags if tags else ''}: {body!r}>"
 
 
 # ---------------------------------------------------------------------------

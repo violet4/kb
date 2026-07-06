@@ -4,12 +4,24 @@ Deliberately not imported by kb (the top-level entry point) or by any subparser
 registry -- only by individual command modules -- so there is no import cycle:
 dependencies flow one way, from command modules down to here.
 """
+import argparse
 import sys
+from typing import Iterable, Protocol, Type, TypeVar
 
 from sqlalchemy import select
+from sqlalchemy.orm import Mapped, Session
+
+from models import Journal
 
 
-def get_by_name(sess, cls, name):
+class _HasName(Protocol):
+    name: Mapped[str]
+
+
+T = TypeVar("T", bound=_HasName)
+
+
+def get_by_name(sess: Session, cls: Type[T], name: str) -> T:
     """Look up a unique-named row (PgNpc, PgMob, PgPlayer, PgCharacter, ...) or exit with an error."""
     obj = sess.scalars(select(cls).where(cls.name == name)).one_or_none()
     if obj is None:
@@ -18,14 +30,14 @@ def get_by_name(sess, cls, name):
     return obj
 
 
-def print_fields(fields):
+def print_fields(fields: Iterable[tuple[str, object]]) -> None:
     """Print (label, value) pairs, skipping None/empty values."""
     for label, value in fields:
         if value is not None and value != "":
             print(f"{label}: {value}")
 
 
-def add_history_arg(parser):
+def add_history_arg(parser: argparse.ArgumentParser) -> None:
     """Attach the shared --history [N] flag used by `show` subcommands with Journal history."""
     parser.add_argument(
         "--history", nargs="?", type=int, const=0, default=None,
@@ -33,7 +45,8 @@ def add_history_arg(parser):
     )
 
 
-def print_journal_history(journal_cls, entity_type, entity_id, history_arg, hint_cmd):
+def print_journal_history(journal_cls: Type[Journal], entity_type: str, entity_id: int,
+                          history_arg: int | None, hint_cmd: str) -> None:
     """Print Journal history for an entity per the shared --history convention.
 
     history_arg is args.history: None (show a one-line hint if history exists),

@@ -130,6 +130,18 @@ kb wishlist update ID [--title T] [--description D] [--price-min N] [--price-max
 scripts/model/download      # explicitly download the embedding model (only script that hits the network)
 ```
 
+## Flashcards
+
+```bash
+kb anki decks | deck-add NAME | notetype-init | search QUERY | add DECK NOTETYPE FIELD... [--tags T] | delete ID... | run [-f FILE|-i]
+```
+
+Anki must be closed first (it holds the collection file locked) — `kb anki` waits up to 60s rather than failing immediately if it's still open.
+
+`notetype` accepts a short alias instead of the full Anki name: `reverse`, `reverse-optional`, `type-answer`, or `reverse-type` (a custom note type via `notetype-init`, combining reversed-card generation with forced typed-answer recall in both directions — default to this one for new cards; see Flashcards principle in `CLAUDE_GLOBAL.md`).
+
+`kb anki run` mirrors `kb.py`'s interface (one-shot expression, `-f` script file, `-i` interactive REPL) but pre-loads `col` (the open `Collection`) instead of `sess`+models — Anki auto-saves most mutations itself, so there's no commit step, just `col.close()` on exit.
+
 ## Commits
 
 Use `with:<model>` instead of `Co-Authored-By:`.

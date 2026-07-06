@@ -131,6 +131,12 @@ Before writing or modifying any Python script, read `~/.claude/memory/python_scr
 
 Code is not only written to be executed — it should be readable, understandable, even enjoyable to read. Code should express intent directly. If a line requires the reader to trace through mechanics to understand what it's doing in the domain, that's a signal to find a better abstraction — not to paper over it with a comment. The goal is for each line to read as a domain operation, not an implementation detail.
 
+## Flashcards
+
+A card's front is a retrieval cue, not a topic label — it must contain enough of the back's own specific language to actually trigger recall of that exact content, not just gesture at the general subject. "Truncation indicator" as a front only cues "name this category" and can just as easily retrieve a concrete example (e.g. "ellipsis") as the intended definition; "What signals that text was cut off, without implying the rest is reachable?" cues the specific distinguishing clause that's actually being tested. When a card feels ambiguous or pulls the wrong answer to mind, break the back down into its component parts (what it is, what it does, what distinguishes it from a near-neighbor) and rewrite the front to mirror whichever part is the real point of the card.
+
+Write every card with the reverse-plus-typed-answer note type in mind by default — both directions (front→back and back→front) need independently clear, well-cued phrasing, since a card that only reads well in one direction will fail half its own reviews.
+
 ## Code Quality
 
 Complexity must be earned. Before adding a new mechanism, the existing code must be fully understandable. If it isn't, refactor first. Refactoring is part of building, not a separate activity. The codebase should never outgrow our ability to reason about it — if the next feature would make it harder to reason about, that's a signal to refactor first, then add. Code we're proud of is code we can fully understand with ease, even after time has passed and our own mental context has changed many times over.

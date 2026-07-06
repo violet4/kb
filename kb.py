@@ -10,10 +10,10 @@ from sqlalchemy import select
 
 from context import resolve_context
 from models import (
-    Base, ChangeLog, Collection, Context, CurrentContext, Daily, Goal, GoalStatus,
+    Base, ChangeLog, Collection, Context, CurrentContext, Daily, DailyTier, Goal, GoalStatus,
     InboxItem, IrlItem, Item, Journal, LogEntry, Note, Person, PersonTier, Purchase,
-    Reference, Todo, TodoStatus, Vendor, VendorItem, WishlistEffort, WishlistStatus,
-    Wishlist, WorkingMemory, init_db, sess,
+    Reference, Settings, Todo, TodoStatus, TodoTag, TodoTagLink, Vendor, VendorItem,
+    WishlistEffort, WishlistStatus, Wishlist, WorkingMemory, init_db, sess,
 )
 from models_pg import PgCharacter, PgDungeon, PgHangout, PgHangoutItem, PgItem, PgMob, PgMobDrop, PgNpc, PgNpcRace, PgNpcRelation, PgPlayer, PgQuest, PgSkill
 
@@ -53,6 +53,7 @@ ns = {
     "Context": Context,
     "CurrentContext": CurrentContext,
     "Daily": Daily,
+    "DailyTier": DailyTier,
     "Goal": Goal,
     "GoalStatus": GoalStatus,
     "InboxItem": InboxItem,
@@ -77,8 +78,11 @@ ns = {
     "PersonTier": PersonTier,
     "Purchase": Purchase,
     "Reference": Reference,
+    "Settings": Settings,
     "Todo": Todo,
     "TodoStatus": TodoStatus,
+    "TodoTag": TodoTag,
+    "TodoTagLink": TodoTagLink,
     "Vendor": Vendor,
     "VendorItem": VendorItem,
     "Wishlist": Wishlist,

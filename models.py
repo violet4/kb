@@ -4,6 +4,7 @@ from __future__ import annotations
 import enum
 import struct
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from decimal import Decimal
 from pathlib import Path
 from typing import Optional
@@ -204,6 +205,7 @@ class Settings(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     day_boundary_hour: Mapped[int] = mapped_column(Integer, nullable=False, default=4)
+    timezone: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     @classmethod
     def get(cls) -> Settings:
@@ -213,6 +215,19 @@ class Settings(Base):
             sess.add(row)
             sess.flush()
         return row
+
+    def resolved_timezone(self) -> ZoneInfo:
+        """The IANA zone to use: an explicit override if set, else auto-detected from
+        /etc/localtime (Linux's standard symlink to the system's zoneinfo file)."""
+        if self.timezone:
+            return ZoneInfo(self.timezone)
+        localtime = Path("/etc/localtime")
+        if localtime.is_symlink():
+            target = str(localtime.resolve())
+            marker = "zoneinfo/"
+            if marker in target:
+                return ZoneInfo(target.split(marker, 1)[1])
+        return ZoneInfo("UTC")
 
     def __repr__(self) -> str:
         return f"<Settings day_boundary_hour={self.day_boundary_hour}>"
@@ -441,11 +456,15 @@ class Daily(Base):
 
     @classmethod
     def _day_start(cls, now: datetime) -> datetime:
-        boundary_hour = Settings.get().day_boundary_hour
-        day_start = now.replace(hour=boundary_hour, minute=0, second=0, microsecond=0)
-        if now < day_start:
-            day_start -= timedelta(days=1)
-        return day_start
+        """The start of the current day-window, in UTC -- computed by applying
+        Settings.day_boundary_hour in local time (not UTC), so a late local bedtime
+        doesn't get treated as already past a UTC-midnight-adjacent cutoff."""
+        settings = Settings.get()
+        local_now = now.astimezone(settings.resolved_timezone())
+        local_day_start = local_now.replace(hour=settings.day_boundary_hour, minute=0, second=0, microsecond=0)
+        if local_now < local_day_start:
+            local_day_start -= timedelta(days=1)
+        return local_day_start.astimezone(timezone.utc)
 
     @classmethod
     def active(cls, context: Optional[Context] = None) -> list[Daily]:

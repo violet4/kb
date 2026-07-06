@@ -1,14 +1,16 @@
 """Journal operations."""
+import argparse
+
 from models import Journal, sess
 
 
-def cmd_add(args):
+def cmd_add(args: argparse.Namespace) -> None:
     entry = Journal.record(args.entity_type, args.entity_id, note=args.note)
     sess.commit()
     print(entry)
 
 
-def cmd_show(args):
+def cmd_show(args: argparse.Namespace) -> None:
     entries = Journal.for_entity(args.entity_type, args.entity_id)
     if not entries:
         print("No journal entries.")
@@ -25,7 +27,7 @@ def cmd_show(args):
             print(f"[{when}] {e.note}")
 
 
-def add_subparser(subparsers):
+def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     parser = subparsers.add_parser("journal", help="Journal operations")
     sub = parser.add_subparsers(dest="cmd", required=True)
 

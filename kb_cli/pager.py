@@ -4,6 +4,7 @@ State is external (no interactivity possible), keyed by a hash of the file's
 absolute path, stored under /tmp -- not meant to survive a reboot, and only
 one pager instance per file is supported at a time.
 """
+import argparse
 import hashlib
 import json
 import sys
@@ -26,9 +27,10 @@ def _load_state(state_path: Path, mtime: float) -> int:
         state = json.loads(state_path.read_text())
     except (json.JSONDecodeError, OSError):
         return 0
-    if state.get("mtime") != mtime:
+    if not isinstance(state, dict) or state.get("mtime") != mtime:
         return 0
-    return state.get("line_offset", 0)
+    line_offset = state.get("line_offset", 0)
+    return line_offset if isinstance(line_offset, int) else 0
 
 
 def _save_state(state_path: Path, abspath: str, mtime: float, line_offset: int) -> None:
@@ -42,7 +44,7 @@ def _truncate(line: str) -> str:
     return line
 
 
-def cmd_page(args):
+def cmd_page(args: argparse.Namespace) -> None:
     path = Path(args.file).resolve()
     if not path.is_file():
         print(f"pager: {args.file}: not found", file=sys.stderr)
@@ -75,7 +77,7 @@ def cmd_page(args):
         print(f"-- lines {offset + 1}-{new_offset} of {total}, run again to continue --", file=sys.stderr)
 
 
-def add_subparser(subparsers):
+def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     parser = subparsers.add_parser("pager", help="Page through a large file in chunks, one invocation per chunk")
     parser.add_argument("file")
     parser.add_argument("--lines", type=int, default=DEFAULT_LINES, help=f"Lines per chunk (default {DEFAULT_LINES})")

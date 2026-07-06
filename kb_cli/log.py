@@ -1,11 +1,12 @@
 """Log operations."""
+import argparse
 from datetime import datetime, timezone
 
 from context import resolve_context
 from models import LogEntry, sess
 
 
-def cmd_add(args):
+def cmd_add(args: argparse.Namespace) -> None:
     context = resolve_context(args.context)
     occurred_at = None
     if args.date:
@@ -15,7 +16,7 @@ def cmd_add(args):
     print(entry)
 
 
-def cmd_recent(args):
+def cmd_recent(args: argparse.Namespace) -> None:
     context = resolve_context(args.context) if args.context else None
     entries = LogEntry.recent(domain=args.domain, context=context, limit=args.limit)
     if not entries:
@@ -27,7 +28,7 @@ def cmd_recent(args):
         print(f"#{e.id} {when}{domain}: {e.body}")
 
 
-def add_subparser(subparsers):
+def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     parser = subparsers.add_parser("log", help="Log operations")
     sub = parser.add_subparsers(dest="cmd", required=True)
 

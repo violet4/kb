@@ -18,7 +18,23 @@ NOTETYPE_ALIASES = {
     "reverse": "Basic (and reversed card)",
     "reverse-optional": "Basic (optional reversed card)",
     "type-answer": "Basic (type in the answer)",
+    "reverse-type": "Reverse + Type",
 }
+
+# Custom note types kb creates itself (not shipped with Anki) -- each entry is
+# (name, fields, [(template_name, qfmt, afmt), ...]). `notetype-init` creates any
+# that don't already exist yet, idempotently, so a fresh Anki profile can be brought
+# up to the same state with one command.
+CUSTOM_NOTETYPES = [
+    (
+        "Reverse + Type",
+        ["Front", "Back"],
+        [
+            ("Card 1", "{{Front}}\n\n{{type:Back}}", "{{Front}}\n\n<hr id=answer>\n\n{{type:Back}}"),
+            ("Card 2", "{{Back}}\n\n{{type:Front}}", "{{Back}}\n\n<hr id=answer>\n\n{{type:Front}}"),
+        ],
+    ),
+]
 
 
 def _require_anki():
@@ -66,6 +82,27 @@ def cmd_decks(args):
         for deck in col.decks.all_names_and_ids():
             count = len(col.find_notes(f'deck:"{deck.name}"'))
             print(f"{deck.name} ({count} notes)")
+    finally:
+        col.close()
+
+
+def cmd_notetype_init(args):
+    col = _open_collection(args.collection)
+    try:
+        for name, fields, templates in CUSTOM_NOTETYPES:
+            if col.models.by_name(name) is not None:
+                print(f"Note type {name!r} already exists, skipping.")
+                continue
+            m = col.models.new(name)
+            for field_name in fields:
+                col.models.add_field(m, col.models.new_field(field_name))
+            for template_name, qfmt, afmt in templates:
+                t = col.models.new_template(template_name)
+                t["qfmt"] = qfmt
+                t["afmt"] = afmt
+                col.models.add_template(m, t)
+            col.models.add_dict(m)
+            print(f"Created note type {name!r}.")
     finally:
         col.close()
 
@@ -186,6 +223,9 @@ def add_subparser(subparsers):
 
     p_decks = sub.add_parser("decks", help="List decks and their note counts")
     p_decks.set_defaults(func=cmd_decks)
+
+    p_notetype_init = sub.add_parser("notetype-init", help="Create kb's custom note types (e.g. Reverse + Type) if not already present")
+    p_notetype_init.set_defaults(func=cmd_notetype_init)
 
     p_deck_add = sub.add_parser("deck-add", help="Create a new deck")
     p_deck_add.add_argument("name")

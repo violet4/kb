@@ -5,9 +5,12 @@ Anki process, unlike AnkiConnect. Requires the optional 'anki' dependency:
 uv sync --project ~/kb --extra anki
 """
 import sys
+import time
 from pathlib import Path
 
 DEFAULT_COLLECTION = Path.home() / ".local/share/Anki2/User 1/collection.anki2"
+LOCK_WAIT_TIMEOUT_SECONDS = 60
+LOCK_POLL_INTERVAL_SECONDS = 2
 
 
 def _require_anki():
@@ -29,11 +32,24 @@ def _open_collection(path: str):
     if not col_path.exists():
         print(f"kb anki: collection not found at {col_path}", file=sys.stderr)
         sys.exit(1)
-    try:
-        return Collection(str(col_path))
-    except Exception as e:
-        print(f"kb anki: could not open collection ({e}). Is Anki still running? Close it first.", file=sys.stderr)
-        sys.exit(1)
+
+    waited = 0
+    warned = False
+    while True:
+        try:
+            return Collection(str(col_path))
+        except Exception as e:
+            if "already open" not in str(e).lower():
+                print(f"kb anki: could not open collection ({e})", file=sys.stderr)
+                sys.exit(1)
+            if waited >= LOCK_WAIT_TIMEOUT_SECONDS:
+                print(f"kb anki: collection still locked after {LOCK_WAIT_TIMEOUT_SECONDS}s -- close Anki and try again.", file=sys.stderr)
+                sys.exit(1)
+            if not warned:
+                print("kb anki: Anki is still open -- close it to continue. Waiting...", file=sys.stderr)
+                warned = True
+            time.sleep(LOCK_POLL_INTERVAL_SECONDS)
+            waited += LOCK_POLL_INTERVAL_SECONDS
 
 
 def cmd_decks(args):
@@ -42,6 +58,19 @@ def cmd_decks(args):
         for deck in col.decks.all_names_and_ids():
             count = len(col.find_notes(f'deck:"{deck.name}"'))
             print(f"{deck.name} ({count} notes)")
+    finally:
+        col.close()
+
+
+def cmd_deck_add(args):
+    col = _open_collection(args.collection)
+    try:
+        existing = col.decks.by_name(args.name)
+        if existing is not None:
+            print(f"kb anki: deck {args.name!r} already exists", file=sys.stderr)
+            sys.exit(1)
+        col.decks.add_normal_deck_with_name(args.name)
+        print(f"Created deck {args.name!r}")
     finally:
         col.close()
 
@@ -111,6 +140,10 @@ def add_subparser(subparsers):
 
     p_decks = sub.add_parser("decks", help="List decks and their note counts")
     p_decks.set_defaults(func=cmd_decks)
+
+    p_deck_add = sub.add_parser("deck-add", help="Create a new deck")
+    p_deck_add.add_argument("name")
+    p_deck_add.set_defaults(func=cmd_deck_add)
 
     p_search = sub.add_parser("search", help="Search notes (Anki search syntax, e.g. 'deck:Spanish')")
     p_search.add_argument("query")

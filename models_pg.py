@@ -26,6 +26,16 @@ class PgItem(Item, HasStackSize):
 
 
 
+class PgSkill(Base):
+    __tablename__ = "pg_skill"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+
+    def __repr__(self) -> str:
+        return f"<PgSkill {self.name!r}>"
+
+
 class PgCharacter(Base):
     """A character you (the player) control."""
     __tablename__ = "pg_character"
@@ -35,7 +45,10 @@ class PgCharacter(Base):
     race: Mapped[str] = mapped_column(Text, nullable=False)
     is_druid: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_vampire: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    hangout_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("pg_hangout.id"), nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    hangout: Mapped[Optional["PgHangout"]] = relationship("PgHangout")
 
     def __repr__(self) -> str:
         extras = "+".join(e for e, v in [("druid", self.is_druid), ("vampire", self.is_vampire)] if v)
@@ -142,6 +155,46 @@ class PgMobDrop(Base):
 
     def __repr__(self) -> str:
         return f"<PgMobDrop {self.mob.name if self.mob else '?'} -> {self.item.name if self.item else '?'}>"
+
+
+class PgHangout(Base):
+    """A definition: what an NPC's hangout gives, not a per-character instance. A character has at
+    most one active hangout at a time (PgCharacter.hangout_id) -- its timer runs while logged out,
+    and rewards are granted on next login once duration_minutes has elapsed since logout. Exact
+    remaining-time tracking is deliberately not modeled; duration is fixed/canonical per hangout,
+    never randomized."""
+    __tablename__ = "pg_hangout"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    npc_id: Mapped[int] = mapped_column(Integer, ForeignKey("pg_npc.id"), nullable=False)
+    favor: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    skill_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("pg_skill.id"), nullable=True)
+    skill_xp: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_repeatable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    npc: Mapped[PgNpc] = relationship("PgNpc")
+    skill: Mapped[Optional[PgSkill]] = relationship("PgSkill")
+
+    def __repr__(self) -> str:
+        return f"<PgHangout {self.name!r} ({self.npc.name if self.npc else '?'})>"
+
+
+class PgHangoutItem(Base):
+    __tablename__ = "pg_hangout_item"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    hangout_id: Mapped[int] = mapped_column(Integer, ForeignKey("pg_hangout.id"), nullable=False)
+    item_id: Mapped[int] = mapped_column(Integer, ForeignKey("pg_item.id"), nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    hangout: Mapped[PgHangout] = relationship("PgHangout")
+    item: Mapped["PgItem"] = relationship("PgItem")
+
+    def __repr__(self) -> str:
+        return f"<PgHangoutItem {self.hangout.name if self.hangout else '?'}: {self.quantity}x {self.item.name if self.item else '?'}>"
 
 
 class PgPlayer(Base):

@@ -1,10 +1,19 @@
-"""Project Gorgon entity operations: npc, mob, mob-drop, item, player, character, relation."""
+"""Project Gorgon entity operations: npc, mob, mob-drop, item, player, character, relation, skill, hangout."""
+import sys
+
 from sqlalchemy import select
 
 from models import sess
-from models_pg import PgCharacter, PgItem, PgMob, PgMobDrop, PgNpc, PgNpcRelation, PgPlayer
+from models_pg import PgCharacter, PgHangout, PgHangoutItem, PgItem, PgMob, PgMobDrop, PgNpc, PgNpcRelation, PgPlayer, PgSkill
 
 from kb_cli._util import get_by_name, print_fields
+
+
+def _format_duration(minutes: int) -> str:
+    if minutes % 60 == 0:
+        hours = minutes // 60
+        return f"{hours}h"
+    return f"{minutes}m"
 
 
 # --- npc ---
@@ -165,6 +174,7 @@ def cmd_character_show(args):
         ("race", character.race),
         ("is_druid", character.is_druid),
         ("is_vampire", character.is_vampire),
+        ("hangout", character.hangout.name if character.hangout else None),
         ("notes", character.notes),
     ])
 
@@ -179,6 +189,21 @@ def cmd_character_update(args):
         character.is_vampire = args.vampire
     if args.notes is not None:
         character.notes = args.notes
+    sess.commit()
+    print(character)
+
+
+def cmd_character_set_hangout(args):
+    character = get_by_name(sess, PgCharacter, args.character)
+    hangout = get_by_name(sess, PgHangout, args.hangout)
+    character.hangout = hangout
+    sess.commit()
+    print(character)
+
+
+def cmd_character_clear_hangout(args):
+    character = get_by_name(sess, PgCharacter, args.character)
+    character.hangout = None
     sess.commit()
     print(character)
 
@@ -202,6 +227,80 @@ def cmd_relation_show(args):
         return
     for r in relations:
         print(r)
+
+
+# --- skill ---
+
+def cmd_skill_show(args):
+    skill = get_by_name(sess, PgSkill, args.name)
+    print_fields([("id", skill.id), ("name", skill.name)])
+
+
+def cmd_skill_add(args):
+    skill = PgSkill(name=args.name)
+    sess.add(skill)
+    sess.commit()
+    print(skill)
+
+
+def cmd_skill_list(args):
+    skills = sess.scalars(select(PgSkill).order_by(PgSkill.name)).all()
+    if not skills:
+        print("No skills.")
+        return
+    for s in skills:
+        print(s)
+
+
+# --- hangout ---
+
+def cmd_hangout_show(args):
+    hangout = get_by_name(sess, PgHangout, args.name)
+    items = sess.scalars(select(PgHangoutItem).where(PgHangoutItem.hangout_id == hangout.id)).all()
+    print_fields([
+        ("id", hangout.id),
+        ("name", hangout.name),
+        ("npc", hangout.npc.name if hangout.npc else None),
+        ("favor", hangout.favor),
+        ("skill", hangout.skill.name if hangout.skill else None),
+        ("skill_xp", hangout.skill_xp),
+        ("duration", _format_duration(hangout.duration_minutes)),
+        ("repeatable", hangout.is_repeatable),
+        ("notes", hangout.notes),
+    ])
+    for i in items:
+        print(f"  {i.quantity}x {i.item.name if i.item else '?'}")
+
+
+def cmd_hangout_add(args):
+    npc = get_by_name(sess, PgNpc, args.npc)
+    skill = get_by_name(sess, PgSkill, args.skill) if args.skill else None
+    hangout = PgHangout(
+        name=args.name, npc_id=npc.id, favor=args.favor,
+        skill_id=skill.id if skill else None, skill_xp=args.skill_xp,
+        duration_minutes=args.duration_minutes, is_repeatable=args.repeatable,
+        notes=args.notes or "",
+    )
+    sess.add(hangout)
+    sess.flush()
+    for spec in args.item or []:
+        item_name, _, qty = spec.rpartition(":")
+        if not item_name:
+            print(f"kb: --item expects NAME:QTY, got {spec!r}", file=sys.stderr)
+            sys.exit(1)
+        item = get_by_name(sess, PgItem, item_name)
+        sess.add(PgHangoutItem(hangout_id=hangout.id, item_id=item.id, quantity=int(qty)))
+    sess.commit()
+    print(hangout)
+
+
+def cmd_hangout_list(args):
+    hangouts = sess.scalars(select(PgHangout).order_by(PgHangout.name)).all()
+    if not hangouts:
+        print("No hangouts.")
+        return
+    for h in hangouts:
+        print(h)
 
 
 def add_subparser(subparsers):
@@ -258,8 +357,34 @@ def add_subparser(subparsers):
     p.add_argument("--no-vampire", dest="vampire", action="store_false")
     p.add_argument("--notes")
     p.set_defaults(func=cmd_character_update)
+    p = character_sub.add_parser("set-hangout", help="Set the character's currently active hangout")
+    p.add_argument("character"); p.add_argument("hangout"); p.set_defaults(func=cmd_character_set_hangout)
+    p = character_sub.add_parser("clear-hangout", help="Clear the character's active hangout")
+    p.add_argument("character"); p.set_defaults(func=cmd_character_clear_hangout)
 
     p_relation = sub.add_parser("relation", help="Your character's favor/standing with an NPC")
     relation_sub = p_relation.add_subparsers(dest="cmd", required=True)
     p = relation_sub.add_parser("add"); p.add_argument("character"); p.add_argument("npc"); p.add_argument("favor"); p.add_argument("--notes"); p.set_defaults(func=cmd_relation_add)
     p = relation_sub.add_parser("show"); p.add_argument("character"); p.set_defaults(func=cmd_relation_show)
+
+    p_skill = sub.add_parser("skill", help="Skills (used by hangouts and eventually other systems)")
+    skill_sub = p_skill.add_subparsers(dest="cmd", required=True)
+    p = skill_sub.add_parser("show"); p.add_argument("name"); p.set_defaults(func=cmd_skill_show)
+    p = skill_sub.add_parser("add"); p.add_argument("name"); p.set_defaults(func=cmd_skill_add)
+    p = skill_sub.add_parser("list"); p.set_defaults(func=cmd_skill_list)
+
+    p_hangout = sub.add_parser("hangout", help="NPC hangout definitions (favor/xp/item rewards)")
+    hangout_sub = p_hangout.add_subparsers(dest="cmd", required=True)
+    p = hangout_sub.add_parser("show"); p.add_argument("name"); p.set_defaults(func=cmd_hangout_show)
+    p = hangout_sub.add_parser("add")
+    p.add_argument("name")
+    p.add_argument("--npc", required=True, help="NPC name (must already exist)")
+    p.add_argument("--favor", type=int, default=0)
+    p.add_argument("--skill", help="Skill name (must already exist) that gets xp, if any")
+    p.add_argument("--skill-xp", type=int)
+    p.add_argument("--duration-minutes", type=int, required=True)
+    p.add_argument("--repeatable", action="store_true")
+    p.add_argument("--item", action="append", metavar="NAME:QTY", help="Item reward, repeatable flag for multiple items")
+    p.add_argument("--notes")
+    p.set_defaults(func=cmd_hangout_add)
+    p = hangout_sub.add_parser("list"); p.set_defaults(func=cmd_hangout_list)

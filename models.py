@@ -438,6 +438,17 @@ class Daily(Base):
     OPTIONAL stays hidden unless explicitly requested. last_completed_at + Settings.day_boundary_hour
     is what "completed today" is checked against, so a late bedtime doesn't immediately re-surface
     the next day's dailies at literal midnight.
+
+    recurrence is an optional cadence rule (grammar below); when set, completing the Daily computes
+    and stores next_due_at once, so `due()` lookups are a cheap timestamp comparison rather than
+    recomputing cadence math on every read. When recurrence is unset, `due()` falls back to the
+    plain day-boundary check (last_completed_at vs. the current day-window).
+
+    Recurrence grammar:
+      "daily"        -- due again at the next day-boundary after completion (equivalent to unset).
+      "every:N"      -- due again N days after completion (e.g. "every:2" for alternating-day items).
+      "weekly:DAY"   -- due again on the next occurrence of DAY ("MON".."SUN") after completion.
+      "monthly:D"    -- due again on day D of the next applicable month after completion (D 1-28).
     """
     __tablename__ = "daily"
 
@@ -446,13 +457,17 @@ class Daily(Base):
     context_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("context.id"), nullable=True)
     domain: Mapped[str] = mapped_column(String, nullable=False, default="irl")
     tier: Mapped[DailyTier] = mapped_column(Enum(DailyTier, create_constraint=True, validate_strings=True), nullable=False, default=DailyTier.CRITICAL)
+    recurrence: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     last_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_due_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     location: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     reward: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     context: Mapped[Optional[Context]] = relationship("Context")
+
+    _WEEKDAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
 
     @classmethod
     def _day_start(cls, now: datetime) -> datetime:
@@ -475,7 +490,9 @@ class Daily(Base):
 
     @classmethod
     def due(cls, domain: Optional[str] = None, tier: Optional[DailyTier] = None) -> list[Daily]:
-        """Active dailies not yet completed since the current day-boundary window started."""
+        """Active dailies currently due: dailies with a recurrence rule are due once next_due_at
+        has passed; dailies without one fall back to the plain day-boundary check against
+        last_completed_at."""
         now = _now()
         day_start = cls._day_start(now)
         q = select(cls).where(cls.is_active.is_(True))
@@ -484,24 +501,66 @@ class Daily(Base):
         if tier is not None:
             q = q.where(cls.tier == tier)
         dailies = sess.scalars(q).all()
-        return [
-            d for d in dailies
-            if d.last_completed_at is None
-            or (d.last_completed_at.replace(tzinfo=timezone.utc) if d.last_completed_at.tzinfo is None else d.last_completed_at) < day_start
-        ]
+
+        def _aware(dt):
+            return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+
+        result = []
+        for d in dailies:
+            if d.recurrence is not None:
+                if d.next_due_at is None or _aware(d.next_due_at) <= now:
+                    result.append(d)
+            elif d.last_completed_at is None or _aware(d.last_completed_at) < day_start:
+                result.append(d)
+        return result
 
     @classmethod
     def create(cls, description: str, context: Optional[Context] = None, domain: str = "irl",
-               tier: DailyTier = DailyTier.CRITICAL, location: Optional[str] = None,
-               reward: Optional[str] = None, notes: Optional[str] = None) -> Daily:
+               tier: DailyTier = DailyTier.CRITICAL, recurrence: Optional[str] = None,
+               location: Optional[str] = None, reward: Optional[str] = None,
+               notes: Optional[str] = None) -> Daily:
         daily = cls(description=description, context_id=context.id if context else None,
-                    domain=domain, tier=tier, location=location, reward=reward, notes=notes)
+                    domain=domain, tier=tier, recurrence=recurrence, location=location,
+                    reward=reward, notes=notes)
         sess.add(daily)
         sess.flush()
         return daily
 
+    def _compute_next_due(self, after: datetime) -> datetime:
+        """The next due timestamp (UTC) per this Daily's recurrence rule, computed in local time
+        so weekly/monthly targets land on the intended local calendar day."""
+        settings = Settings.get()
+        tz = settings.resolved_timezone()
+        local_after = after.astimezone(tz)
+        kind, _, arg = self.recurrence.partition(":")
+
+        if kind == "daily" or not kind:
+            local_next = local_after
+        elif kind == "every":
+            local_next = local_after + timedelta(days=int(arg))
+        elif kind == "weekly":
+            target = Daily._WEEKDAYS.index(arg.upper())
+            days_ahead = (target - local_after.weekday()) % 7
+            days_ahead = days_ahead or 7
+            local_next = local_after + timedelta(days=days_ahead)
+        elif kind == "monthly":
+            day = int(arg)
+            year, month = local_after.year, local_after.month + 1
+            if month > 12:
+                month = 1
+                year += 1
+            local_next = local_after.replace(year=year, month=month, day=day)
+        else:
+            raise ValueError(f"unknown recurrence kind: {kind!r}")
+
+        local_next = local_next.replace(hour=settings.day_boundary_hour, minute=0, second=0, microsecond=0)
+        return local_next.astimezone(timezone.utc)
+
     def complete(self) -> None:
-        self.last_completed_at = _now()
+        now = _now()
+        self.last_completed_at = now
+        if self.recurrence is not None:
+            self.next_due_at = self._compute_next_due(now)
 
     def __repr__(self) -> str:
         return f"<Daily #{self.id} {self.description!r}>"

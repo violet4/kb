@@ -1,5 +1,6 @@
 """Daily operations."""
 import sys
+from datetime import timezone
 
 from sqlalchemy import select
 
@@ -7,6 +8,13 @@ from context import resolve_context
 from models import Daily, DailyTier, sess
 
 from kb_cli._util import print_fields
+
+
+def _local_str(dt):
+    if dt is None:
+        return None
+    aware = dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+    return aware.astimezone().strftime("%Y-%m-%d %H:%M")
 
 
 def cmd_show(args):
@@ -20,7 +28,9 @@ def cmd_show(args):
         ("active", daily.is_active),
         ("domain", daily.domain),
         ("tier", daily.tier.value),
-        ("last_completed_at", daily.last_completed_at.strftime("%Y-%m-%d %H:%M") if daily.last_completed_at else None),
+        ("recurrence", daily.recurrence),
+        ("last_completed_at", _local_str(daily.last_completed_at)),
+        ("next_due_at", _local_str(daily.next_due_at)),
         ("context", daily.context.name if daily.context else None),
         ("location", daily.location),
         ("reward", daily.reward),
@@ -55,14 +65,17 @@ def cmd_complete(args):
             print(f"Daily #{daily_id}: not found", file=sys.stderr)
             continue
         daily.complete()
-        print(f"Daily #{daily_id}: {daily.description!r} -> completed for today")
+        if daily.recurrence is not None:
+            print(f"Daily #{daily_id}: {daily.description!r} -> completed, next due {_local_str(daily.next_due_at)}")
+        else:
+            print(f"Daily #{daily_id}: {daily.description!r} -> completed for today")
     sess.commit()
 
 
 def cmd_add(args):
     context = resolve_context(args.context)
     daily = Daily.create(args.description, context=context, domain=args.domain, tier=DailyTier(args.tier),
-                         location=args.location, reward=args.reward, notes=args.notes)
+                         recurrence=args.recurrence, location=args.location, reward=args.reward, notes=args.notes)
     sess.commit()
     print(daily)
 
@@ -78,6 +91,8 @@ def cmd_update(args):
         daily.domain = args.domain
     if args.tier is not None:
         daily.tier = DailyTier(args.tier)
+    if args.recurrence is not None:
+        daily.recurrence = args.recurrence
     if args.location is not None:
         daily.location = args.location
     if args.reward is not None:
@@ -130,6 +145,7 @@ def add_subparser(subparsers):
     p_add.add_argument("description")
     p_add.add_argument("--domain", default="irl", help="'irl' (default) or 'pg'")
     p_add.add_argument("--tier", default="critical", choices=[t.value for t in DailyTier])
+    p_add.add_argument("--recurrence", help="'daily', 'every:N', 'weekly:MON'..'SUN', or 'monthly:D' (day 1-28)")
     p_add.add_argument("--location")
     p_add.add_argument("--reward")
     p_add.add_argument("--notes")
@@ -141,6 +157,7 @@ def add_subparser(subparsers):
     p_update.add_argument("--description")
     p_update.add_argument("--domain")
     p_update.add_argument("--tier", choices=[t.value for t in DailyTier])
+    p_update.add_argument("--recurrence", help="'daily', 'every:N', 'weekly:MON'..'SUN', or 'monthly:D' (day 1-28)")
     p_update.add_argument("--location")
     p_update.add_argument("--reward")
     p_update.add_argument("--notes")

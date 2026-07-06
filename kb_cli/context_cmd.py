@@ -1,22 +1,24 @@
 """Context operations."""
+import argparse
+
 from sqlalchemy import select
 
 from context import switch_current
 from models import Context, CurrentContext, sess
 
 
-def cmd_current(args):
+def cmd_current(args: argparse.Namespace) -> None:
     context = CurrentContext.get()
     print(context.name if context else "(none)")
 
 
-def cmd_switch(args):
+def cmd_switch(args: argparse.Namespace) -> None:
     context = switch_current(args.name)
     sess.commit()
     print(f"Current context: {context.name!r}")
 
 
-def cmd_list(args):
+def cmd_list(args: argparse.Namespace) -> None:
     contexts = sess.scalars(select(Context).order_by(Context.name)).all()
     if not contexts:
         print("No contexts yet.")
@@ -27,7 +29,7 @@ def cmd_list(args):
         print(f"#{c.id} {c.name}{marker}")
 
 
-def add_subparser(subparsers):
+def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     parser = subparsers.add_parser("context", help="Context operations")
     sub = parser.add_subparsers(dest="cmd", required=True)
 

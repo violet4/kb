@@ -5,6 +5,30 @@ from datetime import datetime
 from models import Daily, DailyTier, Goal, InboxItem, Person, Todo, Wishlist
 
 
+def anki_section():
+    try:
+        from anki.collection import Collection
+    except ImportError:
+        return None
+
+    from kb_cli.anki import DEFAULT_COLLECTION
+
+    if not DEFAULT_COLLECTION.exists():
+        return None
+    try:
+        col = Collection(str(DEFAULT_COLLECTION))
+    except Exception:
+        return "=== ANKI ===\nAnki is currently open — close it to see due-card count."
+    try:
+        due = sum(col.sched.counts())
+    finally:
+        col.close()
+
+    if due == 0:
+        return None
+    return f"=== ANKI ===\n{due} card(s) due — kb anki decks"
+
+
 def dailies_section():
     critical = Daily.due(domain="irl", tier=DailyTier.CRITICAL)
     lines = []
@@ -83,6 +107,7 @@ def inbox_section():
 
 
 SECTIONS = {
+    "anki": anki_section,
     "dailies": dailies_section,
     "goals": goals_section,
     "todos": todos_section,

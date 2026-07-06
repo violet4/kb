@@ -12,6 +12,12 @@ DEFAULT_COLLECTION = Path.home() / ".local/share/Anki2/User 1/collection.anki2"
 LOCK_WAIT_TIMEOUT_SECONDS = 60
 LOCK_POLL_INTERVAL_SECONDS = 2
 
+NOTETYPE_ALIASES = {
+    "reverse": "Basic (and reversed card)",
+    "reverse-optional": "Basic (optional reversed card)",
+    "type-answer": "Basic (type in the answer)",
+}
+
 
 def _require_anki():
     try:
@@ -98,9 +104,10 @@ def cmd_add(args):
             deck_id = col.decks.add_normal_deck_with_name(args.deck).id
         else:
             deck_id = deck["id"]
-        notetype = col.models.by_name(args.notetype)
+        notetype_name = NOTETYPE_ALIASES.get(args.notetype, args.notetype)
+        notetype = col.models.by_name(notetype_name)
         if notetype is None:
-            print(f"kb anki: note type {args.notetype!r} not found", file=sys.stderr)
+            print(f"kb anki: note type {notetype_name!r} not found", file=sys.stderr)
             sys.exit(1)
         note = col.new_note(notetype)
         for field, value in zip(note.keys(), args.fields):
@@ -151,7 +158,7 @@ def add_subparser(subparsers):
 
     p_add = sub.add_parser("add", help="Add a note")
     p_add.add_argument("deck")
-    p_add.add_argument("notetype", help="e.g. 'Basic'")
+    p_add.add_argument("notetype", help="e.g. 'Basic', or an alias: reverse, reverse-optional, type-answer")
     p_add.add_argument("fields", nargs="+", help="Field values in order, e.g. Front Back for a Basic note")
     p_add.add_argument("--tags", help="Space-separated tags")
     p_add.set_defaults(func=cmd_add)

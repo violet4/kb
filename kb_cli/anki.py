@@ -87,14 +87,19 @@ def cmd_add(args):
 def cmd_delete(args):
     col = _open_collection(args.collection)
     try:
-        existing = set(col.find_notes(""))
-        to_delete = [nid for nid in args.ids if nid in existing]
-        missing = [nid for nid in args.ids if nid not in existing]
-        for nid in missing:
-            print(f"kb anki: note {nid} not found", file=sys.stderr)
+        to_delete = []
+        for nid in args.ids:
+            try:
+                note = col.get_note(nid)
+            except Exception:
+                print(f"kb anki: note {nid} not found", file=sys.stderr)
+                continue
+            fields = " | ".join(note.values())
+            print(f"Deleting {nid}: {fields}")
+            to_delete.append(nid)
         if to_delete:
             col.remove_notes(to_delete)
-            print(f"Deleted {len(to_delete)} note(s): {', '.join(map(str, to_delete))}")
+            print(f"Deleted {len(to_delete)} note(s).")
     finally:
         col.close()
 

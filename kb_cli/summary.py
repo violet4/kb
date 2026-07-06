@@ -15,7 +15,7 @@ def dailies_section():
 
     other_count = len(Daily.due()) - len(critical)
     if other_count > 0:
-        lines.append(f"({other_count} non-critical/game daily(s) also due today, not yet completed — kb daily list --all)")
+        lines.append(f"({other_count} non-critical/game daily(s) also due today — kb daily list --all)")
 
     return "\n".join(lines) if lines else None
 

@@ -30,7 +30,12 @@ def cmd_show(args):
 
 def cmd_list(args):
     if args.all:
-        dailies = sess.scalars(select(Daily)).all()
+        q = select(Daily)
+        if args.domain:
+            q = q.where(Daily.domain == args.domain)
+        if args.tier:
+            q = q.where(Daily.tier == DailyTier(args.tier))
+        dailies = sess.scalars(q).all()
     else:
         domain = args.domain
         tier = DailyTier(args.tier) if args.tier else None

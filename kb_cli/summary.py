@@ -37,9 +37,16 @@ def dailies_section():
         for d in critical:
             lines.append(f"- #{d.id} {d.description}")
 
-    other_count = len(Daily.due()) - len(critical)
-    if other_count > 0:
-        lines.append(f"({other_count} non-critical/game daily(s) also due today — kb daily list --all)")
+    all_due = Daily.due()
+    non_critical_irl = [d for d in all_due if d.domain == "irl" and d.tier != DailyTier.CRITICAL]
+    game = [d for d in all_due if d.domain != "irl"]
+    hints = []
+    if non_critical_irl:
+        hints.append(f"{len(non_critical_irl)} non-critical")
+    if game:
+        hints.append(f"{len(game)} game")
+    if hints:
+        lines.append(f"({'; '.join(hints)} also due today — kb daily list --all)")
 
     return "\n".join(lines) if lines else None
 

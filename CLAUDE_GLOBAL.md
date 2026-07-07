@@ -32,9 +32,15 @@ Return the weakest/most honest type the operation actually produces (e.g. `Seque
 
 When a helper needs to work generically across multiple classes that share one attribute/behavior, prefer a real mixin (nominal typing, actual inheritance) over an enumerated `Union[ClassA, ClassB, ...]` or a structural `Protocol`, once more than one class shares the trait — a mixin scales for free as new classes adopt it, where a hand-maintained Union has to be remembered and edited every time, and a Protocol can silently fail to structurally match in frameworks (e.g. SQLAlchemy declarative models) whose class-level attribute types don't line up with what's written in the class body. Verify the chosen approach against a real multi-class case before committing to it, the same as any other edge-case assumption.
 
-## Network & Privacy
+## Security
+
+### Network & Privacy
 
 Network calls and cloud connections are not taken lightly. Never silently suppress warnings that could indicate unexpected network activity. Code should default to offline/local operation; any network call must be explicit, intentional, and visible. Phone-home behavior, telemetry, and automatic update checks are unwelcome unless deliberately opted into.
+
+### Supply Chain
+
+Before adding any new third-party dependency (a package, a library, a tool), check its supply-chain provenance as an explicit, unprompted step — the same way `check-schema` runs automatically before a migration, not something to remember only when asked. Check maintainer identity and reputation, release history and longevity, real adoption by known projects, and whether the package name is a "soft fork" or lookalike of a more established one (a low-review clone, a broken/dead homepage, a suspiciously recent takeover of an old name). See kb-engineering-28 for the full checklist and a worked example (AnkiConnect rejected, `pre-commit` accepted) of applying it.
 
 ## Shell Tools
 

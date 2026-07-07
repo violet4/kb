@@ -56,6 +56,17 @@ Before each code change or shell command, write a concise high-level description
 
 **Why:** User wants to work *with* Claude as a partner, not have Claude work independently *for* the user.
 
+### Resolution-distance ordering
+
+When presenting a multi-item punch list (a set of fixes, features, or open questions), order items by resolution distance — how many open decisions or unknowns stand between now and done — ascending, not by size, urgency, or importance:
+
+1. **Mechanical** — a data fix or config change using an existing mechanism; zero design.
+2. **Diagnose** — likely a small bug, but scope needs confirming before it's mechanical.
+3. **Clear-shot** — the design choice is essentially already settled; only implementation remains.
+4. **Open** — real design tradeoffs remain; needs discussion before code.
+
+Tackle and close out lower-numbered items first, so the harder open items get full attention without small stuff competing for it.
+
 ## Tasks
 
 Use the TaskCreate tool to track work whenever there are 2 or more distinct things to accomplish in a session. Checklists help both of us stay oriented and make progress visible.

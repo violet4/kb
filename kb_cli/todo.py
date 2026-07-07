@@ -1,4 +1,5 @@
 """Todo operations."""
+import argparse
 import sys
 from datetime import datetime, timedelta, timezone
 
@@ -27,7 +28,7 @@ def _parse_defer_until(raw: str) -> datetime:
     return candidate
 
 
-def cmd_show(args):
+def cmd_show(args: argparse.Namespace) -> None:
     for i, todo_id in enumerate(args.ids):
         if i > 0:
             print()
@@ -54,7 +55,7 @@ def cmd_show(args):
         print_journal_history(Journal, "Todo", todo.id, args.history, f"journal show Todo {todo.id} or kb todo show {todo.id} --history [N]")
 
 
-def cmd_add(args):
+def cmd_add(args: argparse.Namespace) -> None:
     effort = WishlistEffort(args.effort) if args.effort else None
     defer_until = _parse_defer_until(args.defer_until) if args.defer_until else None
     context = resolve_context(args.context)
@@ -63,7 +64,7 @@ def cmd_add(args):
     print(todo)
 
 
-def cmd_update(args):
+def cmd_update(args: argparse.Namespace) -> None:
     todo = sess.get(Todo, args.id)
     if todo is None:
         print(f"Todo #{args.id}: not found", file=sys.stderr)
@@ -84,7 +85,7 @@ def cmd_update(args):
     print(todo)
 
 
-def cmd_complete(args):
+def cmd_complete(args: argparse.Namespace) -> None:
     for todo_id in args.ids:
         todo = sess.get(Todo, todo_id)
         if todo is None:
@@ -95,7 +96,7 @@ def cmd_complete(args):
     sess.commit()
 
 
-def cmd_pending(args):
+def cmd_pending(args: argparse.Namespace) -> None:
     effort = WishlistEffort(args.effort) if args.effort else None
     tag = get_by_name(sess, TodoTag, args.tag) if args.tag else None
     todos = Todo.pending(effort=effort, include_deferred=args.all, tag=tag)
@@ -104,13 +105,15 @@ def cmd_pending(args):
         return
     now = datetime.now(timezone.utc)
     for t in todos:
-        defer_until = t.defer_until.replace(tzinfo=timezone.utc) if t.defer_until and t.defer_until.tzinfo is None else t.defer_until
-        deferred = defer_until and defer_until > now
-        marker = f" (deferred until {defer_until.strftime('%Y-%m-%d %H:%M')})" if deferred else ""
+        marker = ""
+        if t.defer_until is not None:
+            defer_until = t.defer_until.replace(tzinfo=timezone.utc) if t.defer_until.tzinfo is None else t.defer_until
+            if defer_until > now:
+                marker = f" (deferred until {defer_until.strftime('%Y-%m-%d %H:%M')})"
         print(f"{t!r}{marker}")
 
 
-def cmd_tag(args):
+def cmd_tag(args: argparse.Namespace) -> None:
     todo = sess.get(Todo, args.id)
     if todo is None:
         print(f"Todo #{args.id}: not found", file=sys.stderr)
@@ -127,7 +130,7 @@ def cmd_tag(args):
     print(todo)
 
 
-def cmd_untag(args):
+def cmd_untag(args: argparse.Namespace) -> None:
     todo = sess.get(Todo, args.id)
     if todo is None:
         print(f"Todo #{args.id}: not found", file=sys.stderr)
@@ -140,7 +143,7 @@ def cmd_untag(args):
     print(todo)
 
 
-def add_subparser(subparsers):
+def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     parser = subparsers.add_parser("todo", help="Todo operations")
     sub = parser.add_subparsers(dest="cmd", required=True)
 

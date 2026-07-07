@@ -620,7 +620,7 @@ class Daily(Base):
         kind, _, arg = self.recurrence.partition(":")
 
         if kind == "daily" or not kind:
-            local_next = local_after
+            local_next = local_after + timedelta(days=1)
         elif kind == "every":
             local_next = local_after + timedelta(days=int(arg))
         elif kind == "weekly":

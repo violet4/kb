@@ -1,6 +1,8 @@
 """Daily operations."""
+import argparse
 import sys
-from datetime import timezone
+from datetime import datetime, timezone
+from typing import Sequence
 
 from sqlalchemy import select
 
@@ -10,14 +12,14 @@ from models import Daily, DailyTier, sess
 from kb_cli._util import print_fields
 
 
-def _local_str(dt):
+def _local_str(dt: datetime | None) -> str | None:
     if dt is None:
         return None
     aware = dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
     return aware.astimezone().strftime("%Y-%m-%d %H:%M")
 
 
-def cmd_show(args):
+def cmd_show(args: argparse.Namespace) -> None:
     daily = sess.get(Daily, args.id)
     if daily is None:
         print(f"Daily #{args.id}: not found", file=sys.stderr)
@@ -38,7 +40,8 @@ def cmd_show(args):
     ])
 
 
-def cmd_list(args):
+def cmd_list(args: argparse.Namespace) -> None:
+    dailies: Sequence[Daily]
     if args.all:
         q = select(Daily)
         if args.domain:
@@ -58,7 +61,7 @@ def cmd_list(args):
         print(f"{d!r}{marker}")
 
 
-def cmd_complete(args):
+def cmd_complete(args: argparse.Namespace) -> None:
     for daily_id in args.ids:
         daily = sess.get(Daily, daily_id)
         if daily is None:
@@ -72,7 +75,7 @@ def cmd_complete(args):
     sess.commit()
 
 
-def cmd_add(args):
+def cmd_add(args: argparse.Namespace) -> None:
     context = resolve_context(args.context)
     daily = Daily.create(args.description, context=context, domain=args.domain, tier=DailyTier(args.tier),
                          recurrence=args.recurrence, location=args.location, reward=args.reward, notes=args.notes)
@@ -80,7 +83,7 @@ def cmd_add(args):
     print(daily)
 
 
-def cmd_update(args):
+def cmd_update(args: argparse.Namespace) -> None:
     daily = sess.get(Daily, args.id)
     if daily is None:
         print(f"Daily #{args.id}: not found", file=sys.stderr)
@@ -105,7 +108,7 @@ def cmd_update(args):
     print(daily)
 
 
-def cmd_activate(args):
+def cmd_activate(args: argparse.Namespace) -> None:
     for daily_id in args.ids:
         daily = sess.get(Daily, daily_id)
         if daily is None:
@@ -116,7 +119,7 @@ def cmd_activate(args):
     sess.commit()
 
 
-def cmd_deactivate(args):
+def cmd_deactivate(args: argparse.Namespace) -> None:
     for daily_id in args.ids:
         daily = sess.get(Daily, daily_id)
         if daily is None:
@@ -127,7 +130,7 @@ def cmd_deactivate(args):
     sess.commit()
 
 
-def add_subparser(subparsers):
+def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     parser = subparsers.add_parser("daily", help="Daily operations")
     sub = parser.add_subparsers(dest="cmd", required=True)
 

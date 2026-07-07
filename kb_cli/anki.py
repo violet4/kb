@@ -4,11 +4,13 @@ Anki must be closed while this runs (SQLite file lock) -- this does NOT talk to 
 Anki process, unlike AnkiConnect. Requires the optional 'anki' dependency:
 uv sync --project ~/kb --extra anki
 """
+import argparse
 import ast
 import code
 import sys
 import time
 from pathlib import Path
+from typing import Any, Type
 
 DEFAULT_COLLECTION = Path.home() / ".local/share/Anki2/User 1/collection.anki2"
 LOCK_WAIT_TIMEOUT_SECONDS = 60
@@ -37,10 +39,11 @@ CUSTOM_NOTETYPES = [
 ]
 
 
-def _require_anki():
+def _require_anki() -> Type[Any]:
     try:
-        from anki.collection import Collection
-        return Collection
+        from anki.collection import Collection  # type: ignore[import-not-found]  # no stubs published
+        result: Type[Any] = Collection
+        return result
     except ImportError:
         print(
             "kb anki: the 'anki' package is not installed.\n"
@@ -50,7 +53,7 @@ def _require_anki():
         sys.exit(1)
 
 
-def _open_collection(path: str):
+def _open_collection(path: str) -> Any:
     Collection = _require_anki()
     col_path = Path(path).expanduser()
     if not col_path.exists():
@@ -76,7 +79,7 @@ def _open_collection(path: str):
             waited += LOCK_POLL_INTERVAL_SECONDS
 
 
-def cmd_decks(args):
+def cmd_decks(args: argparse.Namespace) -> None:
     col = _open_collection(args.collection)
     try:
         for deck in col.decks.all_names_and_ids():
@@ -86,7 +89,7 @@ def cmd_decks(args):
         col.close()
 
 
-def cmd_notetype_init(args):
+def cmd_notetype_init(args: argparse.Namespace) -> None:
     col = _open_collection(args.collection)
     try:
         for name, fields, templates in CUSTOM_NOTETYPES:
@@ -107,7 +110,7 @@ def cmd_notetype_init(args):
         col.close()
 
 
-def cmd_deck_add(args):
+def cmd_deck_add(args: argparse.Namespace) -> None:
     col = _open_collection(args.collection)
     try:
         existing = col.decks.by_name(args.name)
@@ -120,7 +123,7 @@ def cmd_deck_add(args):
         col.close()
 
 
-def cmd_search(args):
+def cmd_search(args: argparse.Namespace) -> None:
     col = _open_collection(args.collection)
     try:
         note_ids = col.find_notes(args.query)
@@ -135,7 +138,7 @@ def cmd_search(args):
         col.close()
 
 
-def cmd_add(args):
+def cmd_add(args: argparse.Namespace) -> None:
     col = _open_collection(args.collection)
     try:
         deck = col.decks.by_name(args.deck)
@@ -159,7 +162,7 @@ def cmd_add(args):
         col.close()
 
 
-def cmd_delete(args):
+def cmd_delete(args: argparse.Namespace) -> None:
     col = _open_collection(args.collection)
     try:
         to_delete = []
@@ -179,7 +182,7 @@ def cmd_delete(args):
         col.close()
 
 
-def cmd_run(args):
+def cmd_run(args: argparse.Namespace) -> None:
     if not args.command and not args.file and not args.interactive:
         print("kb anki run: one of: command, -f/--file, or -i/--interactive is required", file=sys.stderr)
         sys.exit(2)
@@ -216,7 +219,7 @@ def cmd_run(args):
         col.close()
 
 
-def add_subparser(subparsers):
+def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     parser = subparsers.add_parser("anki", help="Read/write an Anki collection directly (Anki must be closed)")
     parser.add_argument("--collection", default=str(DEFAULT_COLLECTION), help=f"Path to collection.anki2 (default: {DEFAULT_COLLECTION})")
     sub = parser.add_subparsers(dest="cmd", required=True)

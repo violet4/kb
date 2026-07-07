@@ -1,13 +1,15 @@
 """Print an overview of active Goals/Todos/overdue contacts/wishlist/inbox."""
+import argparse
 import sys
 from datetime import datetime
+from typing import Callable
 
 from models import Daily, DailyTier, Goal, InboxItem, Person, Todo, Wishlist
 
 
-def anki_section():
+def anki_section() -> str | None:
     try:
-        from anki.collection import Collection
+        from anki.collection import Collection  # type: ignore[import-not-found]  # no stubs published
     except ImportError:
         return None
 
@@ -29,7 +31,7 @@ def anki_section():
     return f"=== ANKI ===\n{due} card(s) due — kb anki decks"
 
 
-def dailies_section():
+def dailies_section() -> str | None:
     critical = Daily.due(domain="irl", tier=DailyTier.CRITICAL)
     lines = []
     if critical:
@@ -51,7 +53,7 @@ def dailies_section():
     return "\n".join(lines) if lines else None
 
 
-def goals_section():
+def goals_section() -> str | None:
     goals = Goal.active()
     if not goals:
         return None
@@ -62,7 +64,7 @@ def goals_section():
     return "\n".join(lines)
 
 
-def todos_section():
+def todos_section() -> str | None:
     todos = Todo.pending()
     if not todos:
         return None
@@ -74,7 +76,7 @@ def todos_section():
     return "\n".join(lines)
 
 
-def people_section():
+def people_section() -> str | None:
     overdue = Person.overdue_for_contact()
     if not overdue:
         return None
@@ -85,7 +87,7 @@ def people_section():
     return "\n".join(lines)
 
 
-def wishlist_section():
+def wishlist_section() -> str | None:
     top_wishes = Wishlist.top(5)
     if not top_wishes:
         return None
@@ -101,11 +103,11 @@ def wishlist_section():
     return "\n".join(lines)
 
 
-def inbox_section():
+def inbox_section() -> str | None:
     items = InboxItem.pending()
     if not items:
         return None
-    by_category = {}
+    by_category: dict[str, int] = {}
     for i in items:
         by_category.setdefault(i.category or "(uncategorized)", 0)
         by_category[i.category or "(uncategorized)"] += 1
@@ -113,7 +115,7 @@ def inbox_section():
     return f"=== INBOX ({len(items)}) ===\n{breakdown} — kb inbox pending [--category C]"
 
 
-SECTIONS = {
+SECTIONS: dict[str, Callable[[], str | None]] = {
     "anki": anki_section,
     "dailies": dailies_section,
     "goals": goals_section,
@@ -124,7 +126,7 @@ SECTIONS = {
 }
 
 
-def cmd_summary(args):
+def cmd_summary(args: argparse.Namespace) -> None:
     unknown = [s for s in args.section if s not in SECTIONS]
     if unknown:
         print(f"invalid section(s) {unknown}; choose from {', '.join(SECTIONS)}", file=sys.stderr)
@@ -143,7 +145,7 @@ def cmd_summary(args):
         print("\n\n".join(sections))
 
 
-def add_subparser(subparsers):
+def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     parser = subparsers.add_parser("summary", help="Print an overview of active Goals/Todos/overdue contacts/wishlist")
     parser.add_argument("section", nargs="*", metavar="SECTION",
                          help=f"Only show these sections ({'/'.join(SECTIONS)}); default: all")

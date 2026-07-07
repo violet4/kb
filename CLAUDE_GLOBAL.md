@@ -26,6 +26,12 @@ An instruction doesn't need a caveat qualifying that it won't always apply — t
 
 Treat surprise as a signal, not noise to shrug off. When something behaves unexpectedly — an output that doesn't match what should have happened, a missing field, a gap between two things that should agree — pause and flag it rather than moving past it, even if the immediate task still nominally succeeded. Surprise usually means either a real bug, a stale assumption, or a design gap worth naming; the cheap moment to catch it is right when it's noticed, not later after the context that made it visible has faded.
 
+When a fix or design choice merely satisfies an immediate constraint (a linter, a type checker, a test), stop and ask whether it's also the choice that most accurately reflects what the underlying operation actually does and how it's genuinely used elsewhere — verified by checking real call sites/usages, not assumed. The version that's honest about both is the "right" one; a version that only makes the immediate complaint go away is a patch, not a fix, even when it happens to be correct.
+
+Return the weakest/most honest type the operation actually produces (e.g. `Sequence[T]` for a query result, not `list[T]` just because that's the common case) rather than upgrading to a stronger guarantee the callee doesn't need to make. A caller that genuinely needs the stronger type (mutation, concatenation) can convert explicitly at the point of use; callers who only need to iterate or check truthiness pay no unnecessary conversion cost. Communicating the true, minimal contract and letting the caller decide what to do with it beats guessing at what they'll need and forcing that shape on everyone.
+
+When a helper needs to work generically across multiple classes that share one attribute/behavior, prefer a real mixin (nominal typing, actual inheritance) over an enumerated `Union[ClassA, ClassB, ...]` or a structural `Protocol`, once more than one class shares the trait — a mixin scales for free as new classes adopt it, where a hand-maintained Union has to be remembered and edited every time, and a Protocol can silently fail to structurally match in frameworks (e.g. SQLAlchemy declarative models) whose class-level attribute types don't line up with what's written in the class body. Verify the chosen approach against a real multi-class case before committing to it, the same as any other edge-case assumption.
+
 ## Network & Privacy
 
 Network calls and cloud connections are not taken lightly. Never silently suppress warnings that could indicate unexpected network activity. Code should default to offline/local operation; any network call must be explicit, intentional, and visible. Phone-home behavior, telemetry, and automatic update checks are unwelcome unless deliberately opted into.
@@ -126,6 +132,14 @@ Always provide clear visual feedback to the user about what the code did. This a
 Use idiomatic APIs. If the language, framework, or library you're using provides a construct for something, use it — don't reimplement it with lower-level primitives.
 
 Before writing or modifying any Python script, read `~/.claude/memory/python_scripts.md` and apply all conventions there.
+
+## Type Safety
+
+All code must be strictly and explicitly typed, checked by a static type checker (mypy for Python) as part of every commit — this applies from the first line of a new project, not retrofitted later. When choosing a language for new work, prefer languages capable of strict static typing; avoid languages that can't support it. Memory safety is the same tier of concern — prefer memory-safe languages (Rust when the overhead is justified, otherwise a strictly-typed garbage-collected language) over ones that aren't.
+
+When a type checker flags something that tracing the code says is safe, the fix is to give the checker real, verifiable evidence — a runtime `assert`, a narrower type, a proper guard — not to silence it. A type checker's static analysis is a stronger, more reliable form of verification than manual reasoning about a specific case; treat its objection as a gap in what the code proves, not a false alarm to override.
+
+`cast()` (or equivalent unchecked type assertions in any language) is a last resort, not a convenience — it makes an unverified claim with no runtime check, so a wrong cast silently propagates a bad type to every downstream caller instead of failing where the mistake actually is. Reach for it only when the alternative is genuinely impossible or truly gratuitous, never merely because tracing the code seems to confirm it's fine — that confidence is exactly what a real `assert`/`isinstance`/narrowing check would verify for free.
 
 ## Logic Clarity
 

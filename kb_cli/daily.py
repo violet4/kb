@@ -92,11 +92,10 @@ def cmd_complete(args: argparse.Namespace) -> None:
 
 
 def cmd_add(args: argparse.Namespace) -> None:
-    context = resolve_context(args.session, args.context)
     daily = Daily.create(
         args.session,
         args.description,
-        context=context,
+        context=args.context,
         domain=args.domain,
         tier=DailyTier(args.tier),
         recurrence=args.recurrence,
@@ -183,7 +182,6 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_add.add_argument("--location")
     p_add.add_argument("--reward")
     p_add.add_argument("--notes")
-    p_add.add_argument("--context", metavar="NAME", help="Act in context NAME for this command only")
     p_add.set_defaults(func=cmd_add)
 
     p_update = sub.add_parser("update", help="Update fields on an existing Daily")

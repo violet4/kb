@@ -66,9 +66,8 @@ def cmd_show(args: argparse.Namespace) -> None:
 def cmd_add(args: argparse.Namespace) -> None:
     effort = WishlistEffort(args.effort) if args.effort else None
     defer_until = _parse_defer_until(args.defer_until) if args.defer_until else None
-    context = resolve_context(args.session, args.context)
     todo = Todo.create(
-        args.session, args.title, notes=args.notes, effort=effort, defer_until=defer_until, context=context
+        args.session, args.title, notes=args.notes, effort=effort, defer_until=defer_until, context=args.context
     )
     args.session.commit()
     print(todo)
@@ -176,7 +175,6 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         "'YYYY-MM-DD', or 'YYYY-MM-DD HH:MM'",
     )
     p_add.add_argument("--notes")
-    p_add.add_argument("--context", metavar="NAME", help="Act in context NAME for this command only")
     p_add.set_defaults(func=cmd_add)
 
     p_update = sub.add_parser("update", help="Update fields on an existing Todo")

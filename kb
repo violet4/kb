@@ -1,7 +1,9 @@
 #!/usr/bin/env -S uv run --project /home/violet/kb python3
 """Global kb CLI entry point. Usable from any directory (see ~/bin/kb symlink).
 
-Usage: kb <command> [subcommand ...] [args ...]
+Usage: kb [--context NAME] <command> [subcommand ...] [args ...]
+  --context NAME acts in that context for this command only (must already exist; see
+  `kb context add`). Falls back to $KB_CONTEXT, then the persisted current context.
   kb goal add "..." | show ID | complete ID | abandon ID | hold ID | reactivate ID
   kb todo add "..." | show ID | update ID | complete ID | pending [--tag NAME] | tag ID TAG... | untag ID TAG...
   kb tag add NAME [--parent P] | show NAME | set-parent NAME [PARENT] | list
@@ -10,7 +12,7 @@ Usage: kb <command> [subcommand ...] [args ...]
   kb journal add ENTITY_TYPE ID NOTE | show ENTITY_TYPE ID
   kb notes get ID | add ... | update ... | search ... | reembed
   kb log add ... | recent
-  kb context current | switch NAME | list
+  kb context current | add NAME | switch NAME [--local] | clear [--local] | list | tree
   kb summary [SECTION ...]
   kb wishlist add ... | update ID ...
   kb games pg entity npc|mob|mob-drop|item|player|character|relation|skill|hangout ...
@@ -24,11 +26,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
+from context import resolve_context
 from kb_cli import anki, context_cmd, daily, goal, inbox, journal, log, notes, pager, summary, tag, todo, wishlist
 from kb_cli import games
 from models import SessionFactory
 
 parser = argparse.ArgumentParser(prog="kb", description="Global kb CLI")
+parser.add_argument(
+    "--context", metavar="NAME", help="Act in context NAME for this command only (must already exist)"
+)
 subparsers = parser.add_subparsers(dest="command", required=True)
 
 goal.add_subparser(subparsers)
@@ -48,4 +54,8 @@ games.add_subparser(subparsers)
 
 args = parser.parse_args()
 args.session = SessionFactory()
+try:
+    args.context = resolve_context(args.session, args.context)
+except ValueError as e:
+    parser.error(str(e))
 args.func(args)

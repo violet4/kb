@@ -6,15 +6,13 @@ from typing import Iterable
 
 from sqlalchemy.orm import Session
 
-from context import resolve_context
 from models import Goal, GoalStatus, Journal
 
 from kb_cli._util import add_history_arg, print_journal_history
 
 
 def cmd_add(args: argparse.Namespace) -> None:
-    context = resolve_context(args.session, args.context)
-    goal = Goal.create(args.session, args.title, description=args.description, context=context, notes=args.notes)
+    goal = Goal.create(args.session, args.title, description=args.description, context=args.context, notes=args.notes)
     args.session.commit()
     print(goal)
 
@@ -82,7 +80,6 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_add.add_argument("title")
     p_add.add_argument("--description")
     p_add.add_argument("--notes")
-    p_add.add_argument("--context", metavar="NAME", help="Act in context NAME for this command only")
     p_add.set_defaults(func=cmd_add)
 
     p_show = sub.add_parser("show", help="Show Goal details")

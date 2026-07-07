@@ -188,6 +188,25 @@ class Context(Base):
             session.flush()
         return obj
 
+    @classmethod
+    def get_existing(cls, session: Session, name: str) -> Context:
+        """Look up a context by name, raising rather than silently creating one --
+        use this for switching/filtering, where a typo'd name should be a hard error,
+        not a new, accidental Context row. Use get_or_create only for the explicit
+        `context add` path, where creating a new Context is the intended action."""
+        obj = session.scalars(select(cls).filter_by(name=name)).one_or_none()
+        if obj is None:
+            raise ValueError(f"no such context: {name!r} (create it with: kb context add {name!r})")
+        return obj
+
+    @classmethod
+    def self_and_descendants(cls, session: Session, name: str) -> Sequence[Context]:
+        """`name` itself plus every context whose dot-separated name is a descendant
+        of it (e.g. "pg" matches "pg", "pg.towns", "pg.towns.serbule_keep")."""
+        cls.get_existing(session, name)  # raise if name itself doesn't exist
+        q = select(cls).where((cls.name == name) | (cls.name.like(f"{name}.%")))
+        return session.scalars(q).all()
+
     def __repr__(self) -> str:
         return f"<Context {self.name!r}>"
 

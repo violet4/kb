@@ -1,16 +1,17 @@
 """Inbox operations."""
+import argparse
 import sys
 
 from models import InboxItem, sess
 
 
-def cmd_add(args):
+def cmd_add(args: argparse.Namespace) -> None:
     item = InboxItem.create(args.body, source=args.source, category=args.category)
     sess.commit()
     print(item)
 
 
-def cmd_pending(args):
+def cmd_pending(args: argparse.Namespace) -> None:
     items = InboxItem.pending(category=args.category)
     if not items:
         print("Inbox empty.")
@@ -19,7 +20,7 @@ def cmd_pending(args):
         print(i)
 
 
-def cmd_triage(args):
+def cmd_triage(args: argparse.Namespace) -> None:
     for item_id in args.ids:
         item = sess.get(InboxItem, item_id)
         if item is None:
@@ -31,7 +32,7 @@ def cmd_triage(args):
     sess.commit()
 
 
-def add_subparser(subparsers):
+def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     parser = subparsers.add_parser("inbox", help="Inbox operations")
     sub = parser.add_subparsers(dest="cmd", required=True)
 

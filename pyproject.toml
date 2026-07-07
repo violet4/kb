@@ -13,3 +13,12 @@ dependencies = [
 
 [project.optional-dependencies]
 anki = ["anki>=25.0"]
+
+[dependency-groups]
+dev = ["pytest>=8.0", "mypy>=1.13"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["*.py", "kb_cli", "scripts"]
+plugins = ["sqlalchemy.ext.mypy.plugin"]

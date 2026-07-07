@@ -1,4 +1,5 @@
 """TodoTag hierarchy management -- creating tags, wiring parent/child relationships."""
+import argparse
 import sys
 
 from sqlalchemy import select
@@ -8,7 +9,7 @@ from models import TodoTag, sess
 from kb_cli._util import get_by_name
 
 
-def cmd_add(args):
+def cmd_add(args: argparse.Namespace) -> None:
     existing = sess.scalars(select(TodoTag).where(TodoTag.name == args.name)).one_or_none()
     if existing is not None:
         print(f"TodoTag {args.name!r} already exists (#{existing.id})", file=sys.stderr)
@@ -20,7 +21,7 @@ def cmd_add(args):
     print(tag)
 
 
-def cmd_show(args):
+def cmd_show(args: argparse.Namespace) -> None:
     tag = get_by_name(sess, TodoTag, args.name)
     chain = " -> ".join(t.name for t in tag.ancestors())
     print(f"id: {tag.id}")
@@ -28,7 +29,7 @@ def cmd_show(args):
     print(f"hierarchy: {chain}")
 
 
-def cmd_set_parent(args):
+def cmd_set_parent(args: argparse.Namespace) -> None:
     tag = get_by_name(sess, TodoTag, args.name)
     parent = get_by_name(sess, TodoTag, args.parent) if args.parent else None
     tag.parent = parent
@@ -36,7 +37,7 @@ def cmd_set_parent(args):
     print(tag)
 
 
-def cmd_list(args):
+def cmd_list(args: argparse.Namespace) -> None:
     tags = sess.scalars(select(TodoTag).order_by(TodoTag.name)).all()
     if not tags:
         print("No tags.")
@@ -45,7 +46,7 @@ def cmd_list(args):
         print(t)
 
 
-def add_subparser(subparsers):
+def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     parser = subparsers.add_parser("tag", help="TodoTag hierarchy operations")
     sub = parser.add_subparsers(dest="cmd", required=True)
 

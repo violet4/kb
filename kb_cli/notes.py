@@ -1,4 +1,5 @@
 """Note operations."""
+import argparse
 import sys
 
 from sqlalchemy import select
@@ -7,7 +8,7 @@ from client import KBClient
 from models import Collection, Note, sess
 
 
-def cmd_get(args):
+def cmd_get(args: argparse.Namespace) -> None:
     note = Note.get(args.id)
     if note is None:
         print(f"Note #{args.id}: not found", file=sys.stderr)
@@ -20,13 +21,13 @@ def cmd_get(args):
     print(f"body: {note.body}")
 
 
-def cmd_add(args):
+def cmd_add(args: argparse.Namespace) -> None:
     client = KBClient()
     result = client.note_create(title=args.title, body=args.body, collection=args.collection, tags=args.tags)
     print(f"Added: {result}")
 
 
-def cmd_update(args):
+def cmd_update(args: argparse.Namespace) -> None:
     note = Note.get(args.id) if args.id else Note.find(args.find)
     if note is None:
         print("Note not found.", file=sys.stderr)
@@ -36,7 +37,7 @@ def cmd_update(args):
     print(f"Updated: {note}")
 
 
-def cmd_search(args):
+def cmd_search(args: argparse.Namespace) -> None:
     collection = Collection(args.collection)
     results = Note.search(args.query, collection)
     if not results:
@@ -46,7 +47,7 @@ def cmd_search(args):
         print(f"#{note.id} {note.title!r} [{note.collection.value}]{tags} (dist={dist:.3f})")
 
 
-def cmd_reembed(args):
+def cmd_reembed(args: argparse.Namespace) -> None:
     from embed import model_name
     notes = sess.scalars(select(Note)).all()
     if not notes:
@@ -60,7 +61,7 @@ def cmd_reembed(args):
     print("Done.")
 
 
-def add_subparser(subparsers):
+def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     parser = subparsers.add_parser("notes", help="Note operations")
     sub = parser.add_subparsers(dest="cmd", required=True)
 

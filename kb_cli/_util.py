@@ -6,19 +6,20 @@ dependencies flow one way, from command modules down to here.
 """
 import argparse
 import sys
-from typing import Iterable, Protocol, Type, TypeVar
+from typing import Iterable, Type, TypeVar
 
 from sqlalchemy import select
-from sqlalchemy.orm import Mapped, Session
+from sqlalchemy.orm import Session
 
-from models import Journal
+from models import Journal, TodoTag
+from models_pg import PgCharacter, PgHangout, PgItem, PgMob, PgNpc, PgPlayer, PgSkill
 
-
-class _HasName(Protocol):
-    name: Mapped[str]
-
-
-T = TypeVar("T", bound=_HasName)
+# SQLAlchemy declarative classes don't satisfy structural Protocol matching (their
+# class-level attributes are InstrumentedAttribute, not the Mapped[T] written in the
+# class body), so get_by_name is typed against the actual finite set of classes it's
+# called with, rather than a Protocol pretending to check for "has a name column."
+_Named = TodoTag | PgNpc | PgMob | PgItem | PgPlayer | PgCharacter | PgHangout | PgSkill
+T = TypeVar("T", bound=_Named)
 
 
 def get_by_name(sess: Session, cls: Type[T], name: str) -> T:

@@ -1,10 +1,12 @@
 """Wishlist operations."""
+import argparse
 import sys
+from typing import Iterable
 
 from models import Wishlist, WishlistEffort, WishlistStatus, sess
 
 
-def _validate_0_100(args, names):
+def _validate_0_100(args: argparse.Namespace, names: Iterable[str]) -> None:
     for name in names:
         value = getattr(args, name)
         if value is not None and not 0 <= value <= 100:
@@ -12,7 +14,7 @@ def _validate_0_100(args, names):
             sys.exit(2)
 
 
-def cmd_add(args):
+def cmd_add(args: argparse.Namespace) -> None:
     _validate_0_100(args, ("importance", "urgency", "clarity"))
     item = Wishlist(
         title=args.title,
@@ -31,7 +33,7 @@ def cmd_add(args):
     print(f"Added: {item} score={item.score}")
 
 
-def cmd_update(args):
+def cmd_update(args: argparse.Namespace) -> None:
     _validate_0_100(args, ("importance", "urgency", "clarity"))
     item = sess.get(Wishlist, args.id)
     if item is None:
@@ -65,7 +67,7 @@ def cmd_update(args):
     print(f"Updated: {item} score={item.score}")
 
 
-def add_subparser(subparsers):
+def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     parser = subparsers.add_parser("wishlist", help="Wishlist operations")
     sub = parser.add_subparsers(dest="cmd", required=True)
 

@@ -7,3 +7,4 @@ __pycache__/
 *.pyc
 data/kb.sock
 data/kb.pid
+.coverage

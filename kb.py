@@ -13,8 +13,8 @@ from context import resolve_context
 from models import (
     ChangeLog, Collection, Context, CurrentContext, Daily, DailyTier, Goal, GoalStatus,
     InboxItem, IrlItem, Item, Journal, LogEntry, Note, Person, PersonTier, Purchase,
-    Reference, Settings, Todo, TodoStatus, TodoTag, TodoTagLink, Vendor, VendorItem,
-    WishlistEffort, WishlistStatus, Wishlist, WorkingMemory, init_db, sess,
+    Reference, Settings, SessionFactory, Todo, TodoStatus, TodoTag, TodoTagLink, Vendor,
+    VendorItem, WishlistEffort, WishlistStatus, Wishlist, WorkingMemory, init_db,
 )
 from models_pg import PgCharacter, PgDungeon, PgHangout, PgHangoutItem, PgItem, PgMob, PgMobDrop, PgNpc, PgNpcRace, PgNpcRelation, PgPlayer, PgQuest, PgSkill
 
@@ -43,11 +43,13 @@ if args.file:
         with open(args.file) as f:
             args.command = f.read()
 
+sess = SessionFactory()
+
 ns = {
     "sess": sess,
     "select": select,
     "datetime": datetime,
-    "context": resolve_context(args.context),
+    "context": resolve_context(sess, args.context),
     "Collection": Collection,
     "Note": Note,
     "ChangeLog": ChangeLog,

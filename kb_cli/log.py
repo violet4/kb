@@ -3,22 +3,22 @@ import argparse
 from datetime import datetime, timezone
 
 from context import resolve_context
-from models import LogEntry, sess
+from models import LogEntry
 
 
 def cmd_add(args: argparse.Namespace) -> None:
-    context = resolve_context(args.context)
+    context = resolve_context(args.session, args.context)
     occurred_at = None
     if args.date:
         occurred_at = datetime.strptime(args.date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-    entry = LogEntry.create(body=args.body, domain=args.domain, context=context, occurred_at=occurred_at)
-    sess.commit()
+    entry = LogEntry.create(args.session, body=args.body, domain=args.domain, context=context, occurred_at=occurred_at)
+    args.session.commit()
     print(entry)
 
 
 def cmd_recent(args: argparse.Namespace) -> None:
-    context = resolve_context(args.context) if args.context else None
-    entries = LogEntry.recent(domain=args.domain, context=context, limit=args.limit)
+    context = resolve_context(args.session, args.context) if args.context else None
+    entries = LogEntry.recent(args.session, domain=args.domain, context=context, limit=args.limit)
     if not entries:
         print("No entries.")
         return

@@ -1,17 +1,17 @@
 """Journal operations."""
 import argparse
 
-from models import Journal, sess
+from models import Journal
 
 
 def cmd_add(args: argparse.Namespace) -> None:
-    entry = Journal.record(args.entity_type, args.entity_id, note=args.note)
-    sess.commit()
+    entry = Journal.record(args.session, args.entity_type, args.entity_id, note=args.note)
+    args.session.commit()
     print(entry)
 
 
 def cmd_show(args: argparse.Namespace) -> None:
-    entries = Journal.for_entity(args.entity_type, args.entity_id)
+    entries = Journal.for_entity(args.session, args.entity_type, args.entity_id)
     if not entries:
         print("No journal entries.")
         return

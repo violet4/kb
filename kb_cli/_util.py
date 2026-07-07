@@ -49,14 +49,14 @@ def add_history_arg(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def print_journal_history(journal_cls: Type[Journal], entity_type: str, entity_id: int,
+def print_journal_history(session: Session, journal_cls: Type[Journal], entity_type: str, entity_id: int,
                           history_arg: int | None, hint_cmd: str) -> None:
     """Print Journal history for an entity per the shared --history convention.
 
     history_arg is args.history: None (show a one-line hint if history exists),
     0 (show all), or N (show only the last N entries).
     """
-    history = journal_cls.for_entity(entity_type, entity_id)
+    history = journal_cls.for_entity(session, entity_type, entity_id)
     if history_arg is not None:
         shown = history[-history_arg:] if history_arg else history
         for j, e in enumerate(shown):

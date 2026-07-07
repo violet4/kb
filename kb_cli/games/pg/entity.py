@@ -4,7 +4,6 @@ import sys
 
 from sqlalchemy import select
 
-from models import sess
 from models_pg import PgCharacter, PgHangout, PgHangoutItem, PgItem, PgMob, PgMobDrop, PgNpc, PgNpcRelation, PgPlayer, PgSkill
 
 from kb_cli._util import get_by_name, print_fields
@@ -20,7 +19,7 @@ def _format_duration(minutes: int) -> str:
 # --- npc ---
 
 def cmd_npc_show(args: argparse.Namespace) -> None:
-    npc = get_by_name(sess, PgNpc, args.name)
+    npc = get_by_name(args.session, PgNpc, args.name)
     print_fields([
         ("id", npc.id),
         ("name", npc.name),
@@ -32,25 +31,25 @@ def cmd_npc_show(args: argparse.Namespace) -> None:
 
 def cmd_npc_add(args: argparse.Namespace) -> None:
     npc = PgNpc(name=args.name, location=args.location, notes=args.notes or "")
-    sess.add(npc)
-    sess.commit()
+    args.session.add(npc)
+    args.session.commit()
     print(npc)
 
 
 def cmd_npc_update(args: argparse.Namespace) -> None:
-    npc = get_by_name(sess, PgNpc, args.name)
+    npc = get_by_name(args.session, PgNpc, args.name)
     if args.location is not None:
         npc.location = args.location
     if args.notes is not None:
         npc.notes = args.notes
-    sess.commit()
+    args.session.commit()
     print(npc)
 
 
 # --- mob ---
 
 def cmd_mob_show(args: argparse.Namespace) -> None:
-    mob = get_by_name(sess, PgMob, args.name)
+    mob = get_by_name(args.session, PgMob, args.name)
     print_fields([
         ("name", mob.name),
         ("location", mob.location),
@@ -60,18 +59,18 @@ def cmd_mob_show(args: argparse.Namespace) -> None:
 
 def cmd_mob_add(args: argparse.Namespace) -> None:
     mob = PgMob(name=args.name, location=args.location, notes=args.notes or "")
-    sess.add(mob)
-    sess.commit()
+    args.session.add(mob)
+    args.session.commit()
     print(mob)
 
 
 def cmd_mob_update(args: argparse.Namespace) -> None:
-    mob = get_by_name(sess, PgMob, args.name)
+    mob = get_by_name(args.session, PgMob, args.name)
     if args.location is not None:
         mob.location = args.location
     if args.notes is not None:
         mob.notes = args.notes
-    sess.commit()
+    args.session.commit()
     print(mob)
 
 
@@ -79,14 +78,14 @@ def cmd_mob_search(args: argparse.Namespace) -> None:
     q = select(PgMob).where(
         PgMob.name.ilike(f"%{args.query}%") | PgMob.location.ilike(f"%{args.query}%")
     )
-    mobs = sess.scalars(q).all()
+    mobs = args.session.scalars(q).all()
     if not mobs:
         print(f"No mobs matching {args.query!r}.")
         return
     for mob in mobs:
         print(mob)
         if args.loot:
-            drops = sess.scalars(select(PgMobDrop).where(PgMobDrop.mob_id == mob.id)).all()
+            drops = args.session.scalars(select(PgMobDrop).where(PgMobDrop.mob_id == mob.id)).all()
             for d in drops:
                 print(f"  {d}")
 
@@ -94,17 +93,17 @@ def cmd_mob_search(args: argparse.Namespace) -> None:
 # --- mob-drop ---
 
 def cmd_mob_drop_add(args: argparse.Namespace) -> None:
-    mob = get_by_name(sess, PgMob, args.mob)
-    item = get_by_name(sess, PgItem, args.item)
+    mob = get_by_name(args.session, PgMob, args.mob)
+    item = get_by_name(args.session, PgItem, args.item)
     drop = PgMobDrop(mob_id=mob.id, item_id=item.id, notes=args.notes or "")
-    sess.add(drop)
-    sess.commit()
+    args.session.add(drop)
+    args.session.commit()
     print(drop)
 
 
 def cmd_mob_drop_show(args: argparse.Namespace) -> None:
-    mob = get_by_name(sess, PgMob, args.mob)
-    drops = sess.scalars(select(PgMobDrop).where(PgMobDrop.mob_id == mob.id)).all()
+    mob = get_by_name(args.session, PgMob, args.mob)
+    drops = args.session.scalars(select(PgMobDrop).where(PgMobDrop.mob_id == mob.id)).all()
     if not drops:
         print(f"No known drops for {mob.name!r}.")
         return
@@ -115,7 +114,7 @@ def cmd_mob_drop_show(args: argparse.Namespace) -> None:
 # --- item ---
 
 def cmd_item_show(args: argparse.Namespace) -> None:
-    item = get_by_name(sess, PgItem, args.name)
+    item = get_by_name(args.session, PgItem, args.name)
     print_fields([
         ("id", item.id),
         ("name", item.name),
@@ -126,14 +125,14 @@ def cmd_item_show(args: argparse.Namespace) -> None:
 
 
 def cmd_item_search(args: argparse.Namespace) -> None:
-    items = sess.scalars(select(PgItem).where(PgItem.name.ilike(f"%{args.query}%"))).all()
+    items = args.session.scalars(select(PgItem).where(PgItem.name.ilike(f"%{args.query}%"))).all()
     if not items:
         print(f"No items matching {args.query!r}.")
         return
     for item in items:
         print(item)
         if args.mobs:
-            drops = sess.scalars(select(PgMobDrop).where(PgMobDrop.item_id == item.id)).all()
+            drops = args.session.scalars(select(PgMobDrop).where(PgMobDrop.item_id == item.id)).all()
             for d in drops:
                 print(f"  {d}")
 
@@ -141,7 +140,7 @@ def cmd_item_search(args: argparse.Namespace) -> None:
 # --- player ---
 
 def cmd_player_show(args: argparse.Namespace) -> None:
-    player = get_by_name(sess, PgPlayer, args.name)
+    player = get_by_name(args.session, PgPlayer, args.name)
     print_fields([
         ("name", player.name),
         ("friendly", player.friendly),
@@ -151,25 +150,25 @@ def cmd_player_show(args: argparse.Namespace) -> None:
 
 def cmd_player_add(args: argparse.Namespace) -> None:
     player = PgPlayer(name=args.name, friendly=not args.unfriendly, notes=args.notes or "")
-    sess.add(player)
-    sess.commit()
+    args.session.add(player)
+    args.session.commit()
     print(player)
 
 
 def cmd_player_update(args: argparse.Namespace) -> None:
-    player = get_by_name(sess, PgPlayer, args.name)
+    player = get_by_name(args.session, PgPlayer, args.name)
     if args.friendly is not None:
         player.friendly = args.friendly
     if args.notes is not None:
         player.notes = args.notes
-    sess.commit()
+    args.session.commit()
     print(player)
 
 
 # --- character ---
 
 def cmd_character_show(args: argparse.Namespace) -> None:
-    character = get_by_name(sess, PgCharacter, args.name)
+    character = get_by_name(args.session, PgCharacter, args.name)
     print_fields([
         ("name", character.name),
         ("race", character.race),
@@ -181,7 +180,7 @@ def cmd_character_show(args: argparse.Namespace) -> None:
 
 
 def cmd_character_update(args: argparse.Namespace) -> None:
-    character = get_by_name(sess, PgCharacter, args.name)
+    character = get_by_name(args.session, PgCharacter, args.name)
     if args.race is not None:
         character.race = args.race
     if args.druid is not None:
@@ -190,39 +189,39 @@ def cmd_character_update(args: argparse.Namespace) -> None:
         character.is_vampire = args.vampire
     if args.notes is not None:
         character.notes = args.notes
-    sess.commit()
+    args.session.commit()
     print(character)
 
 
 def cmd_character_set_hangout(args: argparse.Namespace) -> None:
-    character = get_by_name(sess, PgCharacter, args.character)
-    hangout = get_by_name(sess, PgHangout, args.hangout)
+    character = get_by_name(args.session, PgCharacter, args.character)
+    hangout = get_by_name(args.session, PgHangout, args.hangout)
     character.hangout = hangout
-    sess.commit()
+    args.session.commit()
     print(character)
 
 
 def cmd_character_clear_hangout(args: argparse.Namespace) -> None:
-    character = get_by_name(sess, PgCharacter, args.character)
+    character = get_by_name(args.session, PgCharacter, args.character)
     character.hangout = None
-    sess.commit()
+    args.session.commit()
     print(character)
 
 
 # --- relation ---
 
 def cmd_relation_add(args: argparse.Namespace) -> None:
-    character = get_by_name(sess, PgCharacter, args.character)
-    npc = get_by_name(sess, PgNpc, args.npc)
+    character = get_by_name(args.session, PgCharacter, args.character)
+    npc = get_by_name(args.session, PgNpc, args.npc)
     relation = PgNpcRelation(character_id=character.id, npc_id=npc.id, favor=args.favor, notes=args.notes or "")
-    sess.add(relation)
-    sess.commit()
+    args.session.add(relation)
+    args.session.commit()
     print(relation)
 
 
 def cmd_relation_show(args: argparse.Namespace) -> None:
-    character = get_by_name(sess, PgCharacter, args.character)
-    relations = sess.scalars(select(PgNpcRelation).where(PgNpcRelation.character_id == character.id)).all()
+    character = get_by_name(args.session, PgCharacter, args.character)
+    relations = args.session.scalars(select(PgNpcRelation).where(PgNpcRelation.character_id == character.id)).all()
     if not relations:
         print(f"No known NPC relations for {character.name!r}.")
         return
@@ -233,19 +232,19 @@ def cmd_relation_show(args: argparse.Namespace) -> None:
 # --- skill ---
 
 def cmd_skill_show(args: argparse.Namespace) -> None:
-    skill = get_by_name(sess, PgSkill, args.name)
+    skill = get_by_name(args.session, PgSkill, args.name)
     print_fields([("id", skill.id), ("name", skill.name)])
 
 
 def cmd_skill_add(args: argparse.Namespace) -> None:
     skill = PgSkill(name=args.name)
-    sess.add(skill)
-    sess.commit()
+    args.session.add(skill)
+    args.session.commit()
     print(skill)
 
 
 def cmd_skill_list(args: argparse.Namespace) -> None:
-    skills = sess.scalars(select(PgSkill).order_by(PgSkill.name)).all()
+    skills = args.session.scalars(select(PgSkill).order_by(PgSkill.name)).all()
     if not skills:
         print("No skills.")
         return
@@ -256,8 +255,8 @@ def cmd_skill_list(args: argparse.Namespace) -> None:
 # --- hangout ---
 
 def cmd_hangout_show(args: argparse.Namespace) -> None:
-    hangout = get_by_name(sess, PgHangout, args.name)
-    items = sess.scalars(select(PgHangoutItem).where(PgHangoutItem.hangout_id == hangout.id)).all()
+    hangout = get_by_name(args.session, PgHangout, args.name)
+    items = args.session.scalars(select(PgHangoutItem).where(PgHangoutItem.hangout_id == hangout.id)).all()
     print_fields([
         ("id", hangout.id),
         ("name", hangout.name),
@@ -274,29 +273,29 @@ def cmd_hangout_show(args: argparse.Namespace) -> None:
 
 
 def cmd_hangout_add(args: argparse.Namespace) -> None:
-    npc = get_by_name(sess, PgNpc, args.npc)
-    skill = get_by_name(sess, PgSkill, args.skill) if args.skill else None
+    npc = get_by_name(args.session, PgNpc, args.npc)
+    skill = get_by_name(args.session, PgSkill, args.skill) if args.skill else None
     hangout = PgHangout(
         name=args.name, npc_id=npc.id, favor=args.favor,
         skill_id=skill.id if skill else None, skill_xp=args.skill_xp,
         duration_minutes=args.duration_minutes, is_repeatable=args.repeatable,
         notes=args.notes or "",
     )
-    sess.add(hangout)
-    sess.flush()
+    args.session.add(hangout)
+    args.session.flush()
     for spec in args.item or []:
         item_name, _, qty = spec.rpartition(":")
         if not item_name:
             print(f"kb: --item expects NAME:QTY, got {spec!r}", file=sys.stderr)
             sys.exit(1)
-        item = get_by_name(sess, PgItem, item_name)
-        sess.add(PgHangoutItem(hangout_id=hangout.id, item_id=item.id, quantity=int(qty)))
-    sess.commit()
+        item = get_by_name(args.session, PgItem, item_name)
+        args.session.add(PgHangoutItem(hangout_id=hangout.id, item_id=item.id, quantity=int(qty)))
+    args.session.commit()
     print(hangout)
 
 
 def cmd_hangout_list(args: argparse.Namespace) -> None:
-    hangouts = sess.scalars(select(PgHangout).order_by(PgHangout.name)).all()
+    hangouts = args.session.scalars(select(PgHangout).order_by(PgHangout.name)).all()
     if not hangouts:
         print("No hangouts.")
         return

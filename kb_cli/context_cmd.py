@@ -4,26 +4,26 @@ import argparse
 from sqlalchemy import select
 
 from context import switch_current
-from models import Context, CurrentContext, sess
+from models import Context, CurrentContext
 
 
 def cmd_current(args: argparse.Namespace) -> None:
-    context = CurrentContext.get()
+    context = CurrentContext.get(args.session)
     print(context.name if context else "(none)")
 
 
 def cmd_switch(args: argparse.Namespace) -> None:
-    context = switch_current(args.name)
-    sess.commit()
+    context = switch_current(args.session, args.name)
+    args.session.commit()
     print(f"Current context: {context.name!r}")
 
 
 def cmd_list(args: argparse.Namespace) -> None:
-    contexts = sess.scalars(select(Context).order_by(Context.name)).all()
+    contexts = args.session.scalars(select(Context).order_by(Context.name)).all()
     if not contexts:
         print("No contexts yet.")
         return
-    current = CurrentContext.get()
+    current = CurrentContext.get(args.session)
     for c in contexts:
         marker = " (current)" if current and current.id == c.id else ""
         print(f"#{c.id} {c.name}{marker}")

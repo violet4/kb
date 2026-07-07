@@ -2,7 +2,6 @@
 import argparse
 import sys
 
-from models import sess
 from models_pg import PgNpc, PgQuest
 
 from kb_cli._util import get_by_name
@@ -12,7 +11,7 @@ def cmd_show(args: argparse.Namespace) -> None:
     for i, quest_id in enumerate(args.ids):
         if i > 0:
             print()
-        quest = sess.get(PgQuest, quest_id)
+        quest = args.session.get(PgQuest, quest_id)
         if quest is None:
             print(f"id: {quest_id}\nerror: not found", file=sys.stderr)
             continue
@@ -31,8 +30,8 @@ def cmd_show(args: argparse.Namespace) -> None:
 
 
 def cmd_add(args: argparse.Namespace) -> None:
-    giver = get_by_name(sess, PgNpc, args.giver)
-    completion = get_by_name(sess, PgNpc, args.completion) if args.completion else None
+    giver = get_by_name(args.session, PgNpc, args.giver)
+    completion = get_by_name(args.session, PgNpc, args.completion) if args.completion else None
     quest = PgQuest(
         title=args.title,
         giver_npc_id=giver.id,
@@ -42,20 +41,20 @@ def cmd_add(args: argparse.Namespace) -> None:
         rewards=args.rewards,
         notes=args.notes or "",
     )
-    sess.add(quest)
-    sess.commit()
+    args.session.add(quest)
+    args.session.commit()
     print(f"Added: #{quest.id} {quest.title!r} [{quest.status}]")
 
 
 def cmd_complete(args: argparse.Namespace) -> None:
     for quest_id in args.ids:
-        quest = sess.get(PgQuest, quest_id)
+        quest = args.session.get(PgQuest, quest_id)
         if quest is None:
             print(f"Quest #{quest_id}: not found", file=sys.stderr)
             continue
         quest.status = "completed"
         print(f"Quest #{quest_id}: {quest.title!r} -> completed")
-    sess.commit()
+    args.session.commit()
 
 
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:

@@ -16,7 +16,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import (
     Mapped, MappedColumn, Session, UOWTransaction, mapped_column, object_session,
-    relationship, scoped_session, sessionmaker,
+    relationship, sessionmaker,
 )
 from sqlalchemy.engine.interfaces import DBAPIConnection
 from sqlalchemy.orm.base import NO_VALUE, NEVER_SET
@@ -38,8 +38,7 @@ def _set_pragma(conn: DBAPIConnection, _: ConnectionPoolEntry) -> None:
     conn.execute("PRAGMA journal_mode=WAL")
 
 
-_Session = scoped_session(sessionmaker(bind=_engine))
-sess = _Session()
+SessionFactory = sessionmaker(bind=_engine)
 
 
 # ---------------------------------------------------------------------------
@@ -160,12 +159,12 @@ class Context(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     @classmethod
-    def get_or_create(cls, name: str, description: Optional[str] = None) -> Context:
-        obj = sess.scalars(select(cls).filter_by(name=name)).one_or_none()
+    def get_or_create(cls, session: Session, name: str, description: Optional[str] = None) -> Context:
+        obj = session.scalars(select(cls).filter_by(name=name)).one_or_none()
         if obj is None:
             obj = cls(name=name, description=description)
-            sess.add(obj)
-            sess.flush()
+            session.add(obj)
+            session.flush()
         return obj
 
     def __repr__(self) -> str:
@@ -182,19 +181,19 @@ class CurrentContext(Base):
     context: Mapped[Optional[Context]] = relationship("Context")
 
     @classmethod
-    def get(cls) -> Optional[Context]:
-        row = sess.scalars(select(cls).filter_by(id=1)).one_or_none()
+    def get(cls, session: Session) -> Optional[Context]:
+        row = session.scalars(select(cls).filter_by(id=1)).one_or_none()
         return row.context if row else None
 
     @classmethod
-    def set(cls, context: Optional[Context]) -> None:
-        row = sess.scalars(select(cls).filter_by(id=1)).one_or_none()
+    def set(cls, session: Session, context: Optional[Context]) -> None:
+        row = session.scalars(select(cls).filter_by(id=1)).one_or_none()
         if row is None:
             row = cls(id=1, context_id=context.id if context else None)
-            sess.add(row)
+            session.add(row)
         else:
             row.context_id = context.id if context else None
-        sess.flush()
+        session.flush()
 
     def __repr__(self) -> str:
         return f"<CurrentContext {self.context.name if self.context else None!r}>"
@@ -210,12 +209,12 @@ class Settings(Base):
     timezone: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     @classmethod
-    def get(cls) -> Settings:
-        row = sess.scalars(select(cls).filter_by(id=1)).one_or_none()
+    def get(cls, session: Session) -> Settings:
+        row = session.scalars(select(cls).filter_by(id=1)).one_or_none()
         if row is None:
             row = cls(id=1)
-            sess.add(row)
-            sess.flush()
+            session.add(row)
+            session.flush()
         return row
 
     def resolved_timezone(self) -> ZoneInfo:
@@ -251,30 +250,30 @@ class Person(Base):
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     @classmethod
-    def get(cls, name: str) -> Optional[Person]:
-        return sess.scalars(select(cls).filter_by(name=name)).one_or_none()
+    def get(cls, session: Session, name: str) -> Optional[Person]:
+        return session.scalars(select(cls).filter_by(name=name)).one_or_none()
 
     @classmethod
-    def get_or_create(cls, name: str, tier: PersonTier = PersonTier.ACQUAINTANCE) -> Person:
-        obj = cls.get(name)
+    def get_or_create(cls, session: Session, name: str, tier: PersonTier = PersonTier.ACQUAINTANCE) -> Person:
+        obj = cls.get(session, name)
         if obj is None:
             obj = cls(name=name, tier=tier)
-            sess.add(obj)
-            sess.flush()
+            session.add(obj)
+            session.flush()
         return obj
 
     @classmethod
-    def in_my_life(cls) -> Sequence[Person]:
+    def in_my_life(cls, session: Session) -> Sequence[Person]:
         """People who are part of my immediate surrounding life (excludes public figures)."""
-        return sess.scalars(
+        return session.scalars(
             select(cls).where(cls.tier != PersonTier.PUBLIC_FIGURE).order_by(cls.closeness.desc())
         ).all()
 
     @classmethod
-    def overdue_for_contact(cls) -> list[Person]:
+    def overdue_for_contact(cls, session: Session) -> list[Person]:
         """People I should have reached out to by now, ordered by most overdue."""
         now = _now()
-        candidates = sess.scalars(
+        candidates = session.scalars(
             select(cls)
             .where(cls.tier != PersonTier.PUBLIC_FIGURE)
             .where(cls.reach_out_every_days.isnot(None))
@@ -314,17 +313,17 @@ class Goal(Base):
     todos: Mapped[list[Todo]] = relationship("Todo", back_populates="goal")
 
     @classmethod
-    def active(cls, context: Optional[Context] = None) -> Sequence[Goal]:
+    def active(cls, session: Session, context: Optional[Context] = None) -> Sequence[Goal]:
         q = select(cls).where(cls.status == GoalStatus.ACTIVE)
         if context is not None:
             q = q.where(cls.context_id == context.id)
-        return sess.scalars(q).all()
+        return session.scalars(q).all()
 
     @classmethod
-    def create(cls, title: str, description: Optional[str] = None, context: Optional[Context] = None, notes: Optional[str] = None) -> Goal:
+    def create(cls, session: Session, title: str, description: Optional[str] = None, context: Optional[Context] = None, notes: Optional[str] = None) -> Goal:
         goal = cls(title=title, description=description, context_id=context.id if context else None, notes=notes)
-        sess.add(goal)
-        sess.flush()
+        session.add(goal)
+        session.flush()
         return goal
 
     def __repr__(self) -> str:
@@ -355,7 +354,7 @@ class Todo(Base):
     tags: Mapped[list["TodoTag"]] = relationship("TodoTag", secondary="todo_tag_link")
 
     @classmethod
-    def pending(cls, context: Optional[Context] = None, effort: Optional[WishlistEffort] = None,
+    def pending(cls, session: Session, context: Optional[Context] = None, effort: Optional[WishlistEffort] = None,
                 include_deferred: bool = False, tag: Optional["TodoTag"] = None) -> Sequence[Todo]:
         q = select(cls).where(cls.status.in_([TodoStatus.PENDING, TodoStatus.IN_PROGRESS]))
         if context is not None:
@@ -364,7 +363,7 @@ class Todo(Base):
             q = q.where(cls.effort == effort)
         if not include_deferred:
             q = q.where((cls.defer_until.is_(None)) | (cls.defer_until <= _now()))
-        todos = sess.scalars(q).all()
+        todos = session.scalars(q).all()
         if tag is not None:
             # Match if the Todo carries `tag` itself, or any tag whose ancestor chain includes it
             # (e.g. filtering by "grocery" also matches a Todo tagged only "winco").
@@ -372,14 +371,14 @@ class Todo(Base):
         return todos
 
     @classmethod
-    def create(cls, title: str, goal: Optional[Goal] = None, context: Optional[Context] = None,
+    def create(cls, session: Session, title: str, goal: Optional[Goal] = None, context: Optional[Context] = None,
                notes: Optional[str] = None, blocked_by: Optional[Todo] = None,
                effort: Optional[WishlistEffort] = None, defer_until: Optional[datetime] = None) -> Todo:
         todo = cls(title=title, goal_id=goal.id if goal else None, context_id=context.id if context else None,
                    notes=notes, blocked_by_id=blocked_by.id if blocked_by else None, effort=effort,
                    defer_until=defer_until)
-        sess.add(todo)
-        sess.flush()
+        session.add(todo)
+        session.flush()
         return todo
 
     def __repr__(self) -> str:
@@ -472,11 +471,11 @@ class Daily(Base):
     _WEEKDAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
 
     @classmethod
-    def _day_start(cls, now: datetime) -> datetime:
+    def _day_start(cls, session: Session, now: datetime) -> datetime:
         """The start of the current day-window, in UTC -- computed by applying
         Settings.day_boundary_hour in local time (not UTC), so a late local bedtime
         doesn't get treated as already past a UTC-midnight-adjacent cutoff."""
-        settings = Settings.get()
+        settings = Settings.get(session)
         local_now = now.astimezone(settings.resolved_timezone())
         local_day_start = local_now.replace(hour=settings.day_boundary_hour, minute=0, second=0, microsecond=0)
         if local_now < local_day_start:
@@ -484,25 +483,25 @@ class Daily(Base):
         return local_day_start.astimezone(timezone.utc)
 
     @classmethod
-    def active(cls, context: Optional[Context] = None) -> Sequence[Daily]:
+    def active(cls, session: Session, context: Optional[Context] = None) -> Sequence[Daily]:
         q = select(cls).where(cls.is_active.is_(True))
         if context is not None:
             q = q.where(cls.context_id == context.id)
-        return sess.scalars(q).all()
+        return session.scalars(q).all()
 
     @classmethod
-    def due(cls, domain: Optional[str] = None, tier: Optional[DailyTier] = None) -> list[Daily]:
+    def due(cls, session: Session, domain: Optional[str] = None, tier: Optional[DailyTier] = None) -> list[Daily]:
         """Active dailies currently due: dailies with a recurrence rule are due once next_due_at
         has passed; dailies without one fall back to the plain day-boundary check against
         last_completed_at."""
         now = _now()
-        day_start = cls._day_start(now)
+        day_start = cls._day_start(session, now)
         q = select(cls).where(cls.is_active.is_(True))
         if domain is not None:
             q = q.where(cls.domain == domain)
         if tier is not None:
             q = q.where(cls.tier == tier)
-        dailies = sess.scalars(q).all()
+        dailies = session.scalars(q).all()
 
         def _aware(dt: datetime) -> datetime:
             return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
@@ -517,22 +516,22 @@ class Daily(Base):
         return result
 
     @classmethod
-    def create(cls, description: str, context: Optional[Context] = None, domain: str = "irl",
+    def create(cls, session: Session, description: str, context: Optional[Context] = None, domain: str = "irl",
                tier: DailyTier = DailyTier.CRITICAL, recurrence: Optional[str] = None,
                location: Optional[str] = None, reward: Optional[str] = None,
                notes: Optional[str] = None) -> Daily:
         daily = cls(description=description, context_id=context.id if context else None,
                     domain=domain, tier=tier, recurrence=recurrence, location=location,
                     reward=reward, notes=notes)
-        sess.add(daily)
-        sess.flush()
+        session.add(daily)
+        session.flush()
         return daily
 
-    def _compute_next_due(self, after: datetime) -> datetime:
+    def _compute_next_due(self, session: Session, after: datetime) -> datetime:
         """The next due timestamp (UTC) per this Daily's recurrence rule, computed in local time
         so weekly/monthly targets land on the intended local calendar day."""
         assert self.recurrence is not None, "_compute_next_due requires a recurrence rule to be set"
-        settings = Settings.get()
+        settings = Settings.get(session)
         tz = settings.resolved_timezone()
         local_after = after.astimezone(tz)
         kind, _, arg = self.recurrence.partition(":")
@@ -559,11 +558,11 @@ class Daily(Base):
         local_next = local_next.replace(hour=settings.day_boundary_hour, minute=0, second=0, microsecond=0)
         return local_next.astimezone(timezone.utc)
 
-    def complete(self) -> None:
+    def complete(self, session: Session) -> None:
         now = _now()
         self.last_completed_at = now
         if self.recurrence is not None:
-            self.next_due_at = self._compute_next_due(now)
+            self.next_due_at = self._compute_next_due(session, now)
 
     def __repr__(self) -> str:
         return f"<Daily #{self.id} {self.description!r}>"
@@ -590,8 +589,8 @@ class Item(Base):
     __mapper_args__ = {"polymorphic_on": "game", "polymorphic_identity": "item"}
 
     @classmethod
-    def by_game(cls, game: str) -> Sequence[Item]:
-        return sess.scalars(select(cls).filter_by(game=game)).all()
+    def by_game(cls, session: Session, game: str) -> Sequence[Item]:
+        return session.scalars(select(cls).filter_by(game=game)).all()
 
     def __repr__(self) -> str:
         return f"<Item #{self.id} {self.name!r} [{self.game}]>"
@@ -683,19 +682,19 @@ class Journal(Base):
     note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     @classmethod
-    def for_entity(cls, entity_type: str, entity_id: int) -> Sequence[Journal]:
-        return sess.scalars(
+    def for_entity(cls, session: Session, entity_type: str, entity_id: int) -> Sequence[Journal]:
+        return session.scalars(
             select(cls).filter_by(entity_type=entity_type, entity_id=entity_id).order_by(cls.created_at)
         ).all()
 
     @classmethod
-    def record(cls, entity_type: str, entity_id: int, field: Optional[str] = None,
+    def record(cls, session: Session, entity_type: str, entity_id: int, field: Optional[str] = None,
                old_value: Optional[str] = None, new_value: Optional[str] = None,
                note: Optional[str] = None) -> Journal:
         entry = cls(entity_type=entity_type, entity_id=entity_id, field=field,
                     old_value=old_value, new_value=new_value, note=note)
-        sess.add(entry)
-        sess.flush()
+        session.add(entry)
+        session.flush()
         return entry
 
     def __repr__(self) -> str:
@@ -722,20 +721,20 @@ class Reference(Base):
     context: Mapped[Optional[Context]] = relationship("Context")
 
     @classmethod
-    def search(cls, query: str) -> list[Reference]:
+    def search(cls, session: Session, query: str) -> list[Reference]:
         q = query.lower()
         return [
-            r for r in sess.scalars(select(cls)).all()
+            r for r in session.scalars(select(cls)).all()
             if q in r.title.lower()
             or (r.tags and q in r.tags.lower())
             or (r.notes and q in r.notes.lower())
         ]
 
     @classmethod
-    def create(cls, title: str, url: Optional[str] = None, tags: Optional[str] = None, context: Optional[Context] = None, notes: Optional[str] = None) -> Reference:
+    def create(cls, session: Session, title: str, url: Optional[str] = None, tags: Optional[str] = None, context: Optional[Context] = None, notes: Optional[str] = None) -> Reference:
         ref = cls(title=title, url=url, tags=tags, context_id=context.id if context else None, notes=notes)
-        sess.add(ref)
-        sess.flush()
+        session.add(ref)
+        session.flush()
         return ref
 
     def __repr__(self) -> str:
@@ -758,26 +757,26 @@ class WorkingMemory(Base):
     context: Mapped[Optional[Context]] = relationship("Context")
 
     @classmethod
-    def get(cls, topic: str) -> Optional[WorkingMemory]:
-        return sess.scalars(select(cls).filter_by(topic=topic)).one_or_none()
+    def get(cls, session: Session, topic: str) -> Optional[WorkingMemory]:
+        return session.scalars(select(cls).filter_by(topic=topic)).one_or_none()
 
     @classmethod
-    def search(cls, query: str) -> list[WorkingMemory]:
+    def search(cls, session: Session, query: str) -> list[WorkingMemory]:
         q = query.lower()
         return [
-            m for m in sess.scalars(select(cls)).all()
+            m for m in session.scalars(select(cls)).all()
             if q in m.topic.lower()
             or (m.domain and q in m.domain.lower())
             or q in m.body.lower()
         ]
 
     @classmethod
-    def get_or_create(cls, topic: str, domain: Optional[str] = None, body: str = "") -> WorkingMemory:
-        obj = cls.get(topic)
+    def get_or_create(cls, session: Session, topic: str, domain: Optional[str] = None, body: str = "") -> WorkingMemory:
+        obj = cls.get(session, topic)
         if obj is None:
             obj = cls(topic=topic, domain=domain, body=body)
-            sess.add(obj)
-            sess.flush()
+            session.add(obj)
+            session.flush()
         return obj
 
     def __repr__(self) -> str:
@@ -806,22 +805,22 @@ class LogEntry(Base):
     context: Mapped[Optional[Context]] = relationship("Context")
 
     @classmethod
-    def create(cls, body: str, domain: Optional[str] = None, context: Optional[Context] = None,
+    def create(cls, session: Session, body: str, domain: Optional[str] = None, context: Optional[Context] = None,
                occurred_at: Optional[datetime] = None) -> LogEntry:
         entry = cls(body=body, domain=domain, context_id=context.id if context else None,
                     occurred_at=occurred_at or _now())
-        sess.add(entry)
-        sess.flush()
+        session.add(entry)
+        session.flush()
         return entry
 
     @classmethod
-    def recent(cls, domain: Optional[str] = None, context: Optional[Context] = None, limit: int = 20) -> Sequence[LogEntry]:
+    def recent(cls, session: Session, domain: Optional[str] = None, context: Optional[Context] = None, limit: int = 20) -> Sequence[LogEntry]:
         q = select(cls).order_by(cls.occurred_at.desc()).limit(limit)
         if domain is not None:
             q = q.where(cls.domain == domain)
         if context is not None:
             q = q.where(cls.context_id == context.id)
-        return sess.scalars(q).all()
+        return session.scalars(q).all()
 
     def __repr__(self) -> str:
         when = self.occurred_at.strftime("%Y-%m-%d")
@@ -847,17 +846,17 @@ class InboxItem(Base):
     triaged_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     @classmethod
-    def pending(cls, category: Optional[str] = None) -> Sequence[InboxItem]:
+    def pending(cls, session: Session, category: Optional[str] = None) -> Sequence[InboxItem]:
         q = select(cls).where(cls.triaged_at.is_(None))
         if category is not None:
             q = q.where(cls.category == category)
-        return sess.scalars(q.order_by(cls.created_at)).all()
+        return session.scalars(q.order_by(cls.created_at)).all()
 
     @classmethod
-    def create(cls, body: str, source: Optional[str] = None, category: Optional[str] = None) -> InboxItem:
+    def create(cls, session: Session, body: str, source: Optional[str] = None, category: Optional[str] = None) -> InboxItem:
         item = cls(body=body, source=source, category=category)
-        sess.add(item)
-        sess.flush()
+        session.add(item)
+        session.flush()
         return item
 
     def triage(self) -> None:
@@ -895,24 +894,24 @@ class Note(Base):
     embedding: Mapped[Optional[bytes]] = mapped_column(Text, nullable=True)
 
     @classmethod
-    def create(cls, title: str, body: str, collection: Collection, tags: Optional[str] = None) -> Note:
+    def create(cls, session: Session, title: str, body: str, collection: Collection, tags: Optional[str] = None) -> Note:
         if collection == Collection.ALL:
             raise ValueError("Collection.ALL is a search sentinel and cannot be used for storage.")
         from embed import model_name
         note = cls(title=title, body=body, collection=collection, tags=tags)
         note.embedding = _embed_text(title, body)
         note.embedding_model = model_name()
-        sess.add(note)
-        sess.flush()
+        session.add(note)
+        session.flush()
         return note
 
     @classmethod
-    def get(cls, id: int) -> Optional[Note]:
-        return sess.scalars(select(cls).filter_by(id=id)).one_or_none()
+    def get(cls, session: Session, id: int) -> Optional[Note]:
+        return session.scalars(select(cls).filter_by(id=id)).one_or_none()
 
     @classmethod
-    def find(cls, title: str) -> Optional[Note]:
-        return sess.scalars(select(cls).filter_by(title=title)).one_or_none()
+    def find(cls, session: Session, title: str) -> Optional[Note]:
+        return session.scalars(select(cls).filter_by(title=title)).one_or_none()
 
     def update(self, title: Optional[str] = None, body: Optional[str] = None, tags: Optional[str] = None) -> None:
         if title is not None:
@@ -925,7 +924,7 @@ class Note(Base):
             self.reembed()
 
     @classmethod
-    def search(cls, query: str, collection: Collection) -> list[tuple[Note, float]]:
+    def search(cls, session: Session, query: str, collection: Collection) -> list[tuple[Note, float]]:
         from embed import embed, model_name
         raw = embed(query)
         vec = struct.pack(f"{len(raw)}f", *raw)
@@ -939,7 +938,7 @@ class Note(Base):
             params = (vec, mn, collection.name)
         with _engine.connect() as conn:
             rows = conn.connection.execute(sql, params).fetchall()
-        notes = {n.id: n for n in sess.scalars(select(cls).where(cls.id.in_([r[0] for r in rows]))).all()}
+        notes = {n.id: n for n in session.scalars(select(cls).where(cls.id.in_([r[0] for r in rows]))).all()}
         return [(notes[r[0]], r[1]) for r in rows if r[0] in notes]
 
     def reembed(self) -> None:
@@ -952,7 +951,7 @@ class Note(Base):
         return f"<Note {self.collection.value}/{self.title!r}{tags_str}>"
 
 
-@event.listens_for(sess, "before_flush")
+@event.listens_for(Session, "before_flush")
 def _reembed_dirty_notes(session: Session, flush_context: UOWTransaction, instances: Optional[Sequence[Any]]) -> None:
     for obj in session.dirty:
         if isinstance(obj, Note):
@@ -989,16 +988,16 @@ class Wishlist(Base):
         return self.importance * self.urgency * self.clarity // 10000
 
     @classmethod
-    def active(cls, effort: Optional[WishlistEffort] = None) -> Sequence[Wishlist]:
+    def active(cls, session: Session, effort: Optional[WishlistEffort] = None) -> Sequence[Wishlist]:
         q = select(cls).where(cls.status == WishlistStatus.ACTIVE)
         if effort is not None:
             q = q.where(cls.effort == effort)
-        return sess.scalars(q).all()
+        return session.scalars(q).all()
 
     @classmethod
-    def top(cls, n: int = 10) -> list[Wishlist]:
+    def top(cls, session: Session, n: int = 10) -> list[Wishlist]:
         """Active items: explicit priority first (nulls last), then score as tiebreaker."""
-        items = cls.active()
+        items = cls.active(session)
         return sorted(items, key=lambda w: (w.priority is None, -(w.priority or 0), -w.score))[:n]
 
     def __repr__(self) -> str:

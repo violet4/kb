@@ -4,10 +4,12 @@ import sys
 from datetime import datetime
 from typing import Callable
 
+from sqlalchemy.orm import Session
+
 from models import Daily, DailyTier, Goal, InboxItem, Person, Todo, Wishlist
 
 
-def anki_section() -> str | None:
+def anki_section(session: Session) -> str | None:
     try:
         from anki.collection import Collection  # type: ignore[import-not-found]  # no stubs published
     except ImportError:
@@ -31,15 +33,15 @@ def anki_section() -> str | None:
     return f"=== ANKI ===\n{due} card(s) due — kb anki decks"
 
 
-def dailies_section() -> str | None:
-    critical = Daily.due(domain="irl", tier=DailyTier.CRITICAL)
+def dailies_section(session: Session) -> str | None:
+    critical = Daily.due(session, domain="irl", tier=DailyTier.CRITICAL)
     lines = []
     if critical:
         lines.append("=== DAILIES ===")
         for d in critical:
             lines.append(f"- #{d.id} {d.description}")
 
-    all_due = Daily.due()
+    all_due = Daily.due(session)
     non_critical_irl = [d for d in all_due if d.domain == "irl" and d.tier != DailyTier.CRITICAL]
     game = [d for d in all_due if d.domain != "irl"]
     hints = []
@@ -53,8 +55,8 @@ def dailies_section() -> str | None:
     return "\n".join(lines) if lines else None
 
 
-def goals_section() -> str | None:
-    goals = Goal.active()
+def goals_section(session: Session) -> str | None:
+    goals = Goal.active(session)
     if not goals:
         return None
     lines = ["=== GOALS ==="]
@@ -64,8 +66,8 @@ def goals_section() -> str | None:
     return "\n".join(lines)
 
 
-def todos_section() -> str | None:
-    todos = Todo.pending()
+def todos_section(session: Session) -> str | None:
+    todos = Todo.pending(session)
     if not todos:
         return None
     lines = ["=== TODOS ==="]
@@ -76,8 +78,8 @@ def todos_section() -> str | None:
     return "\n".join(lines)
 
 
-def people_section() -> str | None:
-    overdue = Person.overdue_for_contact()
+def people_section(session: Session) -> str | None:
+    overdue = Person.overdue_for_contact(session)
     if not overdue:
         return None
     lines = ["=== REACH OUT ==="]
@@ -87,8 +89,8 @@ def people_section() -> str | None:
     return "\n".join(lines)
 
 
-def wishlist_section() -> str | None:
-    top_wishes = Wishlist.top(5)
+def wishlist_section(session: Session) -> str | None:
+    top_wishes = Wishlist.top(session, 5)
     if not top_wishes:
         return None
     lines = ["=== WISHLIST (top 5) ==="]
@@ -103,8 +105,8 @@ def wishlist_section() -> str | None:
     return "\n".join(lines)
 
 
-def inbox_section() -> str | None:
-    items = InboxItem.pending()
+def inbox_section(session: Session) -> str | None:
+    items = InboxItem.pending(session)
     if not items:
         return None
     by_category: dict[str, int] = {}
@@ -115,7 +117,7 @@ def inbox_section() -> str | None:
     return f"=== INBOX ({len(items)}) ===\n{breakdown} — kb inbox pending [--category C]"
 
 
-SECTIONS: dict[str, Callable[[], str | None]] = {
+SECTIONS: dict[str, Callable[[Session], str | None]] = {
     "anki": anki_section,
     "dailies": dailies_section,
     "goals": goals_section,
@@ -133,7 +135,7 @@ def cmd_summary(args: argparse.Namespace) -> None:
         sys.exit(2)
 
     names = args.section or list(SECTIONS)
-    rendered = [SECTIONS[name]() for name in names]
+    rendered = [SECTIONS[name](args.session) for name in names]
     sections = [s for s in rendered if s is not None]
 
     now = datetime.now()

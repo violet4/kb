@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from kb_cli import anki, context_cmd, daily, goal, inbox, journal, log, notes, pager, summary, tag, todo, wishlist
 from kb_cli import games
+from models import SessionFactory
 
 parser = argparse.ArgumentParser(prog="kb", description="Global kb CLI")
 subparsers = parser.add_subparsers(dest="command", required=True)
@@ -46,4 +47,5 @@ anki.add_subparser(subparsers)
 games.add_subparser(subparsers)
 
 args = parser.parse_args()
+args.session = SessionFactory()
 args.func(args)

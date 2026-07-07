@@ -19,7 +19,9 @@ from pathlib import Path
 from types import FrameType
 from typing import Any
 
-from models import Collection, Note, sess
+from sqlalchemy.orm import Session
+
+from models import Collection, Note, SessionFactory
 from embed import _local_embed as embed, model_name
 
 SOCKET_PATH = Path(__file__).parent / "data" / "kb.sock"
@@ -29,7 +31,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 log = logging.getLogger("kb.server")
 
 
-def _handle(request: dict[str, Any]) -> dict[str, Any]:
+def _handle(session: Session, request: dict[str, Any]) -> dict[str, Any]:
     cmd = request.get("cmd")
 
     if cmd == "ping":
@@ -49,7 +51,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any]:
             return {"ok": False, "error": f"Unknown collection: {col_str!r}. Valid: {[c.value for c in Collection]}"}
         if collection is None:
             return {"ok": False, "error": "collection is required"}
-        results = Note.search(query, collection)
+        results = Note.search(session, query, collection)
         return {"ok": True, "result": [
             {"id": n.id, "title": n.title, "body": n.body, "collection": n.collection.value,
              "tags": n.tags, "dist": dist}
@@ -63,20 +65,21 @@ def _handle(request: dict[str, Any]) -> dict[str, Any]:
         except (ValueError, TypeError):
             return {"ok": False, "error": f"Unknown collection: {col_str!r}"}
         note = Note.create(
+            session,
             title=request["title"],
             body=request["body"],
             collection=collection,
             tags=request.get("tags"),
         )
-        sess.commit()
+        session.commit()
         return {"ok": True, "result": repr(note)}
 
     if cmd == "note.update":
         existing_note: Note | None
         if "id" in request:
-            existing_note = Note.get(request["id"])
+            existing_note = Note.get(session, request["id"])
         elif "find" in request:
-            existing_note = Note.find(request["find"])
+            existing_note = Note.find(session, request["find"])
         else:
             return {"ok": False, "error": "note.update requires 'id' or 'find'"}
         if existing_note is None:
@@ -86,7 +89,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any]:
             body=request.get("body"),
             tags=request.get("tags"),
         )
-        sess.commit()
+        session.commit()
         return {"ok": True, "result": repr(existing_note)}
 
     return {"ok": False, "error": f"Unknown command: {cmd!r}"}
@@ -96,6 +99,7 @@ class _Handler(socketserver.StreamRequestHandler):
     def handle(self) -> None:
         peer = self.client_address or "client"
         log.info("connection from %s", peer)
+        session = SessionFactory()
         try:
             for line in self.rfile:
                 line = line.strip()
@@ -110,7 +114,7 @@ class _Handler(socketserver.StreamRequestHandler):
                     cmd = request.get("cmd")
                     log.info("cmd=%s start", cmd)
                     try:
-                        response = _handle(request)
+                        response = _handle(session, request)
                     except Exception as e:
                         log.exception("cmd=%s error after %.3fs", cmd, time.monotonic() - start)
                         response = {"ok": False, "error": str(e)}
@@ -120,12 +124,15 @@ class _Handler(socketserver.StreamRequestHandler):
                 self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError):
             pass
+        finally:
+            session.close()
         log.info("connection closed")
 
 
 class _Server(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
-    # ThreadingMixIn: `sess` is a scoped_session (thread-local), so this is safe, and it means
-    # one slow/wedged request no longer blocks every other client indefinitely (previously a
+    # ThreadingMixIn: each connection opens its own Session in _Handler.handle, so
+    # concurrent connections never share a Session across threads. One slow/wedged
+    # request no longer blocks every other client indefinitely (previously a
     # single-threaded UnixStreamServer — see kb-engineering-17).
     allow_reuse_address = True
     daemon_threads = True

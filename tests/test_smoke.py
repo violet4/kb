@@ -7,7 +7,7 @@ from models import Daily
 
 def test_fixture_gives_isolated_empty_db(db_session: Session) -> None:
     assert db_session.scalars(select(Daily)).all() == []
-    daily = Daily.create("test daily")
+    daily = Daily.create(db_session, "test daily")
     db_session.commit()
     assert daily.id is not None
 

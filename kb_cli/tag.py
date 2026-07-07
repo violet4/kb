@@ -4,25 +4,25 @@ import sys
 
 from sqlalchemy import select
 
-from models import TodoTag, sess
+from models import TodoTag
 
 from kb_cli._util import get_by_name
 
 
 def cmd_add(args: argparse.Namespace) -> None:
-    existing = sess.scalars(select(TodoTag).where(TodoTag.name == args.name)).one_or_none()
+    existing = args.session.scalars(select(TodoTag).where(TodoTag.name == args.name)).one_or_none()
     if existing is not None:
         print(f"TodoTag {args.name!r} already exists (#{existing.id})", file=sys.stderr)
         sys.exit(1)
-    parent = get_by_name(sess, TodoTag, args.parent) if args.parent else None
+    parent = get_by_name(args.session, TodoTag, args.parent) if args.parent else None
     tag = TodoTag(name=args.name, parent=parent)
-    sess.add(tag)
-    sess.commit()
+    args.session.add(tag)
+    args.session.commit()
     print(tag)
 
 
 def cmd_show(args: argparse.Namespace) -> None:
-    tag = get_by_name(sess, TodoTag, args.name)
+    tag = get_by_name(args.session, TodoTag, args.name)
     chain = " -> ".join(t.name for t in tag.ancestors())
     print(f"id: {tag.id}")
     print(f"name: {tag.name}")
@@ -30,15 +30,15 @@ def cmd_show(args: argparse.Namespace) -> None:
 
 
 def cmd_set_parent(args: argparse.Namespace) -> None:
-    tag = get_by_name(sess, TodoTag, args.name)
-    parent = get_by_name(sess, TodoTag, args.parent) if args.parent else None
+    tag = get_by_name(args.session, TodoTag, args.name)
+    parent = get_by_name(args.session, TodoTag, args.parent) if args.parent else None
     tag.parent = parent
-    sess.commit()
+    args.session.commit()
     print(tag)
 
 
 def cmd_list(args: argparse.Namespace) -> None:
-    tags = sess.scalars(select(TodoTag).order_by(TodoTag.name)).all()
+    tags = args.session.scalars(select(TodoTag).order_by(TodoTag.name)).all()
     if not tags:
         print("No tags.")
         return

@@ -7,7 +7,7 @@ from typing import Sequence
 from sqlalchemy import select
 
 from context import resolve_context
-from models import Daily, DailyTier, sess
+from models import Daily, DailyTier
 
 from kb_cli._util import print_fields
 
@@ -20,7 +20,7 @@ def _local_str(dt: datetime | None) -> str | None:
 
 
 def cmd_show(args: argparse.Namespace) -> None:
-    daily = sess.get(Daily, args.id)
+    daily = args.session.get(Daily, args.id)
     if daily is None:
         print(f"Daily #{args.id}: not found", file=sys.stderr)
         sys.exit(1)
@@ -48,11 +48,11 @@ def cmd_list(args: argparse.Namespace) -> None:
             q = q.where(Daily.domain == args.domain)
         if args.tier:
             q = q.where(Daily.tier == DailyTier(args.tier))
-        dailies = sess.scalars(q).all()
+        dailies = args.session.scalars(q).all()
     else:
         domain = args.domain
         tier = DailyTier(args.tier) if args.tier else None
-        dailies = Daily.due(domain=domain, tier=tier)
+        dailies = Daily.due(args.session, domain=domain, tier=tier)
     if not dailies:
         print("No dailies due." if not args.all else "No dailies.")
         return
@@ -63,28 +63,28 @@ def cmd_list(args: argparse.Namespace) -> None:
 
 def cmd_complete(args: argparse.Namespace) -> None:
     for daily_id in args.ids:
-        daily = sess.get(Daily, daily_id)
+        daily = args.session.get(Daily, daily_id)
         if daily is None:
             print(f"Daily #{daily_id}: not found", file=sys.stderr)
             continue
-        daily.complete()
+        daily.complete(args.session)
         if daily.recurrence is not None:
             print(f"Daily #{daily_id}: {daily.description!r} -> completed, next due {_local_str(daily.next_due_at)}")
         else:
             print(f"Daily #{daily_id}: {daily.description!r} -> completed for today")
-    sess.commit()
+    args.session.commit()
 
 
 def cmd_add(args: argparse.Namespace) -> None:
-    context = resolve_context(args.context)
-    daily = Daily.create(args.description, context=context, domain=args.domain, tier=DailyTier(args.tier),
+    context = resolve_context(args.session, args.context)
+    daily = Daily.create(args.session, args.description, context=context, domain=args.domain, tier=DailyTier(args.tier),
                          recurrence=args.recurrence, location=args.location, reward=args.reward, notes=args.notes)
-    sess.commit()
+    args.session.commit()
     print(daily)
 
 
 def cmd_update(args: argparse.Namespace) -> None:
-    daily = sess.get(Daily, args.id)
+    daily = args.session.get(Daily, args.id)
     if daily is None:
         print(f"Daily #{args.id}: not found", file=sys.stderr)
         sys.exit(1)
@@ -103,31 +103,31 @@ def cmd_update(args: argparse.Namespace) -> None:
     if args.notes is not None:
         daily.notes = args.notes
     if args.context is not None:
-        daily.context = resolve_context(args.context)
-    sess.commit()
+        daily.context = resolve_context(args.session, args.context)
+    args.session.commit()
     print(daily)
 
 
 def cmd_activate(args: argparse.Namespace) -> None:
     for daily_id in args.ids:
-        daily = sess.get(Daily, daily_id)
+        daily = args.session.get(Daily, daily_id)
         if daily is None:
             print(f"Daily #{daily_id}: not found", file=sys.stderr)
             continue
         daily.is_active = True
         print(f"Daily #{daily_id}: {daily.description!r} -> active")
-    sess.commit()
+    args.session.commit()
 
 
 def cmd_deactivate(args: argparse.Namespace) -> None:
     for daily_id in args.ids:
-        daily = sess.get(Daily, daily_id)
+        daily = args.session.get(Daily, daily_id)
         if daily is None:
             print(f"Daily #{daily_id}: not found", file=sys.stderr)
             continue
         daily.is_active = False
         print(f"Daily #{daily_id}: {daily.description!r} -> inactive")
-    sess.commit()
+    args.session.commit()
 
 
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:

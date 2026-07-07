@@ -3,16 +3,18 @@ import argparse
 import sys
 from typing import Iterable
 
+from sqlalchemy.orm import Session
+
 from context import resolve_context
-from models import Goal, GoalStatus, Journal, sess
+from models import Goal, GoalStatus, Journal
 
 from kb_cli._util import add_history_arg, print_journal_history
 
 
 def cmd_add(args: argparse.Namespace) -> None:
-    context = resolve_context(args.context)
-    goal = Goal.create(args.title, description=args.description, context=context, notes=args.notes)
-    sess.commit()
+    context = resolve_context(args.session, args.context)
+    goal = Goal.create(args.session, args.title, description=args.description, context=context, notes=args.notes)
+    args.session.commit()
     print(goal)
 
 
@@ -20,7 +22,7 @@ def cmd_show(args: argparse.Namespace) -> None:
     for i, goal_id in enumerate(args.ids):
         if i > 0:
             print()
-        goal = sess.get(Goal, goal_id)
+        goal = args.session.get(Goal, goal_id)
         if goal is None:
             print(f"id: {goal_id}\nerror: not found", file=sys.stderr)
             continue
@@ -34,34 +36,34 @@ def cmd_show(args: argparse.Namespace) -> None:
         if goal.notes:
             print(f"notes: {goal.notes}")
 
-        print_journal_history(Journal, "Goal", goal.id, args.history, f"journal show Goal {goal.id} or kb goal show {goal.id} --history [N]")
+        print_journal_history(args.session, Journal, "Goal", goal.id, args.history, f"journal show Goal {goal.id} or kb goal show {goal.id} --history [N]")
 
 
-def _set_status(ids: Iterable[int], status: GoalStatus, verb: str) -> None:
+def _set_status(session: Session, ids: Iterable[int], status: GoalStatus, verb: str) -> None:
     for goal_id in ids:
-        goal = sess.get(Goal, goal_id)
+        goal = session.get(Goal, goal_id)
         if goal is None:
             print(f"Goal #{goal_id}: not found", file=sys.stderr)
             continue
         goal.status = status
         print(f"Goal #{goal_id}: {goal.title!r} -> {verb}")
-    sess.commit()
+    session.commit()
 
 
 def cmd_complete(args: argparse.Namespace) -> None:
-    _set_status(args.ids, GoalStatus.COMPLETED, "completed")
+    _set_status(args.session, args.ids, GoalStatus.COMPLETED, "completed")
 
 
 def cmd_abandon(args: argparse.Namespace) -> None:
-    _set_status(args.ids, GoalStatus.ABANDONED, "abandoned")
+    _set_status(args.session, args.ids, GoalStatus.ABANDONED, "abandoned")
 
 
 def cmd_hold(args: argparse.Namespace) -> None:
-    _set_status(args.ids, GoalStatus.ON_HOLD, "on hold")
+    _set_status(args.session, args.ids, GoalStatus.ON_HOLD, "on hold")
 
 
 def cmd_reactivate(args: argparse.Namespace) -> None:
-    _set_status(args.ids, GoalStatus.ACTIVE, "active")
+    _set_status(args.session, args.ids, GoalStatus.ACTIVE, "active")
 
 
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:

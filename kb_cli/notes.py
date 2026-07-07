@@ -5,11 +5,11 @@ import sys
 from sqlalchemy import select
 
 from client import KBClient
-from models import Collection, Note, sess
+from models import Collection, Note
 
 
 def cmd_get(args: argparse.Namespace) -> None:
-    note = Note.get(args.id)
+    note = Note.get(args.session, args.id)
     if note is None:
         print(f"Note #{args.id}: not found", file=sys.stderr)
         sys.exit(1)
@@ -28,18 +28,18 @@ def cmd_add(args: argparse.Namespace) -> None:
 
 
 def cmd_update(args: argparse.Namespace) -> None:
-    note = Note.get(args.id) if args.id else Note.find(args.find)
+    note = Note.get(args.session, args.id) if args.id else Note.find(args.session, args.find)
     if note is None:
         print("Note not found.", file=sys.stderr)
         sys.exit(1)
     note.update(title=args.title, body=args.body, tags=args.tags)
-    sess.commit()
+    args.session.commit()
     print(f"Updated: {note}")
 
 
 def cmd_search(args: argparse.Namespace) -> None:
     collection = Collection(args.collection)
-    results = Note.search(args.query, collection)
+    results = Note.search(args.session, args.query, collection)
     if not results:
         print("No results.")
     for note, dist in results:
@@ -49,7 +49,7 @@ def cmd_search(args: argparse.Namespace) -> None:
 
 def cmd_reembed(args: argparse.Namespace) -> None:
     from embed import model_name
-    notes = sess.scalars(select(Note)).all()
+    notes = args.session.scalars(select(Note)).all()
     if not notes:
         print("No notes to reembed.")
         return
@@ -57,7 +57,7 @@ def cmd_reembed(args: argparse.Namespace) -> None:
     for i, note in enumerate(notes, 1):
         note.reembed()
         print(f"  [{i}/{len(notes)}] {note.title!r}")
-    sess.commit()
+    args.session.commit()
     print("Done.")
 
 

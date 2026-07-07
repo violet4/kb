@@ -3,7 +3,7 @@ import argparse
 import sys
 from typing import Iterable
 
-from models import Wishlist, WishlistEffort, WishlistStatus, sess
+from models import Wishlist, WishlistEffort, WishlistStatus
 
 
 def _validate_0_100(args: argparse.Namespace, names: Iterable[str]) -> None:
@@ -28,14 +28,14 @@ def cmd_add(args: argparse.Namespace) -> None:
         priority=args.priority,
         notes=args.notes,
     )
-    sess.add(item)
-    sess.commit()
+    args.session.add(item)
+    args.session.commit()
     print(f"Added: {item} score={item.score}")
 
 
 def cmd_update(args: argparse.Namespace) -> None:
     _validate_0_100(args, ("importance", "urgency", "clarity"))
-    item = sess.get(Wishlist, args.id)
+    item = args.session.get(Wishlist, args.id)
     if item is None:
         print(f"Wishlist #{args.id}: not found", file=sys.stderr)
         sys.exit(1)
@@ -63,7 +63,7 @@ def cmd_update(args: argparse.Namespace) -> None:
     if args.notes is not None:
         item.notes = args.notes
 
-    sess.commit()
+    args.session.commit()
     print(f"Updated: {item} score={item.score}")
 
 

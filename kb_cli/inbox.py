@@ -2,17 +2,17 @@
 import argparse
 import sys
 
-from models import InboxItem, sess
+from models import InboxItem
 
 
 def cmd_add(args: argparse.Namespace) -> None:
-    item = InboxItem.create(args.body, source=args.source, category=args.category)
-    sess.commit()
+    item = InboxItem.create(args.session, args.body, source=args.source, category=args.category)
+    args.session.commit()
     print(item)
 
 
 def cmd_pending(args: argparse.Namespace) -> None:
-    items = InboxItem.pending(category=args.category)
+    items = InboxItem.pending(args.session, category=args.category)
     if not items:
         print("Inbox empty.")
         return
@@ -22,14 +22,14 @@ def cmd_pending(args: argparse.Namespace) -> None:
 
 def cmd_triage(args: argparse.Namespace) -> None:
     for item_id in args.ids:
-        item = sess.get(InboxItem, item_id)
+        item = args.session.get(InboxItem, item_id)
         if item is None:
             print(f"InboxItem #{item_id}: not found", file=sys.stderr)
             continue
         item.triage()
         body = item.body if len(item.body) <= 60 else item.body[:60] + "…"
         print(f"InboxItem #{item_id}: {body!r} -> triaged")
-    sess.commit()
+    args.session.commit()
 
 
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:

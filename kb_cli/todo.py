@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 
 from context import resolve_context
-from models import Journal, Todo, TodoStatus, TodoTag, WishlistEffort, sess
+from models import Journal, Todo, TodoStatus, TodoTag, WishlistEffort
 
 from kb_cli._util import add_history_arg, get_by_name, print_journal_history
 
@@ -32,7 +32,7 @@ def cmd_show(args: argparse.Namespace) -> None:
     for i, todo_id in enumerate(args.ids):
         if i > 0:
             print()
-        todo = sess.get(Todo, todo_id)
+        todo = args.session.get(Todo, todo_id)
         if todo is None:
             print(f"id: {todo_id}\nerror: not found", file=sys.stderr)
             continue
@@ -52,20 +52,20 @@ def cmd_show(args: argparse.Namespace) -> None:
         if todo.notes:
             print(f"notes: {todo.notes}")
 
-        print_journal_history(Journal, "Todo", todo.id, args.history, f"journal show Todo {todo.id} or kb todo show {todo.id} --history [N]")
+        print_journal_history(args.session, Journal, "Todo", todo.id, args.history, f"journal show Todo {todo.id} or kb todo show {todo.id} --history [N]")
 
 
 def cmd_add(args: argparse.Namespace) -> None:
     effort = WishlistEffort(args.effort) if args.effort else None
     defer_until = _parse_defer_until(args.defer_until) if args.defer_until else None
-    context = resolve_context(args.context)
-    todo = Todo.create(args.title, notes=args.notes, effort=effort, defer_until=defer_until, context=context)
-    sess.commit()
+    context = resolve_context(args.session, args.context)
+    todo = Todo.create(args.session, args.title, notes=args.notes, effort=effort, defer_until=defer_until, context=context)
+    args.session.commit()
     print(todo)
 
 
 def cmd_update(args: argparse.Namespace) -> None:
-    todo = sess.get(Todo, args.id)
+    todo = args.session.get(Todo, args.id)
     if todo is None:
         print(f"Todo #{args.id}: not found", file=sys.stderr)
         sys.exit(1)
@@ -78,28 +78,28 @@ def cmd_update(args: argparse.Namespace) -> None:
     if args.notes is not None:
         todo.notes = args.notes
     if args.context is not None:
-        todo.context = resolve_context(args.context)
+        todo.context = resolve_context(args.session, args.context)
     if args.goal is not None:
         todo.goal_id = args.goal
-    sess.commit()
+    args.session.commit()
     print(todo)
 
 
 def cmd_complete(args: argparse.Namespace) -> None:
     for todo_id in args.ids:
-        todo = sess.get(Todo, todo_id)
+        todo = args.session.get(Todo, todo_id)
         if todo is None:
             print(f"Todo #{todo_id}: not found", file=sys.stderr)
             continue
         todo.status = TodoStatus.DONE
         print(f"Todo #{todo_id}: {todo.title!r} -> done")
-    sess.commit()
+    args.session.commit()
 
 
 def cmd_pending(args: argparse.Namespace) -> None:
     effort = WishlistEffort(args.effort) if args.effort else None
-    tag = get_by_name(sess, TodoTag, args.tag) if args.tag else None
-    todos = Todo.pending(effort=effort, include_deferred=args.all, tag=tag)
+    tag = get_by_name(args.session, TodoTag, args.tag) if args.tag else None
+    todos = Todo.pending(args.session, effort=effort, include_deferred=args.all, tag=tag)
     if not todos:
         print("No pending todos.")
         return
@@ -114,32 +114,32 @@ def cmd_pending(args: argparse.Namespace) -> None:
 
 
 def cmd_tag(args: argparse.Namespace) -> None:
-    todo = sess.get(Todo, args.id)
+    todo = args.session.get(Todo, args.id)
     if todo is None:
         print(f"Todo #{args.id}: not found", file=sys.stderr)
         sys.exit(1)
     for name in args.tags:
-        tag = sess.scalars(select(TodoTag).where(TodoTag.name == name)).one_or_none()
+        tag = args.session.scalars(select(TodoTag).where(TodoTag.name == name)).one_or_none()
         if tag is None:
             tag = TodoTag(name=name)
-            sess.add(tag)
-            sess.flush()
+            args.session.add(tag)
+            args.session.flush()
         if tag not in todo.tags:
             todo.tags.append(tag)
-    sess.commit()
+    args.session.commit()
     print(todo)
 
 
 def cmd_untag(args: argparse.Namespace) -> None:
-    todo = sess.get(Todo, args.id)
+    todo = args.session.get(Todo, args.id)
     if todo is None:
         print(f"Todo #{args.id}: not found", file=sys.stderr)
         sys.exit(1)
     for name in args.tags:
-        tag = get_by_name(sess, TodoTag, name)
+        tag = get_by_name(args.session, TodoTag, name)
         if tag in todo.tags:
             todo.tags.remove(tag)
-    sess.commit()
+    args.session.commit()
     print(todo)
 
 

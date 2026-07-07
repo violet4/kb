@@ -363,10 +363,28 @@ class Goal(Base):
     todos: Mapped[list[Todo]] = relationship("Todo", back_populates="goal")
 
     @classmethod
-    def active(cls, session: Session, context: Optional[Context] = None) -> Sequence[Goal]:
+    def active(
+        cls,
+        session: Session,
+        context: Optional[Context] = None,
+        contexts: Optional[Sequence[Context]] = None,
+        include_no_context: bool = False,
+    ) -> Sequence[Goal]:
+        """`context` matches that single context exactly; `contexts` (e.g. from
+        Context.self_and_descendants) matches any context in the given set -- use
+        the latter for a context-plus-sub-contexts filter. include_no_context also
+        surfaces Goals with no context at all (e.g. for a summary view that treats
+        untagged items as always-relevant, regardless of which context is active)."""
         q = select(cls).where(cls.status == GoalStatus.ACTIVE)
         if context is not None:
             q = q.where(cls.context_id == context.id)
+        if contexts is not None:
+            ids = [c.id for c in contexts]
+            q = (
+                q.where(cls.context_id.in_(ids) | cls.context_id.is_(None))
+                if include_no_context
+                else q.where(cls.context_id.in_(ids))
+            )
         return session.scalars(q).all()
 
     @classmethod
@@ -420,13 +438,27 @@ class Todo(Base):
         cls,
         session: Session,
         context: Optional[Context] = None,
+        contexts: Optional[Sequence[Context]] = None,
+        include_no_context: bool = False,
         effort: Optional[WishlistEffort] = None,
         include_deferred: bool = False,
         tag: Optional["TodoTag"] = None,
     ) -> Sequence[Todo]:
+        """`context` matches that single context exactly; `contexts` (e.g. from
+        Context.self_and_descendants) matches any context in the given set -- use
+        the latter for a context-plus-sub-contexts filter. include_no_context also
+        surfaces Todos with no context at all (e.g. for a summary view that treats
+        untagged items as always-relevant, regardless of which context is active)."""
         q = select(cls).where(cls.status.in_([TodoStatus.PENDING, TodoStatus.IN_PROGRESS]))
         if context is not None:
             q = q.where(cls.context_id == context.id)
+        if contexts is not None:
+            ids = [c.id for c in contexts]
+            q = (
+                q.where(cls.context_id.in_(ids) | cls.context_id.is_(None))
+                if include_no_context
+                else q.where(cls.context_id.in_(ids))
+            )
         if effort is not None:
             q = q.where(cls.effort == effort)
         if not include_deferred:

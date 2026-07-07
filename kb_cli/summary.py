@@ -3,11 +3,11 @@
 import argparse
 import sys
 from datetime import datetime
-from typing import Callable
+from typing import Callable, Optional
 
 from sqlalchemy.orm import Session
 
-from models import Daily, DailyTier, Goal, InboxItem, Person, Todo, Wishlist
+from models import Context, CurrentContext, Daily, DailyTier, Goal, InboxItem, Person, Todo, Wishlist
 
 
 def anki_section(session: Session) -> str | None:
@@ -56,19 +56,39 @@ def dailies_section(session: Session) -> str | None:
     return "\n".join(lines) if lines else None
 
 
+def _other_contexts_hint(session: Session, in_scope_ids: set[int], all_pending_context_ids: list[Optional[int]]) -> str:
+    """A one-line summary of how many items outside the current context filter are
+    waiting elsewhere -- e.g. "3 other contexts have 7 pending items" -- without
+    rendering their contents, so switching context stays a deliberate action."""
+    outside = [cid for cid in all_pending_context_ids if cid is not None and cid not in in_scope_ids]
+    if not outside:
+        return ""
+    other_context_count = len(set(outside))
+    return f"({len(outside)} item(s) in {other_context_count} other context(s) — kb context switch NAME)"
+
+
 def goals_section(session: Session) -> str | None:
-    goals = Goal.active(session)
+    current = CurrentContext.get(session)
+    in_scope = Context.self_and_descendants(session, current.name) if current else None
+    goals = Goal.active(session, contexts=in_scope, include_no_context=True)
     if not goals:
         return None
     lines = ["=== GOALS ==="]
     for g in goals:
         ctx = f" [{g.context.name}]" if g.context else ""
         lines.append(f"- #{g.id} {g.title}{ctx}")
+    if current is not None:
+        all_ids = [g.context_id for g in Goal.active(session)]
+        hint = _other_contexts_hint(session, {c.id for c in in_scope} if in_scope else set(), all_ids)
+        if hint:
+            lines.append(hint)
     return "\n".join(lines)
 
 
 def todos_section(session: Session) -> str | None:
-    todos = Todo.pending(session)
+    current = CurrentContext.get(session)
+    in_scope = Context.self_and_descendants(session, current.name) if current else None
+    todos = Todo.pending(session, contexts=in_scope, include_no_context=True)
     if not todos:
         return None
     lines = ["=== TODOS ==="]
@@ -76,6 +96,11 @@ def todos_section(session: Session) -> str | None:
         goal = f" → {t.goal.title}" if t.goal else ""
         ctx = f" [{t.context.name}]" if t.context else ""
         lines.append(f"- #{t.id} [{t.status.value}] {t.title}{goal}{ctx}")
+    if current is not None:
+        all_ids = [t.context_id for t in Todo.pending(session)]
+        hint = _other_contexts_hint(session, {c.id for c in in_scope} if in_scope else set(), all_ids)
+        if hint:
+            lines.append(hint)
     return "\n".join(lines)
 
 

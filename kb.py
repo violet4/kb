@@ -8,9 +8,10 @@ from datetime import datetime
 
 from sqlalchemy import select
 
+from base import Base
 from context import resolve_context
 from models import (
-    Base, ChangeLog, Collection, Context, CurrentContext, Daily, DailyTier, Goal, GoalStatus,
+    ChangeLog, Collection, Context, CurrentContext, Daily, DailyTier, Goal, GoalStatus,
     InboxItem, IrlItem, Item, Journal, LogEntry, Note, Person, PersonTier, Purchase,
     Reference, Settings, Todo, TodoStatus, TodoTag, TodoTagLink, Vendor, VendorItem,
     WishlistEffort, WishlistStatus, Wishlist, WorkingMemory, init_db, sess,

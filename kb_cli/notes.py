@@ -1,4 +1,5 @@
 """Note operations."""
+
 import argparse
 import sys
 
@@ -49,6 +50,7 @@ def cmd_search(args: argparse.Namespace) -> None:
 
 def cmd_reembed(args: argparse.Namespace) -> None:
     from embed import model_name
+
     notes = args.session.scalars(select(Note)).all()
     if not notes:
         print("No notes to reembed.")

@@ -15,10 +15,22 @@ dependencies = [
 anki = ["anki>=25.0"]
 
 [dependency-groups]
-dev = ["pytest>=8.0", "mypy>=1.13", "pre-commit>=4.0"]
+dev = ["pytest>=8.0", "mypy>=1.13", "pre-commit>=4.0", "time-machine>=2.16", "pytest-cov>=6.0", "black>=25.0"]
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
 files = ["*.py", "kb_cli", "scripts"]
 plugins = ["sqlalchemy.ext.mypy.plugin"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=. --cov-report=term-missing"
+
+[tool.coverage.run]
+omit = ["tests/*", ".venv/*", "alembic/*"]
+
+[tool.black]
+line-length = 120
+target-version = ["py312"]
+extend-exclude = "alembic/versions/"

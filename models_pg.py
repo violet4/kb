@@ -2,6 +2,7 @@
 chunk when working on kb's shared core — no universal/MMO base yet, see mixins.py docstring for
 the layering rationale: start narrow at the game layer, generalize upward only once a second
 game's real data proves something is actually shared."""
+
 from __future__ import annotations
 
 from typing import Optional
@@ -13,8 +14,10 @@ from base import Base
 from mixins import HasStackSize, HasUniqueName
 from models import Item
 
+
 class PgItem(Item, HasStackSize):
     """Project Gorgon items."""
+
     __tablename__ = "pg_item"
 
     id: Mapped[int] = mapped_column(Integer, ForeignKey("item.id"), primary_key=True)
@@ -22,8 +25,6 @@ class PgItem(Item, HasStackSize):
     sources: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     __mapper_args__ = {"polymorphic_identity": "pg"}
-
-
 
 
 class PgSkill(Base, HasUniqueName):
@@ -37,6 +38,7 @@ class PgSkill(Base, HasUniqueName):
 
 class PgCharacter(Base, HasUniqueName):
     """A character you (the player) control."""
+
     __tablename__ = "pg_character"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -128,6 +130,7 @@ class PgDungeon(Base):
 
 class PgMob(Base, HasUniqueName):
     """A killable enemy, distinct from PgNpc (interactable: trainer/shop/quest-giver/lore)."""
+
     __tablename__ = "pg_mob"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -159,6 +162,7 @@ class PgHangout(Base, HasUniqueName):
     and rewards are granted on next login once duration_minutes has elapsed since logout. Exact
     remaining-time tracking is deliberately not modeled; duration is fixed/canonical per hangout,
     never randomized."""
+
     __tablename__ = "pg_hangout"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -195,6 +199,7 @@ class PgHangoutItem(Base):
 class PgPlayer(Base, HasUniqueName):
     """Another player's character you've encountered. One row per character name met —
     the same person under multiple aliases gets multiple rows, linked via notes."""
+
     __tablename__ = "pg_player"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -203,4 +208,3 @@ class PgPlayer(Base, HasUniqueName):
 
     def __repr__(self) -> str:
         return f"<PgPlayer {self.name!r}{'' if self.friendly else ' [unfriendly]'}>"
-

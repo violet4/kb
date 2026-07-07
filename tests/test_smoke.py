@@ -1,4 +1,5 @@
 """Verifies the in-memory test DB fixture itself works before trusting it for real tests."""
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 

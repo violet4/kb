@@ -1,4 +1,5 @@
 """Wishlist operations."""
+
 import argparse
 import sys
 from typing import Iterable

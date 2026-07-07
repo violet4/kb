@@ -1,4 +1,5 @@
 """Todo operations."""
+
 import argparse
 import sys
 from datetime import datetime, timedelta, timezone
@@ -52,14 +53,23 @@ def cmd_show(args: argparse.Namespace) -> None:
         if todo.notes:
             print(f"notes: {todo.notes}")
 
-        print_journal_history(args.session, Journal, "Todo", todo.id, args.history, f"journal show Todo {todo.id} or kb todo show {todo.id} --history [N]")
+        print_journal_history(
+            args.session,
+            Journal,
+            "Todo",
+            todo.id,
+            args.history,
+            f"journal show Todo {todo.id} or kb todo show {todo.id} --history [N]",
+        )
 
 
 def cmd_add(args: argparse.Namespace) -> None:
     effort = WishlistEffort(args.effort) if args.effort else None
     defer_until = _parse_defer_until(args.defer_until) if args.defer_until else None
     context = resolve_context(args.session, args.context)
-    todo = Todo.create(args.session, args.title, notes=args.notes, effort=effort, defer_until=defer_until, context=context)
+    todo = Todo.create(
+        args.session, args.title, notes=args.notes, effort=effort, defer_until=defer_until, context=context
+    )
     args.session.commit()
     print(todo)
 
@@ -154,11 +164,17 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
 
     p_add = sub.add_parser("add", help="Add a Todo")
     p_add.add_argument("title")
-    p_add.add_argument("--effort", choices=[e.value for e in WishlistEffort],
-                        help="grab = quick/batchable, research = needs investigation, project = multi-step")
-    p_add.add_argument("--defer-until", metavar="WHEN",
-                        help="Hide from `todo pending`/summary until this time — HH:MM (today, or tomorrow if already past), "
-                             "'YYYY-MM-DD', or 'YYYY-MM-DD HH:MM'")
+    p_add.add_argument(
+        "--effort",
+        choices=[e.value for e in WishlistEffort],
+        help="grab = quick/batchable, research = needs investigation, project = multi-step",
+    )
+    p_add.add_argument(
+        "--defer-until",
+        metavar="WHEN",
+        help="Hide from `todo pending`/summary until this time — HH:MM (today, or tomorrow if already past), "
+        "'YYYY-MM-DD', or 'YYYY-MM-DD HH:MM'",
+    )
     p_add.add_argument("--notes")
     p_add.add_argument("--context", metavar="NAME", help="Act in context NAME for this command only")
     p_add.set_defaults(func=cmd_add)
@@ -167,8 +183,11 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_update.add_argument("id", type=int)
     p_update.add_argument("--title")
     p_update.add_argument("--effort", choices=[e.value for e in WishlistEffort])
-    p_update.add_argument("--defer-until", metavar="WHEN",
-                           help="HH:MM (today, or tomorrow if already past), 'YYYY-MM-DD', or 'YYYY-MM-DD HH:MM'")
+    p_update.add_argument(
+        "--defer-until",
+        metavar="WHEN",
+        help="HH:MM (today, or tomorrow if already past), 'YYYY-MM-DD', or 'YYYY-MM-DD HH:MM'",
+    )
     p_update.add_argument("--notes")
     p_update.add_argument("--context", metavar="NAME")
     p_update.add_argument("--goal", type=int, metavar="GOAL_ID")

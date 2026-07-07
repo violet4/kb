@@ -8,6 +8,7 @@ Protocol: newline-delimited JSON.
 Run:   uv run server.py
 Stop:  kill $(cat data/kb.pid)  or  Ctrl-C
 """
+
 import json
 import logging
 import os
@@ -52,11 +53,20 @@ def _handle(session: Session, request: dict[str, Any]) -> dict[str, Any]:
         if collection is None:
             return {"ok": False, "error": "collection is required"}
         results = Note.search(session, query, collection)
-        return {"ok": True, "result": [
-            {"id": n.id, "title": n.title, "body": n.body, "collection": n.collection.value,
-             "tags": n.tags, "dist": dist}
-            for n, dist in results
-        ]}
+        return {
+            "ok": True,
+            "result": [
+                {
+                    "id": n.id,
+                    "title": n.title,
+                    "body": n.body,
+                    "collection": n.collection.value,
+                    "tags": n.tags,
+                    "dist": dist,
+                }
+                for n, dist in results
+            ],
+        }
 
     if cmd == "note.create":
         col_str = request.get("collection")

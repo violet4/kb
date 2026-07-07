@@ -4,6 +4,7 @@ Anki must be closed while this runs (SQLite file lock) -- this does NOT talk to 
 Anki process, unlike AnkiConnect. Requires the optional 'anki' dependency:
 uv sync --project ~/kb --extra anki
 """
+
 import argparse
 import ast
 import code
@@ -42,12 +43,12 @@ CUSTOM_NOTETYPES = [
 def _require_anki() -> Type[Any]:
     try:
         from anki.collection import Collection  # type: ignore[import-not-found]  # no stubs published
+
         result: Type[Any] = Collection
         return result
     except ImportError:
         print(
-            "kb anki: the 'anki' package is not installed.\n"
-            "Install it with: uv sync --project ~/kb --extra anki",
+            "kb anki: the 'anki' package is not installed.\n" "Install it with: uv sync --project ~/kb --extra anki",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -70,7 +71,10 @@ def _open_collection(path: str) -> Any:
                 print(f"kb anki: could not open collection ({e})", file=sys.stderr)
                 sys.exit(1)
             if waited >= LOCK_WAIT_TIMEOUT_SECONDS:
-                print(f"kb anki: collection still locked after {LOCK_WAIT_TIMEOUT_SECONDS}s -- close Anki and try again.", file=sys.stderr)
+                print(
+                    f"kb anki: collection still locked after {LOCK_WAIT_TIMEOUT_SECONDS}s -- close Anki and try again.",
+                    file=sys.stderr,
+                )
                 sys.exit(1)
             if not warned:
                 print("kb anki: Anki is still open -- close it to continue. Waiting...", file=sys.stderr)
@@ -221,13 +225,19 @@ def cmd_run(args: argparse.Namespace) -> None:
 
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     parser = subparsers.add_parser("anki", help="Read/write an Anki collection directly (Anki must be closed)")
-    parser.add_argument("--collection", default=str(DEFAULT_COLLECTION), help=f"Path to collection.anki2 (default: {DEFAULT_COLLECTION})")
+    parser.add_argument(
+        "--collection",
+        default=str(DEFAULT_COLLECTION),
+        help=f"Path to collection.anki2 (default: {DEFAULT_COLLECTION})",
+    )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_decks = sub.add_parser("decks", help="List decks and their note counts")
     p_decks.set_defaults(func=cmd_decks)
 
-    p_notetype_init = sub.add_parser("notetype-init", help="Create kb's custom note types (e.g. Reverse + Type) if not already present")
+    p_notetype_init = sub.add_parser(
+        "notetype-init", help="Create kb's custom note types (e.g. Reverse + Type) if not already present"
+    )
     p_notetype_init.set_defaults(func=cmd_notetype_init)
 
     p_deck_add = sub.add_parser("deck-add", help="Create a new deck")
@@ -249,8 +259,14 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_delete.add_argument("ids", nargs="+", type=int)
     p_delete.set_defaults(func=cmd_delete)
 
-    p_run = sub.add_parser("run", help="Run a Python expression/script against the open collection (like kb.py, but col instead of sess)")
+    p_run = sub.add_parser(
+        "run", help="Run a Python expression/script against the open collection (like kb.py, but col instead of sess)"
+    )
     p_run.add_argument("command", nargs="?", help="Python expression to execute")
-    p_run.add_argument("-f", "--file", help="Read command from a script file instead of the command arg (use '-' for stdin)")
-    p_run.add_argument("-i", "--interactive", action="store_true", help="Start an interactive REPL with `col` pre-loaded")
+    p_run.add_argument(
+        "-f", "--file", help="Read command from a script file instead of the command arg (use '-' for stdin)"
+    )
+    p_run.add_argument(
+        "-i", "--interactive", action="store_true", help="Start an interactive REPL with `col` pre-loaded"
+    )
     p_run.set_defaults(func=cmd_run)

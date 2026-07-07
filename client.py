@@ -1,4 +1,5 @@
 """KB client. Talks to server.py over Unix socket. Falls back to direct import if server is down."""
+
 import json
 import socket
 from pathlib import Path
@@ -6,7 +7,7 @@ from typing import Any
 
 SOCKET_PATH = Path(__file__).parent / "data" / "kb.sock"
 DEFAULT_TIMEOUT = 15  # seconds — without this, a wedged/slow server call hangs forever with
-                       # no error and no way to notice, let alone recover
+# no error and no way to notice, let alone recover
 
 
 class KBServerTimeout(RuntimeError):
@@ -81,12 +82,17 @@ class KBClient:
         return result
 
     def note_create(self, title: str, body: str, collection: str, tags: str | None = None) -> str:
-        r = self._send({"cmd": "note.create", "title": title, "body": body,
-                        "collection": collection, "tags": tags})
+        r = self._send({"cmd": "note.create", "title": title, "body": body, "collection": collection, "tags": tags})
         return self._result_str(r)
 
-    def note_update(self, id: int | None = None, find: str | None = None,
-                    title: str | None = None, body: str | None = None, tags: str | None = None) -> str:
+    def note_update(
+        self,
+        id: int | None = None,
+        find: str | None = None,
+        title: str | None = None,
+        body: str | None = None,
+        tags: str | None = None,
+    ) -> str:
         req: dict[str, Any] = {"cmd": "note.update"}
         if id is not None:
             req["id"] = id

@@ -4,6 +4,7 @@ State is external (no interactivity possible), keyed by a hash of the file's
 absolute path, stored under /tmp -- not meant to survive a reboot, and only
 one pager instance per file is supported at a time.
 """
+
 import argparse
 import hashlib
 import json
@@ -64,7 +65,7 @@ def cmd_page(args: argparse.Namespace) -> None:
         state_path.unlink(missing_ok=True)
         return
 
-    chunk = lines[offset:offset + args.lines]
+    chunk = lines[offset : offset + args.lines]
     for line in chunk:
         print(_truncate(line))
 

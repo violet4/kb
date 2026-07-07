@@ -4,6 +4,7 @@ Deliberately not imported by kb (the top-level entry point) or by any subparser
 registry -- only by individual command modules -- so there is no import cycle:
 dependencies flow one way, from command modules down to here.
 """
+
 import argparse
 import sys
 from typing import Iterable, Type, TypeVar
@@ -44,13 +45,24 @@ def print_fields(fields: Iterable[tuple[str, object]]) -> None:
 def add_history_arg(parser: argparse.ArgumentParser) -> None:
     """Attach the shared --history [N] flag used by `show` subcommands with Journal history."""
     parser.add_argument(
-        "--history", nargs="?", type=int, const=0, default=None,
-        metavar="N", help="Expand journal history inline; optionally show only the last N entries",
+        "--history",
+        nargs="?",
+        type=int,
+        const=0,
+        default=None,
+        metavar="N",
+        help="Expand journal history inline; optionally show only the last N entries",
     )
 
 
-def print_journal_history(session: Session, journal_cls: Type[Journal], entity_type: str, entity_id: int,
-                          history_arg: int | None, hint_cmd: str) -> None:
+def print_journal_history(
+    session: Session,
+    journal_cls: Type[Journal],
+    entity_type: str,
+    entity_id: int,
+    history_arg: int | None,
+    hint_cmd: str,
+) -> None:
     """Print Journal history for an entity per the shared --history convention.
 
     history_arg is args.history: None (show a one-line hint if history exists),

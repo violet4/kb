@@ -1,4 +1,5 @@
 """Shared DeclarativeBase used by every model in this project, kb-native and game-specific alike."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone

@@ -1,4 +1,5 @@
 """Inbox operations."""
+
 import argparse
 import sys
 

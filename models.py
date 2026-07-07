@@ -1,4 +1,5 @@
 """Personal knowledge base ORM. Single SQLite database at ~/kb/data/kb.db."""
+
 from __future__ import annotations
 
 import enum
@@ -11,12 +12,29 @@ from typing import Any, Optional, Sequence
 
 import sqlite_vec  # type: ignore[import-untyped]  # no type stubs published for this package
 from sqlalchemy import (
-    Boolean, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint,
-    create_engine, event, inspect, select,
+    Boolean,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+    create_engine,
+    event,
+    inspect,
+    select,
 )
 from sqlalchemy.orm import (
-    Mapped, MappedColumn, Session, UOWTransaction, mapped_column, object_session,
-    relationship, sessionmaker,
+    Mapped,
+    MappedColumn,
+    Session,
+    UOWTransaction,
+    mapped_column,
+    object_session,
+    relationship,
+    sessionmaker,
 )
 from sqlalchemy.engine.interfaces import DBAPIConnection
 from sqlalchemy.orm.base import NO_VALUE, NEVER_SET
@@ -44,6 +62,7 @@ SessionFactory = sessionmaker(bind=_engine)
 # ---------------------------------------------------------------------------
 # Changelog + tracked_column
 # ---------------------------------------------------------------------------
+
 
 class ChangeLog(Base):
     __tablename__ = "changelog"
@@ -101,6 +120,7 @@ event.listen(Base, "mapper_configured", _register_tracked_listeners, propagate=T
 # Enums
 # ---------------------------------------------------------------------------
 
+
 class Collection(enum.Enum):
     ENGINEERING = "engineering"
     PERSONAL = "personal"
@@ -137,12 +157,12 @@ class WishlistStatus(enum.Enum):
 
 
 class DailyTier(enum.Enum):
-    CRITICAL = "critical"   # always surfaces in summary until completed today
-    OPTIONAL = "optional"   # hidden by default, needs an explicit request (e.g. kb daily list --all)
+    CRITICAL = "critical"  # always surfaces in summary until completed today
+    OPTIONAL = "optional"  # hidden by default, needs an explicit request (e.g. kb daily list --all)
 
 
 class WishlistEffort(enum.Enum):
-    GRAB = "grab"        # next time you're out
+    GRAB = "grab"  # next time you're out
     RESEARCH = "research"  # needs investigation before buying
     PROJECT = "project"  # multi-step effort (e.g. server upgrade)
 
@@ -150,6 +170,7 @@ class WishlistEffort(enum.Enum):
 # ---------------------------------------------------------------------------
 # Context
 # ---------------------------------------------------------------------------
+
 
 class Context(Base):
     __tablename__ = "context"
@@ -173,6 +194,7 @@ class Context(Base):
 
 class CurrentContext(Base):
     """Single-row table: which Context is active by default. See context.py for resolution logic."""
+
     __tablename__ = "current_context"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -202,6 +224,7 @@ class CurrentContext(Base):
 class Settings(Base):
     """Single-row table (id=1) for small standalone config values that don't belong on any
     other model. Start here before adding a dedicated settings table for a new value."""
+
     __tablename__ = "settings"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -238,12 +261,15 @@ class Settings(Base):
 # Person
 # ---------------------------------------------------------------------------
 
+
 class Person(Base):
     __tablename__ = "person"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
-    tier: Mapped[PersonTier] = mapped_column(Enum(PersonTier, create_constraint=True, validate_strings=True), nullable=False, default=PersonTier.ACQUAINTANCE)
+    tier: Mapped[PersonTier] = mapped_column(
+        Enum(PersonTier, create_constraint=True, validate_strings=True), nullable=False, default=PersonTier.ACQUAINTANCE
+    )
     closeness: Mapped[int] = tracked_column(Integer, nullable=False, default=0)
     last_contacted: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     reach_out_every_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
@@ -274,16 +300,18 @@ class Person(Base):
         """People I should have reached out to by now, ordered by most overdue."""
         now = _now()
         candidates = session.scalars(
-            select(cls)
-            .where(cls.tier != PersonTier.PUBLIC_FIGURE)
-            .where(cls.reach_out_every_days.isnot(None))
+            select(cls).where(cls.tier != PersonTier.PUBLIC_FIGURE).where(cls.reach_out_every_days.isnot(None))
         ).all()
         overdue: list[tuple[Person, Optional[int]]] = []
         for p in candidates:
             if p.last_contacted is None:
                 overdue.append((p, None))
             else:
-                last = p.last_contacted.replace(tzinfo=timezone.utc) if p.last_contacted.tzinfo is None else p.last_contacted
+                last = (
+                    p.last_contacted.replace(tzinfo=timezone.utc)
+                    if p.last_contacted.tzinfo is None
+                    else p.last_contacted
+                )
                 days_since = (now - last).days
                 assert p.reach_out_every_days is not None  # guaranteed by the isnot(None) filter above
                 if days_since >= p.reach_out_every_days:
@@ -299,13 +327,16 @@ class Person(Base):
 # Goal
 # ---------------------------------------------------------------------------
 
+
 class Goal(Base):
     __tablename__ = "goal"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     title: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    status: Mapped[GoalStatus] = tracked_column(Enum(GoalStatus, create_constraint=True, validate_strings=True), nullable=False, default=GoalStatus.ACTIVE)
+    status: Mapped[GoalStatus] = tracked_column(
+        Enum(GoalStatus, create_constraint=True, validate_strings=True), nullable=False, default=GoalStatus.ACTIVE
+    )
     context_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("context.id"), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
@@ -320,7 +351,14 @@ class Goal(Base):
         return session.scalars(q).all()
 
     @classmethod
-    def create(cls, session: Session, title: str, description: Optional[str] = None, context: Optional[Context] = None, notes: Optional[str] = None) -> Goal:
+    def create(
+        cls,
+        session: Session,
+        title: str,
+        description: Optional[str] = None,
+        context: Optional[Context] = None,
+        notes: Optional[str] = None,
+    ) -> Goal:
         goal = cls(title=title, description=description, context_id=context.id if context else None, notes=notes)
         session.add(goal)
         session.flush()
@@ -335,16 +373,21 @@ class Goal(Base):
 # Todo
 # ---------------------------------------------------------------------------
 
+
 class Todo(Base):
     __tablename__ = "todo"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     title: Mapped[str] = mapped_column(String, nullable=False)
-    status: Mapped[TodoStatus] = tracked_column(Enum(TodoStatus, create_constraint=True, validate_strings=True), nullable=False, default=TodoStatus.PENDING)
+    status: Mapped[TodoStatus] = tracked_column(
+        Enum(TodoStatus, create_constraint=True, validate_strings=True), nullable=False, default=TodoStatus.PENDING
+    )
     goal_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("goal.id"), nullable=True)
     context_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("context.id"), nullable=True)
     blocked_by_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("todo.id"), nullable=True)
-    effort: Mapped[Optional[WishlistEffort]] = mapped_column(Enum(WishlistEffort, create_constraint=True, validate_strings=True), nullable=True)
+    effort: Mapped[Optional[WishlistEffort]] = mapped_column(
+        Enum(WishlistEffort, create_constraint=True, validate_strings=True), nullable=True
+    )
     defer_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
@@ -354,8 +397,14 @@ class Todo(Base):
     tags: Mapped[list["TodoTag"]] = relationship("TodoTag", secondary="todo_tag_link")
 
     @classmethod
-    def pending(cls, session: Session, context: Optional[Context] = None, effort: Optional[WishlistEffort] = None,
-                include_deferred: bool = False, tag: Optional["TodoTag"] = None) -> Sequence[Todo]:
+    def pending(
+        cls,
+        session: Session,
+        context: Optional[Context] = None,
+        effort: Optional[WishlistEffort] = None,
+        include_deferred: bool = False,
+        tag: Optional["TodoTag"] = None,
+    ) -> Sequence[Todo]:
         q = select(cls).where(cls.status.in_([TodoStatus.PENDING, TodoStatus.IN_PROGRESS]))
         if context is not None:
             q = q.where(cls.context_id == context.id)
@@ -371,12 +420,26 @@ class Todo(Base):
         return todos
 
     @classmethod
-    def create(cls, session: Session, title: str, goal: Optional[Goal] = None, context: Optional[Context] = None,
-               notes: Optional[str] = None, blocked_by: Optional[Todo] = None,
-               effort: Optional[WishlistEffort] = None, defer_until: Optional[datetime] = None) -> Todo:
-        todo = cls(title=title, goal_id=goal.id if goal else None, context_id=context.id if context else None,
-                   notes=notes, blocked_by_id=blocked_by.id if blocked_by else None, effort=effort,
-                   defer_until=defer_until)
+    def create(
+        cls,
+        session: Session,
+        title: str,
+        goal: Optional[Goal] = None,
+        context: Optional[Context] = None,
+        notes: Optional[str] = None,
+        blocked_by: Optional[Todo] = None,
+        effort: Optional[WishlistEffort] = None,
+        defer_until: Optional[datetime] = None,
+    ) -> Todo:
+        todo = cls(
+            title=title,
+            goal_id=goal.id if goal else None,
+            context_id=context.id if context else None,
+            notes=notes,
+            blocked_by_id=blocked_by.id if blocked_by else None,
+            effort=effort,
+            defer_until=defer_until,
+        )
         session.add(todo)
         session.flush()
         return todo
@@ -398,6 +461,7 @@ class TodoTag(Base, HasUniqueName):
     Todo tagged only 'winco' still surfaces when filtering by the broader 'grocery' tag, without
     needing to be tagged with both. Standard taxonomy-tree pattern, same shape as folder trees or
     category trees; matches this project's own hierarchy-over-flat-lists principle."""
+
     __tablename__ = "todo_tag"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -431,6 +495,7 @@ class TodoTagLink(Base):
 # Daily
 # ---------------------------------------------------------------------------
 
+
 class Daily(Base):
     """A recurring/optional item — distinct from Goal (a purpose/end-state) and Todo (a step toward one).
 
@@ -451,13 +516,16 @@ class Daily(Base):
       "weekly:DAY"   -- due again on the next occurrence of DAY ("MON".."SUN") after completion.
       "monthly:D"    -- due again on day D of the next applicable month after completion (D 1-28).
     """
+
     __tablename__ = "daily"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     description: Mapped[str] = mapped_column(String, nullable=False)
     context_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("context.id"), nullable=True)
     domain: Mapped[str] = mapped_column(String, nullable=False, default="irl")
-    tier: Mapped[DailyTier] = mapped_column(Enum(DailyTier, create_constraint=True, validate_strings=True), nullable=False, default=DailyTier.CRITICAL)
+    tier: Mapped[DailyTier] = mapped_column(
+        Enum(DailyTier, create_constraint=True, validate_strings=True), nullable=False, default=DailyTier.CRITICAL
+    )
     recurrence: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     last_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     next_due_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -516,13 +584,28 @@ class Daily(Base):
         return result
 
     @classmethod
-    def create(cls, session: Session, description: str, context: Optional[Context] = None, domain: str = "irl",
-               tier: DailyTier = DailyTier.CRITICAL, recurrence: Optional[str] = None,
-               location: Optional[str] = None, reward: Optional[str] = None,
-               notes: Optional[str] = None) -> Daily:
-        daily = cls(description=description, context_id=context.id if context else None,
-                    domain=domain, tier=tier, recurrence=recurrence, location=location,
-                    reward=reward, notes=notes)
+    def create(
+        cls,
+        session: Session,
+        description: str,
+        context: Optional[Context] = None,
+        domain: str = "irl",
+        tier: DailyTier = DailyTier.CRITICAL,
+        recurrence: Optional[str] = None,
+        location: Optional[str] = None,
+        reward: Optional[str] = None,
+        notes: Optional[str] = None,
+    ) -> Daily:
+        daily = cls(
+            description=description,
+            context_id=context.id if context else None,
+            domain=domain,
+            tier=tier,
+            recurrence=recurrence,
+            location=location,
+            reward=reward,
+            notes=notes,
+        )
         session.add(daily)
         session.flush()
         return daily
@@ -572,9 +655,11 @@ class Daily(Base):
 # Item
 # ---------------------------------------------------------------------------
 
+
 class Item(Base):
     """JTI base for game-specific items. Game side tables below join 1:1 via id, each composing
     whichever mixins.py traits it actually needs (weight, grid size, stack size, ...)."""
+
     __tablename__ = "item"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -600,6 +685,7 @@ class IrlItem(Item, HasWeight):
     """Real-world items — groceries, household goods, etc. Tracked the same way as game
     items (Vendor/VendorItem/Purchase apply equally): we can never see a store's whole
     price history at once, only snippets over time, same as an in-game player market."""
+
     __tablename__ = "irl_item"
 
     id: Mapped[int] = mapped_column(Integer, ForeignKey("item.id"), primary_key=True)
@@ -614,6 +700,7 @@ class IrlItem(Item, HasWeight):
 # transactable, real or in-game. A grocery store and a PG player-shop NPC
 # are both "somewhere you buy Items from"; domain distinguishes them.
 # ---------------------------------------------------------------------------
+
 
 class Vendor(Base):
     __tablename__ = "vendor"
@@ -631,6 +718,7 @@ class Vendor(Base):
 class VendorItem(Base):
     """A vendor's own code for an Item — may differ from Item.upc (store-internal SKU vs.
     universal barcode), and differs vendor to vendor for the same Item."""
+
     __tablename__ = "vendor_item"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -661,7 +749,9 @@ class Purchase(Base):
     vendor_item: Mapped[VendorItem] = relationship("VendorItem")
 
     def __repr__(self) -> str:
-        return f"<Purchase {self.quantity}x {self.vendor_item.item.name if self.vendor_item else '?'} @ {self.unit_price}>"
+        return (
+            f"<Purchase {self.quantity}x {self.vendor_item.item.name if self.vendor_item else '?'} @ {self.unit_price}>"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -669,6 +759,7 @@ class Purchase(Base):
 # entity_id). Distinct from LogEntry (a fact about the world, not about a
 # specific record) and from Note (durable reference knowledge, not history).
 # ---------------------------------------------------------------------------
+
 
 class Journal(Base):
     __tablename__ = "journal"
@@ -688,11 +779,24 @@ class Journal(Base):
         ).all()
 
     @classmethod
-    def record(cls, session: Session, entity_type: str, entity_id: int, field: Optional[str] = None,
-               old_value: Optional[str] = None, new_value: Optional[str] = None,
-               note: Optional[str] = None) -> Journal:
-        entry = cls(entity_type=entity_type, entity_id=entity_id, field=field,
-                    old_value=old_value, new_value=new_value, note=note)
+    def record(
+        cls,
+        session: Session,
+        entity_type: str,
+        entity_id: int,
+        field: Optional[str] = None,
+        old_value: Optional[str] = None,
+        new_value: Optional[str] = None,
+        note: Optional[str] = None,
+    ) -> Journal:
+        entry = cls(
+            entity_type=entity_type,
+            entity_id=entity_id,
+            field=field,
+            old_value=old_value,
+            new_value=new_value,
+            note=note,
+        )
         session.add(entry)
         session.flush()
         return entry
@@ -707,6 +811,7 @@ class Journal(Base):
 # ---------------------------------------------------------------------------
 # Reference
 # ---------------------------------------------------------------------------
+
 
 class Reference(Base):
     __tablename__ = "reference"
@@ -724,14 +829,21 @@ class Reference(Base):
     def search(cls, session: Session, query: str) -> list[Reference]:
         q = query.lower()
         return [
-            r for r in session.scalars(select(cls)).all()
-            if q in r.title.lower()
-            or (r.tags and q in r.tags.lower())
-            or (r.notes and q in r.notes.lower())
+            r
+            for r in session.scalars(select(cls)).all()
+            if q in r.title.lower() or (r.tags and q in r.tags.lower()) or (r.notes and q in r.notes.lower())
         ]
 
     @classmethod
-    def create(cls, session: Session, title: str, url: Optional[str] = None, tags: Optional[str] = None, context: Optional[Context] = None, notes: Optional[str] = None) -> Reference:
+    def create(
+        cls,
+        session: Session,
+        title: str,
+        url: Optional[str] = None,
+        tags: Optional[str] = None,
+        context: Optional[Context] = None,
+        notes: Optional[str] = None,
+    ) -> Reference:
         ref = cls(title=title, url=url, tags=tags, context_id=context.id if context else None, notes=notes)
         session.add(ref)
         session.flush()
@@ -744,6 +856,7 @@ class Reference(Base):
 # ---------------------------------------------------------------------------
 # WorkingMemory
 # ---------------------------------------------------------------------------
+
 
 class WorkingMemory(Base):
     __tablename__ = "working_memory"
@@ -764,10 +877,9 @@ class WorkingMemory(Base):
     def search(cls, session: Session, query: str) -> list[WorkingMemory]:
         q = query.lower()
         return [
-            m for m in session.scalars(select(cls)).all()
-            if q in m.topic.lower()
-            or (m.domain and q in m.domain.lower())
-            or q in m.body.lower()
+            m
+            for m in session.scalars(select(cls)).all()
+            if q in m.topic.lower() or (m.domain and q in m.domain.lower()) or q in m.body.lower()
         ]
 
     @classmethod
@@ -788,12 +900,14 @@ class WorkingMemory(Base):
 # LogEntry
 # ---------------------------------------------------------------------------
 
+
 class LogEntry(Base):
     """A timestamped observation — a fact or set of facts about a moment, not durable reference
     knowledge and not work with a status. Append-only; the point is to build a queryable history
     (health, events, commits referenced by free text) that reveals patterns over time. domain is
     a loose, unenforced label (e.g. "health", "cat", "work") — let structure emerge from actual
     use rather than pre-defining categories."""
+
     __tablename__ = "log_entry"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -805,16 +919,25 @@ class LogEntry(Base):
     context: Mapped[Optional[Context]] = relationship("Context")
 
     @classmethod
-    def create(cls, session: Session, body: str, domain: Optional[str] = None, context: Optional[Context] = None,
-               occurred_at: Optional[datetime] = None) -> LogEntry:
-        entry = cls(body=body, domain=domain, context_id=context.id if context else None,
-                    occurred_at=occurred_at or _now())
+    def create(
+        cls,
+        session: Session,
+        body: str,
+        domain: Optional[str] = None,
+        context: Optional[Context] = None,
+        occurred_at: Optional[datetime] = None,
+    ) -> LogEntry:
+        entry = cls(
+            body=body, domain=domain, context_id=context.id if context else None, occurred_at=occurred_at or _now()
+        )
         session.add(entry)
         session.flush()
         return entry
 
     @classmethod
-    def recent(cls, session: Session, domain: Optional[str] = None, context: Optional[Context] = None, limit: int = 20) -> Sequence[LogEntry]:
+    def recent(
+        cls, session: Session, domain: Optional[str] = None, context: Optional[Context] = None, limit: int = 20
+    ) -> Sequence[LogEntry]:
         q = select(cls).order_by(cls.occurred_at.desc()).limit(limit)
         if domain is not None:
             q = q.where(cls.domain == domain)
@@ -832,17 +955,23 @@ class LogEntry(Base):
 # InboxItem
 # ---------------------------------------------------------------------------
 
+
 class InboxItem(Base):
     """Raw, untriaged capture — the GTD inbox. Unlike everything else in kb, an InboxItem's
     eventual home isn't known at capture time: it might become a Todo, a Purchase, a LogEntry,
     a Note, or get discarded. Triage means deciding what it becomes, then marking triaged_at —
     triage is not a special mechanism, just create the right real record and mark this done."""
+
     __tablename__ = "inbox_item"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     body: Mapped[str] = mapped_column(Text, nullable=False)
-    source: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # capture channel, e.g. "email", "mobile", "quick-note"
-    category: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # kind of content, e.g. "project-idea", "purchase"
+    source: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True
+    )  # capture channel, e.g. "email", "mobile", "quick-note"
+    category: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True
+    )  # kind of content, e.g. "project-idea", "purchase"
     triaged_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     @classmethod
@@ -853,7 +982,9 @@ class InboxItem(Base):
         return session.scalars(q.order_by(cls.created_at)).all()
 
     @classmethod
-    def create(cls, session: Session, body: str, source: Optional[str] = None, category: Optional[str] = None) -> InboxItem:
+    def create(
+        cls, session: Session, body: str, source: Optional[str] = None, category: Optional[str] = None
+    ) -> InboxItem:
         item = cls(body=body, source=source, category=category)
         session.add(item)
         session.flush()
@@ -878,6 +1009,7 @@ _STORAGE_COLLECTIONS = {c for c in Collection if c != Collection.ALL}
 
 def _embed_text(title: str, body: str) -> bytes:
     from embed import embed
+
     vec = embed(f"{title}\n\n{body}")
     return struct.pack(f"{len(vec)}f", *vec)
 
@@ -888,16 +1020,21 @@ class Note(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     title: Mapped[str] = mapped_column(String, nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
-    collection: Mapped[Collection] = mapped_column(Enum(Collection, create_constraint=True, validate_strings=True), nullable=False)
-    tags: Mapped[Optional[str]] = mapped_column(String, nullable=True)   # comma-separated
+    collection: Mapped[Collection] = mapped_column(
+        Enum(Collection, create_constraint=True, validate_strings=True), nullable=False
+    )
+    tags: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # comma-separated
     embedding_model: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     embedding: Mapped[Optional[bytes]] = mapped_column(Text, nullable=True)
 
     @classmethod
-    def create(cls, session: Session, title: str, body: str, collection: Collection, tags: Optional[str] = None) -> Note:
+    def create(
+        cls, session: Session, title: str, body: str, collection: Collection, tags: Optional[str] = None
+    ) -> Note:
         if collection == Collection.ALL:
             raise ValueError("Collection.ALL is a search sentinel and cannot be used for storage.")
         from embed import model_name
+
         note = cls(title=title, body=body, collection=collection, tags=tags)
         note.embedding = _embed_text(title, body)
         note.embedding_model = model_name()
@@ -926,6 +1063,7 @@ class Note(Base):
     @classmethod
     def search(cls, session: Session, query: str, collection: Collection) -> list[tuple[Note, float]]:
         from embed import embed, model_name
+
         raw = embed(query)
         vec = struct.pack(f"{len(raw)}f", *raw)
         mn = model_name()
@@ -943,6 +1081,7 @@ class Note(Base):
 
     def reembed(self) -> None:
         from embed import model_name
+
         self.embedding = _embed_text(self.title, self.body)
         self.embedding_model = model_name()
 
@@ -964,6 +1103,7 @@ def _reembed_dirty_notes(session: Session, flush_context: UOWTransaction, instan
 # Wishlist
 # ---------------------------------------------------------------------------
 
+
 class Wishlist(Base):
     __tablename__ = "wishlist"
 
@@ -972,12 +1112,18 @@ class Wishlist(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     price_min: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
     price_max: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
-    importance: Mapped[int] = mapped_column(Integer, nullable=False, default=50)      # 0–100
-    urgency: Mapped[int] = mapped_column(Integer, nullable=False, default=50)         # 0–100
-    effort: Mapped[WishlistEffort] = mapped_column(Enum(WishlistEffort, create_constraint=True, validate_strings=True), nullable=False, default=WishlistEffort.GRAB)
-    clarity: Mapped[int] = mapped_column(Integer, nullable=False, default=50)         # 0–100: how well-defined the need is
-    priority: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)           # 0–100: explicit deliberate rank
-    status: Mapped[WishlistStatus] = mapped_column(Enum(WishlistStatus, create_constraint=True, validate_strings=True), nullable=False, default=WishlistStatus.ACTIVE)
+    importance: Mapped[int] = mapped_column(Integer, nullable=False, default=50)  # 0–100
+    urgency: Mapped[int] = mapped_column(Integer, nullable=False, default=50)  # 0–100
+    effort: Mapped[WishlistEffort] = mapped_column(
+        Enum(WishlistEffort, create_constraint=True, validate_strings=True), nullable=False, default=WishlistEffort.GRAB
+    )
+    clarity: Mapped[int] = mapped_column(Integer, nullable=False, default=50)  # 0–100: how well-defined the need is
+    priority: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 0–100: explicit deliberate rank
+    status: Mapped[WishlistStatus] = mapped_column(
+        Enum(WishlistStatus, create_constraint=True, validate_strings=True),
+        nullable=False,
+        default=WishlistStatus.ACTIVE,
+    )
     context_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("context.id"), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
@@ -1013,6 +1159,7 @@ class Wishlist(Base):
 # ---------------------------------------------------------------------------
 # Bootstrap
 # ---------------------------------------------------------------------------
+
 
 def init_db() -> None:
     """Create tables for a fresh database. Use alembic for schema changes on existing DBs."""

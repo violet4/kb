@@ -3,6 +3,7 @@
 Every script that needs to know the active context should call resolve_context(),
 not look up CurrentContext or Context directly — this is the one place that logic lives.
 """
+
 from __future__ import annotations
 
 from typing import Optional

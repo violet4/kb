@@ -1,4 +1,5 @@
 """Goal operations."""
+
 import argparse
 import sys
 from typing import Iterable
@@ -36,7 +37,14 @@ def cmd_show(args: argparse.Namespace) -> None:
         if goal.notes:
             print(f"notes: {goal.notes}")
 
-        print_journal_history(args.session, Journal, "Goal", goal.id, args.history, f"journal show Goal {goal.id} or kb goal show {goal.id} --history [N]")
+        print_journal_history(
+            args.session,
+            Journal,
+            "Goal",
+            goal.id,
+            args.history,
+            f"journal show Goal {goal.id} or kb goal show {goal.id} --history [N]",
+        )
 
 
 def _set_status(session: Session, ids: Iterable[int], status: GoalStatus, verb: str) -> None:

@@ -1,4 +1,5 @@
 """Context operations."""
+
 import argparse
 
 from sqlalchemy import select

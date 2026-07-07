@@ -1,4 +1,5 @@
 """Journal operations."""
+
 import argparse
 
 from models import Journal

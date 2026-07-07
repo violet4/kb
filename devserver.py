@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Dev server wrapper. Runs server.py and restarts it on any .py file change in ~/kb."""
+
 import sys
 from pathlib import Path
 from watchfiles import run_process

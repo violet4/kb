@@ -17,6 +17,7 @@ config.set_main_option("sqlalchemy.url", f"sqlite:///{_DB_PATH}")
 from base import Base  # noqa: E402
 import models  # noqa: E402,F401 — import needed so all Base subclasses register
 import models_pg  # noqa: E402,F401 — every domain module must be imported so its tables are known to Base.metadata
+
 target_metadata = Base.metadata
 
 

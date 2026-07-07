@@ -1,4 +1,5 @@
 """Print an overview of active Goals/Todos/overdue contacts/wishlist/inbox."""
+
 import argparse
 import sys
 from datetime import datetime
@@ -149,6 +150,7 @@ def cmd_summary(args: argparse.Namespace) -> None:
 
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     parser = subparsers.add_parser("summary", help="Print an overview of active Goals/Todos/overdue contacts/wishlist")
-    parser.add_argument("section", nargs="*", metavar="SECTION",
-                         help=f"Only show these sections ({'/'.join(SECTIONS)}); default: all")
+    parser.add_argument(
+        "section", nargs="*", metavar="SECTION", help=f"Only show these sections ({'/'.join(SECTIONS)}); default: all"
+    )
     parser.set_defaults(func=cmd_summary)

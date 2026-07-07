@@ -1,5 +1,6 @@
 #!/usr/bin/env -S uv run --project /home/violet/kb python3
 """Personal knowledge base REPL/runner."""
+
 import argparse
 import ast
 import code
@@ -11,25 +12,73 @@ from sqlalchemy import select
 from base import Base
 from context import resolve_context
 from models import (
-    ChangeLog, Collection, Context, CurrentContext, Daily, DailyTier, Goal, GoalStatus,
-    InboxItem, IrlItem, Item, Journal, LogEntry, Note, Person, PersonTier, Purchase,
-    Reference, Settings, SessionFactory, Todo, TodoStatus, TodoTag, TodoTagLink, Vendor,
-    VendorItem, WishlistEffort, WishlistStatus, Wishlist, WorkingMemory, init_db,
+    ChangeLog,
+    Collection,
+    Context,
+    CurrentContext,
+    Daily,
+    DailyTier,
+    Goal,
+    GoalStatus,
+    InboxItem,
+    IrlItem,
+    Item,
+    Journal,
+    LogEntry,
+    Note,
+    Person,
+    PersonTier,
+    Purchase,
+    Reference,
+    Settings,
+    SessionFactory,
+    Todo,
+    TodoStatus,
+    TodoTag,
+    TodoTagLink,
+    Vendor,
+    VendorItem,
+    WishlistEffort,
+    WishlistStatus,
+    Wishlist,
+    WorkingMemory,
+    init_db,
 )
-from models_pg import PgCharacter, PgDungeon, PgHangout, PgHangoutItem, PgItem, PgMob, PgMobDrop, PgNpc, PgNpcRace, PgNpcRelation, PgPlayer, PgQuest, PgSkill
+from models_pg import (
+    PgCharacter,
+    PgDungeon,
+    PgHangout,
+    PgHangoutItem,
+    PgItem,
+    PgMob,
+    PgMobDrop,
+    PgNpc,
+    PgNpcRace,
+    PgNpcRelation,
+    PgPlayer,
+    PgQuest,
+    PgSkill,
+)
 
 parser = argparse.ArgumentParser(description="KB runner")
 parser.add_argument("command", nargs="?", help="Python expression to execute")
-parser.add_argument("-f", "--file", help="Read command from a script file instead of the command arg (auto-commits like inline commands)")
+parser.add_argument(
+    "-f",
+    "--file",
+    help="Read command from a script file instead of the command arg (auto-commits like inline commands)",
+)
 parser.add_argument("--no-commit", action="store_true", help="Skip auto-commit")
 parser.add_argument(
-    "-i", "--interactive", action="store_true",
+    "-i",
+    "--interactive",
+    action="store_true",
     help="Start an interactive REPL. Changes are NOT auto-committed — call sess.commit() explicitly.",
 )
 parser.add_argument(
-    "--context", metavar="NAME",
+    "--context",
+    metavar="NAME",
     help="Act in context NAME for this command only, without changing the persisted current context. "
-         "Pre-loaded as `context` in the namespace.",
+    "Pre-loaded as `context` in the namespace.",
 )
 args = parser.parse_args()
 

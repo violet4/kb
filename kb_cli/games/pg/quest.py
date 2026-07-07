@@ -1,4 +1,5 @@
 """Project Gorgon Quest operations."""
+
 import argparse
 import sys
 

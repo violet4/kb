@@ -4,6 +4,7 @@ Model methods take `session: Session` as an explicit parameter (per SQLAlchemy's
 session-lifecycle guidance), so isolating a test is just constructing a fresh Session
 bound to a fresh in-memory engine -- no monkey-patching of module globals needed.
 """
+
 import sys
 from pathlib import Path
 from typing import Iterator

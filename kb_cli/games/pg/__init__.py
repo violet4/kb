@@ -1,4 +1,5 @@
 """Project Gorgon command group."""
+
 import argparse
 
 from kb_cli.games.pg import entity, quest

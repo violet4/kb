@@ -1,4 +1,5 @@
 """Per-game command groups (pg, and future games)."""
+
 import argparse
 
 from kb_cli.games import pg

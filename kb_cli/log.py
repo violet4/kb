@@ -1,4 +1,5 @@
 """Log operations."""
+
 import argparse
 from datetime import datetime, timezone
 

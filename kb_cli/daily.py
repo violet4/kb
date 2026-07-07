@@ -1,4 +1,5 @@
 """Daily operations."""
+
 import argparse
 import sys
 from datetime import datetime, timezone
@@ -24,20 +25,22 @@ def cmd_show(args: argparse.Namespace) -> None:
     if daily is None:
         print(f"Daily #{args.id}: not found", file=sys.stderr)
         sys.exit(1)
-    print_fields([
-        ("id", daily.id),
-        ("description", daily.description),
-        ("active", daily.is_active),
-        ("domain", daily.domain),
-        ("tier", daily.tier.value),
-        ("recurrence", daily.recurrence),
-        ("last_completed_at", _local_str(daily.last_completed_at)),
-        ("next_due_at", _local_str(daily.next_due_at)),
-        ("context", daily.context.name if daily.context else None),
-        ("location", daily.location),
-        ("reward", daily.reward),
-        ("notes", daily.notes),
-    ])
+    print_fields(
+        [
+            ("id", daily.id),
+            ("description", daily.description),
+            ("active", daily.is_active),
+            ("domain", daily.domain),
+            ("tier", daily.tier.value),
+            ("recurrence", daily.recurrence),
+            ("last_completed_at", _local_str(daily.last_completed_at)),
+            ("next_due_at", _local_str(daily.next_due_at)),
+            ("context", daily.context.name if daily.context else None),
+            ("location", daily.location),
+            ("reward", daily.reward),
+            ("notes", daily.notes),
+        ]
+    )
 
 
 def cmd_list(args: argparse.Namespace) -> None:
@@ -77,8 +80,17 @@ def cmd_complete(args: argparse.Namespace) -> None:
 
 def cmd_add(args: argparse.Namespace) -> None:
     context = resolve_context(args.session, args.context)
-    daily = Daily.create(args.session, args.description, context=context, domain=args.domain, tier=DailyTier(args.tier),
-                         recurrence=args.recurrence, location=args.location, reward=args.reward, notes=args.notes)
+    daily = Daily.create(
+        args.session,
+        args.description,
+        context=context,
+        domain=args.domain,
+        tier=DailyTier(args.tier),
+        recurrence=args.recurrence,
+        location=args.location,
+        reward=args.reward,
+        notes=args.notes,
+    )
     args.session.commit()
     print(daily)
 

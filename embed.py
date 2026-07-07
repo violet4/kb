@@ -1,5 +1,7 @@
 """Embedding model singleton. Swap _MODEL_NAME + reembed to upgrade."""
+
 import os
+
 os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
 from sentence_transformers import SentenceTransformer
 
@@ -20,6 +22,7 @@ def _local_embed(text: str) -> list[float]:
 
 def embed(text: str) -> list[float]:
     from client import KBClient, is_server_running
+
     if is_server_running():
         return KBClient().embed(text)
     return _local_embed(text)

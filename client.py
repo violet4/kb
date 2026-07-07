@@ -16,11 +16,12 @@ class KBServerTimeout(RuntimeError):
 
 
 class KBClient:
-    def __init__(self, timeout: float = DEFAULT_TIMEOUT):
-        self._sock = None
+    def __init__(self, timeout: float = DEFAULT_TIMEOUT) -> None:
+        self._sock: socket.socket | None = None
+        self._file: Any = None
         self._timeout = timeout
 
-    def _connect(self):
+    def _connect(self) -> None:
         if self._sock is not None:
             return
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -29,7 +30,7 @@ class KBClient:
         self._sock = sock
         self._file = sock.makefile("rwb")
 
-    def _send(self, request: dict) -> dict:
+    def _send(self, request: dict[str, Any]) -> dict[str, Any]:
         self._connect()
         try:
             self._file.write((json.dumps(request) + "\n").encode())
@@ -41,34 +42,52 @@ class KBClient:
             ) from e
         if not line:
             raise KBServerTimeout(f"kb.service closed the connection without responding to {request.get('cmd')!r}")
-        return json.loads(line)
+        response = json.loads(line)
+        if not isinstance(response, dict):
+            raise RuntimeError(f"kb.service returned a non-object response: {response!r}")
+        return response
+
+    def _result_str(self, r: dict[str, Any]) -> str:
+        if not r["ok"]:
+            raise RuntimeError(r["error"])
+        result = r["result"]
+        if not isinstance(result, str):
+            raise RuntimeError(f"kb.service returned a non-string result: {result!r}")
+        return result
 
     def ping(self) -> str:
         r = self._send({"cmd": "ping"})
-        return r["result"]
+        result = r["result"]
+        if not isinstance(result, str):
+            raise RuntimeError(f"kb.service returned a non-string result: {result!r}")
+        return result
 
     def embed(self, text: str) -> list[float]:
         r = self._send({"cmd": "embed", "text": text})
         if not r["ok"]:
             raise RuntimeError(r["error"])
-        return r["result"]
+        result = r["result"]
+        if not isinstance(result, list) or not all(isinstance(x, (int, float)) for x in result):
+            raise RuntimeError(f"kb.service returned a non-vector result: {result!r}")
+        return [float(x) for x in result]
 
-    def search(self, query: str, collection: str) -> list[dict]:
+    def search(self, query: str, collection: str) -> list[dict[str, Any]]:
         r = self._send({"cmd": "search", "query": query, "collection": collection})
         if not r["ok"]:
             raise RuntimeError(r["error"])
-        return r["result"]
+        result = r["result"]
+        if not isinstance(result, list) or not all(isinstance(x, dict) for x in result):
+            raise RuntimeError(f"kb.service returned a non-list-of-objects result: {result!r}")
+        return result
 
     def note_create(self, title: str, body: str, collection: str, tags: str | None = None) -> str:
         r = self._send({"cmd": "note.create", "title": title, "body": body,
                         "collection": collection, "tags": tags})
-        if not r["ok"]:
-            raise RuntimeError(r["error"])
-        return r["result"]
+        return self._result_str(r)
 
     def note_update(self, id: int | None = None, find: str | None = None,
                     title: str | None = None, body: str | None = None, tags: str | None = None) -> str:
-        req = {"cmd": "note.update"}
+        req: dict[str, Any] = {"cmd": "note.update"}
         if id is not None:
             req["id"] = id
         elif find is not None:
@@ -82,11 +101,9 @@ class KBClient:
         if tags is not None:
             req["tags"] = tags
         r = self._send(req)
-        if not r["ok"]:
-            raise RuntimeError(r["error"])
-        return r["result"]
+        return self._result_str(r)
 
-    def close(self):
+    def close(self) -> None:
         if self._sock:
             self._sock.close()
             self._sock = None

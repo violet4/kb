@@ -8,7 +8,7 @@ KB_DIR = Path(__file__).parent
 UV = "/home/violet/.local/bin/uv"
 
 
-def main():
+def main() -> None:
     run_process(
         str(KB_DIR),
         target=f"{UV} run server.py",

@@ -12,11 +12,12 @@ import json
 import logging
 import os
 import signal
-import socket
 import socketserver
 import sys
 import time
 from pathlib import Path
+from types import FrameType
+from typing import Any
 
 from models import Collection, Note, sess
 from embed import _local_embed as embed, model_name
@@ -28,7 +29,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 log = logging.getLogger("kb.server")
 
 
-def _handle(request: dict) -> dict:
+def _handle(request: dict[str, Any]) -> dict[str, Any]:
     cmd = request.get("cmd")
 
     if cmd == "ping":
@@ -71,22 +72,28 @@ def _handle(request: dict) -> dict:
         return {"ok": True, "result": repr(note)}
 
     if cmd == "note.update":
-        note = Note.get(request["id"]) if "id" in request else Note.find(request.get("find"))
-        if note is None:
+        existing_note: Note | None
+        if "id" in request:
+            existing_note = Note.get(request["id"])
+        elif "find" in request:
+            existing_note = Note.find(request["find"])
+        else:
+            return {"ok": False, "error": "note.update requires 'id' or 'find'"}
+        if existing_note is None:
             return {"ok": False, "error": "Note not found"}
-        note.update(
+        existing_note.update(
             title=request.get("title"),
             body=request.get("body"),
             tags=request.get("tags"),
         )
         sess.commit()
-        return {"ok": True, "result": repr(note)}
+        return {"ok": True, "result": repr(existing_note)}
 
     return {"ok": False, "error": f"Unknown command: {cmd!r}"}
 
 
 class _Handler(socketserver.StreamRequestHandler):
-    def handle(self):
+    def handle(self) -> None:
         peer = self.client_address or "client"
         log.info("connection from %s", peer)
         try:
@@ -124,14 +131,14 @@ class _Server(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
     daemon_threads = True
 
 
-def _cleanup(signum=None, frame=None):
+def _cleanup(signum: int | None = None, frame: FrameType | None = None) -> None:
     log.info("shutting down")
     SOCKET_PATH.unlink(missing_ok=True)
     PID_PATH.unlink(missing_ok=True)
     sys.exit(0)
 
 
-def main():
+def main() -> None:
     SOCKET_PATH.unlink(missing_ok=True)
     PID_PATH.write_text(str(os.getpid()))
     signal.signal(signal.SIGTERM, _cleanup)

@@ -42,7 +42,7 @@ CUSTOM_NOTETYPES = [
 
 def _require_anki() -> Type[Any]:
     try:
-        from anki.collection import Collection  # type: ignore[import-not-found]  # no stubs published
+        from anki.collection import Collection
 
         result: Type[Any] = Collection
         return result

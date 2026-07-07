@@ -640,15 +640,11 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "alembic" },
+    { name = "anki" },
     { name = "sentence-transformers" },
     { name = "sqlalchemy" },
     { name = "sqlite-vec" },
     { name = "watchfiles" },
-]
-
-[package.optional-dependencies]
-anki = [
-    { name = "anki" },
 ]
 
 [package.dev-dependencies]
@@ -664,13 +660,12 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "alembic", specifier = ">=1.18.5" },
-    { name = "anki", marker = "extra == 'anki'", specifier = ">=25.0" },
+    { name = "anki", specifier = ">=25.0" },
     { name = "sentence-transformers", specifier = ">=5.6.0" },
     { name = "sqlalchemy", specifier = ">=2.0.51" },
     { name = "sqlite-vec", specifier = ">=0.1.9" },
     { name = "watchfiles", specifier = ">=1.2.0" },
 ]
-provides-extras = ["anki"]
 
 [package.metadata.requires-dev]
 dev = [

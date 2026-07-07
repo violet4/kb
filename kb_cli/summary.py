@@ -12,9 +12,9 @@ from models import Daily, DailyTier, Goal, InboxItem, Person, Todo, Wishlist
 
 def anki_section(session: Session) -> str | None:
     try:
-        from anki.collection import Collection  # type: ignore[import-not-found]  # no stubs published
+        from anki.collection import Collection
     except ImportError:
-        return None
+        return "=== ANKI ===\nanki package not installed — uv sync --project ~/kb"
 
     from kb_cli.anki import DEFAULT_COLLECTION
 

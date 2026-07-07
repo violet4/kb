@@ -1,4 +1,5 @@
 """Project Gorgon Quest operations."""
+import argparse
 import sys
 
 from models import sess
@@ -7,7 +8,7 @@ from models_pg import PgNpc, PgQuest
 from kb_cli._util import get_by_name
 
 
-def cmd_show(args):
+def cmd_show(args: argparse.Namespace) -> None:
     for i, quest_id in enumerate(args.ids):
         if i > 0:
             print()
@@ -29,7 +30,7 @@ def cmd_show(args):
             print(f"notes: {quest.notes}")
 
 
-def cmd_add(args):
+def cmd_add(args: argparse.Namespace) -> None:
     giver = get_by_name(sess, PgNpc, args.giver)
     completion = get_by_name(sess, PgNpc, args.completion) if args.completion else None
     quest = PgQuest(
@@ -46,7 +47,7 @@ def cmd_add(args):
     print(f"Added: #{quest.id} {quest.title!r} [{quest.status}]")
 
 
-def cmd_complete(args):
+def cmd_complete(args: argparse.Namespace) -> None:
     for quest_id in args.ids:
         quest = sess.get(PgQuest, quest_id)
         if quest is None:
@@ -57,7 +58,7 @@ def cmd_complete(args):
     sess.commit()
 
 
-def add_subparser(subparsers):
+def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     parser = subparsers.add_parser("quest", help="Project Gorgon Quest operations")
     sub = parser.add_subparsers(dest="cmd", required=True)
 

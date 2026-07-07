@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Run black over the project. Usage: format [path ...] (default: whole project)
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/../.."
+exec uv run black "${@:-.}"

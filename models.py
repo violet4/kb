@@ -515,6 +515,10 @@ class Daily(Base):
       "every:N"      -- due again N days after completion (e.g. "every:2" for alternating-day items).
       "weekly:DAY"   -- due again on the next occurrence of DAY ("MON".."SUN") after completion.
       "monthly:D"    -- due again on day D of the next applicable month after completion (D 1-28).
+
+    show_after_hour (0-23, local time) is applied after recurrence/day-boundary decides a Daily is
+    due "today" -- it further hides an already-due Daily from due()/summary until that local hour,
+    so evening-only items (e.g. "shower before bed") don't clutter the morning view.
     """
 
     __tablename__ = "daily"
@@ -527,6 +531,7 @@ class Daily(Base):
         Enum(DailyTier, create_constraint=True, validate_strings=True), nullable=False, default=DailyTier.CRITICAL
     )
     recurrence: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    show_after_hour: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     last_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     next_due_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     location: Mapped[Optional[str]] = mapped_column(String, nullable=True)
@@ -561,9 +566,12 @@ class Daily(Base):
     def due(cls, session: Session, domain: Optional[str] = None, tier: Optional[DailyTier] = None) -> list[Daily]:
         """Active dailies currently due: dailies with a recurrence rule are due once next_due_at
         has passed; dailies without one fall back to the plain day-boundary check against
-        last_completed_at."""
+        last_completed_at. A due Daily with show_after_hour set is further suppressed until
+        that local hour, so evening-only items don't surface in the morning."""
         now = _now()
         day_start = cls._day_start(session, now)
+        settings = Settings.get(session)
+        local_hour = now.astimezone(settings.resolved_timezone()).hour
         q = select(cls).where(cls.is_active.is_(True))
         if domain is not None:
             q = q.where(cls.domain == domain)
@@ -577,9 +585,10 @@ class Daily(Base):
         result: list[Daily] = []
         for d in dailies:
             if d.recurrence is not None:
-                if d.next_due_at is None or _aware(d.next_due_at) <= now:
-                    result.append(d)
-            elif d.last_completed_at is None or _aware(d.last_completed_at) < day_start:
+                is_due = d.next_due_at is None or _aware(d.next_due_at) <= now
+            else:
+                is_due = d.last_completed_at is None or _aware(d.last_completed_at) < day_start
+            if is_due and (d.show_after_hour is None or local_hour >= d.show_after_hour):
                 result.append(d)
         return result
 
@@ -592,6 +601,7 @@ class Daily(Base):
         domain: str = "irl",
         tier: DailyTier = DailyTier.CRITICAL,
         recurrence: Optional[str] = None,
+        show_after_hour: Optional[int] = None,
         location: Optional[str] = None,
         reward: Optional[str] = None,
         notes: Optional[str] = None,
@@ -602,6 +612,7 @@ class Daily(Base):
             domain=domain,
             tier=tier,
             recurrence=recurrence,
+            show_after_hour=show_after_hour,
             location=location,
             reward=reward,
             notes=notes,

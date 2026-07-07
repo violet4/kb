@@ -7,7 +7,7 @@ dependencies flow one way, from command modules down to here.
 
 import argparse
 import sys
-from typing import Iterable, Type, TypeVar
+from typing import Iterable, Sequence, Type, TypeVar
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -53,6 +53,22 @@ def add_history_arg(parser: argparse.ArgumentParser) -> None:
         metavar="N",
         help="Expand journal history inline; optionally show only the last N entries",
     )
+
+
+def print_table(headers: Sequence[str], rows: Sequence[Sequence[str]]) -> None:
+    """Print rows as a column-aligned table, padded to fit terminal width."""
+    widths = [len(h) for h in headers]
+    for row in rows:
+        for i, cell in enumerate(row):
+            widths[i] = max(widths[i], len(cell))
+
+    def fmt(cells: Sequence[str]) -> str:
+        return "  ".join(cell.ljust(widths[i]) for i, cell in enumerate(cells))
+
+    print(fmt(headers))
+    print("  ".join("-" * w for w in widths))
+    for row in rows:
+        print(fmt(row))
 
 
 def print_journal_history(

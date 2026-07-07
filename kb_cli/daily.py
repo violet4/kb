@@ -10,7 +10,7 @@ from sqlalchemy import select
 from context import resolve_context
 from models import Daily, DailyTier
 
-from kb_cli._util import print_fields
+from kb_cli._util import print_fields, print_table
 
 
 def _local_str(dt: datetime | None) -> str | None:
@@ -33,6 +33,7 @@ def cmd_show(args: argparse.Namespace) -> None:
             ("domain", daily.domain),
             ("tier", daily.tier.value),
             ("recurrence", daily.recurrence),
+            ("show_after_hour", daily.show_after_hour),
             ("last_completed_at", _local_str(daily.last_completed_at)),
             ("next_due_at", _local_str(daily.next_due_at)),
             ("context", daily.context.name if daily.context else None),
@@ -59,9 +60,21 @@ def cmd_list(args: argparse.Namespace) -> None:
     if not dailies:
         print("No dailies due." if not args.all else "No dailies.")
         return
+    dailies = sorted(dailies, key=lambda d: (d.next_due_at is None, d.next_due_at))
+    rows = []
     for d in dailies:
-        marker = "" if d.is_active else " [inactive]"
-        print(f"{d!r}{marker}")
+        status = "" if d.is_active else "inactive"
+        rows.append(
+            [
+                str(d.id),
+                d.description,
+                d.tier.value,
+                d.recurrence or "",
+                _local_str(d.next_due_at) or "",
+                status,
+            ]
+        )
+    print_table(["id", "description", "tier", "recurrence", "next due", "status"], rows)
 
 
 def cmd_complete(args: argparse.Namespace) -> None:
@@ -87,6 +100,7 @@ def cmd_add(args: argparse.Namespace) -> None:
         domain=args.domain,
         tier=DailyTier(args.tier),
         recurrence=args.recurrence,
+        show_after_hour=args.show_after_hour,
         location=args.location,
         reward=args.reward,
         notes=args.notes,
@@ -108,6 +122,8 @@ def cmd_update(args: argparse.Namespace) -> None:
         daily.tier = DailyTier(args.tier)
     if args.recurrence is not None:
         daily.recurrence = args.recurrence
+    if args.show_after_hour is not None:
+        daily.show_after_hour = args.show_after_hour
     if args.location is not None:
         daily.location = args.location
     if args.reward is not None:
@@ -161,6 +177,9 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_add.add_argument("--domain", default="irl", help="'irl' (default) or 'pg'")
     p_add.add_argument("--tier", default="critical", choices=[t.value for t in DailyTier])
     p_add.add_argument("--recurrence", help="'daily', 'every:N', 'weekly:MON'..'SUN', or 'monthly:D' (day 1-28)")
+    p_add.add_argument(
+        "--show-after-hour", type=int, dest="show_after_hour", help="Hide until this local hour (0-23), e.g. 19 for 7pm"
+    )
     p_add.add_argument("--location")
     p_add.add_argument("--reward")
     p_add.add_argument("--notes")
@@ -173,6 +192,9 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_update.add_argument("--domain")
     p_update.add_argument("--tier", choices=[t.value for t in DailyTier])
     p_update.add_argument("--recurrence", help="'daily', 'every:N', 'weekly:MON'..'SUN', or 'monthly:D' (day 1-28)")
+    p_update.add_argument(
+        "--show-after-hour", type=int, dest="show_after_hour", help="Hide until this local hour (0-23), e.g. 19 for 7pm"
+    )
     p_update.add_argument("--location")
     p_update.add_argument("--reward")
     p_update.add_argument("--notes")

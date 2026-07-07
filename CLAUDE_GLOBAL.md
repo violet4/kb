@@ -75,6 +75,8 @@ Every piece of information has exactly one correct home, chosen by what kind of 
 
 This file (physically `~/kb/CLAUDE_GLOBAL.md`, symlinked from `~/.claude/CLAUDE.md`) is the root of this system — Claude Code loads it automatically at the start of every session, so it's the one place that should say where everything else lives. Improve it the same way the rest of the tiering system improves: when a real case doesn't fit cleanly, fix the rule, don't just make a one-off exception.
 
+Whenever the working directory is `~/kb` or a path under it, edit `~/kb/CLAUDE_GLOBAL.md` directly to change these global instructions — it's a real, git-tracked file at that location, not merely reachable through the `~/.claude/CLAUDE.md` symlink. Only touch `~/.claude/CLAUDE.md` itself when working outside `~/kb`, where the symlink is the path actually on disk.
+
 **The Memento test.** Like the protagonist of *Memento*, who can't form new long-term memories and instead builds an external system (photos, tattoos, notes) disciplined enough to reconstruct full context on demand, this whole tiering system exists because memory doesn't reliably carry across sessions — Claude's context resets, and human attention/recall is finite too. The bar for any durable record (a kb Note, Goal, Todo, memory file) is not "is this useful" but "if the reader woke up with zero memory of this, would reading this entry alone be enough to act correctly, immediately, without re-deriving context from scratch." This is not "capture everything just in case" — an overloaded record defeats its own purpose. The target is minimal-sufficient reconstruction: the smallest set of collapsed pointers plus on-demand expansion that gets back to full understanding, not a maximal transcript. And it cuts both ways — intentionally correcting or removing what's no longer true is as load-bearing as capturing what's new; a record that only ever appends becomes as unreliable as no memory at all.
 
 ## Memory
@@ -218,3 +220,7 @@ Before defining an `Enum(...)` column on SQLite, read kb-engineering-10.
 ## Browser Development
 
 We only provide direct support for Firefox.
+
+## User
+
+The user is US-based and uses USD.

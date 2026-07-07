@@ -15,7 +15,7 @@ dependencies = [
 anki = ["anki>=25.0"]
 
 [dependency-groups]
-dev = ["pytest>=8.0", "mypy>=1.13"]
+dev = ["pytest>=8.0", "mypy>=1.13", "pre-commit>=4.0"]
 
 [tool.mypy]
 python_version = "3.12"

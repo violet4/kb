@@ -97,6 +97,8 @@ Write full sentences, not clipped "one X, one Y, one Z" fragment lists. A senten
 
 State a shared pattern once, then list only what varies. If every line in a command reference repeats the same prefix, the same argument shape, or a comment that just restates the subcommand name, say the shared shape once above the list and drop it from every line — e.g. `goal show|complete|abandon ID [ID ...]` instead of three full lines each repeating `uv run scripts/goal ... ID [ID ...] # ...`. This is the same collapsed/expanded principle applied to writing: the repeated part is implementation detail once established, not something to re-render every time.
 
+Cut prose to what changes the reader's action. A rule stated once doesn't need a restated justification tacked on if the justification is already implied by the rule itself, and a list item doesn't need a trailing clause that just repeats its own heading. Prefer a short declarative line over a longer one that says the same thing with more words.
+
 ## Response Style
 
 Be concise and direct. Lead with the answer. Avoid filler, preamble, and unnecessary transitions.
@@ -173,7 +175,11 @@ A late/deferred import guarded by `# noqa` to dodge a circular import is a code 
 
 Keep commit messages short and high-level. At most one technical detail. One line.
 
-Commit at logical boundaries — one commit per self-contained change. Don't bundle unrelated changes; don't split a single change across multiple commits. When completing a task, commit before moving to the next one.
+Commit at logical boundaries:
+
+- One commit per self-contained change. Don't bundle unrelated changes; don't split a single change across multiple commits.
+- Commit before moving to the next task, and before ending a session.
+- Check `git status`/`git diff` for pre-existing uncommitted work before starting new changes, so it doesn't silently get swept into the new work's commit.
 
 Messages must be specific enough that the reader understands what changed without opening the commit, without going into technical depth. Always name the subject — "refactor Item table", "fix notes overwrite bug" rather than just "refactor" or "fix bug".
 

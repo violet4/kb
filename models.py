@@ -23,7 +23,7 @@ from sqlalchemy.orm.base import NO_VALUE, NEVER_SET
 from sqlalchemy.pool import ConnectionPoolEntry
 
 from base import Base, _now
-from mixins import HasWeight
+from mixins import HasUniqueName, HasWeight
 
 _DB_PATH = Path(__file__).parent / "data" / "kb.db"
 _engine = create_engine(f"sqlite:///{_DB_PATH}", echo=False)
@@ -390,7 +390,7 @@ class Todo(Base):
         return f"<Todo #{self.id} {self.title!r} [{self.status.value}]{effort_str}{defer_str}{context_str}{tags_str}>"
 
 
-class TodoTag(Base):
+class TodoTag(Base, HasUniqueName):
     """A GTD-style actionability tag (e.g. 'serbule-keep', 'has-carrots') -- distinct from Context
     (which game/character), this is many-to-many: a Todo surfaces when any of its tags currently
     applies (you're at that location, you're holding that item, etc).
@@ -402,7 +402,6 @@ class TodoTag(Base):
     __tablename__ = "todo_tag"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     parent_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("todo_tag.id"), nullable=True)
 
     parent: Mapped[Optional[TodoTag]] = relationship("TodoTag", remote_side=[id])

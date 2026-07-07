@@ -10,7 +10,7 @@ from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from base import Base
-from mixins import HasStackSize
+from mixins import HasStackSize, HasUniqueName
 from models import Item
 
 class PgItem(Item, HasStackSize):
@@ -26,22 +26,20 @@ class PgItem(Item, HasStackSize):
 
 
 
-class PgSkill(Base):
+class PgSkill(Base, HasUniqueName):
     __tablename__ = "pg_skill"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
 
     def __repr__(self) -> str:
         return f"<PgSkill {self.name!r}>"
 
 
-class PgCharacter(Base):
+class PgCharacter(Base, HasUniqueName):
     """A character you (the player) control."""
     __tablename__ = "pg_character"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     race: Mapped[str] = mapped_column(Text, nullable=False)
     is_druid: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_vampire: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -65,11 +63,10 @@ class PgNpcRace(Base):
         return f"<PgNpcRace {self.name!r}>"
 
 
-class PgNpc(Base):
+class PgNpc(Base, HasUniqueName):
     __tablename__ = "pg_npc"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     race_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("pg_npc_race.id"), nullable=True)
     location: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
@@ -129,12 +126,11 @@ class PgDungeon(Base):
         return f"<PgDungeon {self.name!r}>"
 
 
-class PgMob(Base):
+class PgMob(Base, HasUniqueName):
     """A killable enemy, distinct from PgNpc (interactable: trainer/shop/quest-giver/lore)."""
     __tablename__ = "pg_mob"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     location: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
 
@@ -157,7 +153,7 @@ class PgMobDrop(Base):
         return f"<PgMobDrop {self.mob.name if self.mob else '?'} -> {self.item.name if self.item else '?'}>"
 
 
-class PgHangout(Base):
+class PgHangout(Base, HasUniqueName):
     """A definition: what an NPC's hangout gives, not a per-character instance. A character has at
     most one active hangout at a time (PgCharacter.hangout_id) -- its timer runs while logged out,
     and rewards are granted on next login once duration_minutes has elapsed since logout. Exact
@@ -166,7 +162,6 @@ class PgHangout(Base):
     __tablename__ = "pg_hangout"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     npc_id: Mapped[int] = mapped_column(Integer, ForeignKey("pg_npc.id"), nullable=False)
     favor: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     skill_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("pg_skill.id"), nullable=True)
@@ -197,13 +192,12 @@ class PgHangoutItem(Base):
         return f"<PgHangoutItem {self.hangout.name if self.hangout else '?'}: {self.quantity}x {self.item.name if self.item else '?'}>"
 
 
-class PgPlayer(Base):
+class PgPlayer(Base, HasUniqueName):
     """Another player's character you've encountered. One row per character name met —
     the same person under multiple aliases gets multiple rows, linked via notes."""
     __tablename__ = "pg_player"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     friendly: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
 

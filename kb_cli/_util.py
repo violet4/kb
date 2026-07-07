@@ -11,14 +11,17 @@ from typing import Iterable, Type, TypeVar
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from models import Journal, TodoTag
-from models_pg import PgCharacter, PgHangout, PgItem, PgMob, PgNpc, PgPlayer, PgSkill
+from mixins import HasUniqueName
+from models import Journal
+from models_pg import PgItem
 
 # SQLAlchemy declarative classes don't satisfy structural Protocol matching (their
 # class-level attributes are InstrumentedAttribute, not the Mapped[T] written in the
-# class body), so get_by_name is typed against the actual finite set of classes it's
-# called with, rather than a Protocol pretending to check for "has a name column."
-_Named = TodoTag | PgNpc | PgMob | PgItem | PgPlayer | PgCharacter | PgHangout | PgSkill
+# class body), so classes needing get_by_name inherit the real HasUniqueName mixin
+# (nominal typing) instead. PgItem is the one exception: it gets `.name` from Item
+# (not unique at the schema level, since multiple games can share item names), so it
+# can't use the mixin -- named explicitly here instead.
+_Named = HasUniqueName | PgItem
 T = TypeVar("T", bound=_Named)
 
 

@@ -1137,6 +1137,9 @@ class Wishlist(Base):
     )
     context_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("context.id"), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    pinned: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )  # manually marked visible in kb summary
 
     context: Mapped[Optional[Context]] = relationship("Context")
 
@@ -1152,9 +1155,11 @@ class Wishlist(Base):
         return session.scalars(q).all()
 
     @classmethod
-    def top(cls, session: Session, n: int = 10) -> list[Wishlist]:
+    def top(cls, session: Session, n: int = 10, pinned_only: bool = False) -> list[Wishlist]:
         """Active items: explicit priority first (nulls last), then score as tiebreaker."""
         items = cls.active(session)
+        if pinned_only:
+            items = [w for w in items if w.pinned]
         return sorted(items, key=lambda w: (w.priority is None, -(w.priority or 0), -w.score))[:n]
 
     def __repr__(self) -> str:
@@ -1164,7 +1169,8 @@ class Wishlist(Base):
             hi = f"${self.price_max}" if self.price_max is not None else ""
             price = f" {lo}–{hi}" if lo and hi else f" {lo or hi}"
         priority_str = f" priority={self.priority}" if self.priority is not None else f" score={self.score}"
-        return f"<Wishlist {self.title!r}{price} effort={self.effort.value}{priority_str}>"
+        pin = " pinned" if self.pinned else ""
+        return f"<Wishlist #{self.id} {self.title!r}{price} effort={self.effort.value}{priority_str}{pin}>"
 
 
 # ---------------------------------------------------------------------------

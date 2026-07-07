@@ -91,18 +91,18 @@ def people_section(session: Session) -> str | None:
 
 
 def wishlist_section(session: Session) -> str | None:
-    top_wishes = Wishlist.top(session, 5)
-    if not top_wishes:
+    pinned = Wishlist.top(session, 5, pinned_only=True)
+    if not pinned:
         return None
-    lines = ["=== WISHLIST (top 5) ==="]
-    for w in top_wishes:
+    lines = ["=== WISHLIST (pinned) ==="]
+    for w in pinned:
         price = ""
         if w.price_min is not None or w.price_max is not None:
             lo = f"${w.price_min}" if w.price_min is not None else ""
             hi = f"${w.price_max}" if w.price_max is not None else ""
             price = f" ({lo}–{hi})" if lo and hi else f" ({lo or hi})"
         rank = w.priority if w.priority is not None else w.score
-        lines.append(f"- {w.title}{price} [{w.effort.value}] priority={rank}")
+        lines.append(f"- #{w.id} {w.title}{price} [{w.effort.value}] priority={rank}")
     return "\n".join(lines)
 
 

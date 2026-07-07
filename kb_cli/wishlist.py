@@ -28,6 +28,7 @@ def cmd_add(args: argparse.Namespace) -> None:
         effort=WishlistEffort(args.effort),
         priority=args.priority,
         notes=args.notes,
+        pinned=args.pinned,
     )
     args.session.add(item)
     args.session.commit()
@@ -63,6 +64,8 @@ def cmd_update(args: argparse.Namespace) -> None:
         item.status = WishlistStatus(args.status)
     if args.notes is not None:
         item.notes = args.notes
+    if args.pinned is not None:
+        item.pinned = args.pinned
 
     args.session.commit()
     print(f"Updated: {item} score={item.score}")
@@ -83,6 +86,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_add.add_argument("--effort", choices=[e.value for e in WishlistEffort], default="grab")
     p_add.add_argument("--priority", type=int, help="Explicit priority override (beats computed score)")
     p_add.add_argument("--notes")
+    p_add.add_argument("--pinned", action="store_true", help="Show in kb summary")
     p_add.set_defaults(func=cmd_add)
 
     p_update = sub.add_parser("update", help="Update fields on an existing wishlist item")
@@ -98,4 +102,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_update.add_argument("--priority", type=int, help="Explicit priority override (beats computed score)")
     p_update.add_argument("--status", choices=[s.value for s in WishlistStatus])
     p_update.add_argument("--notes")
+    pin_group = p_update.add_mutually_exclusive_group()
+    pin_group.add_argument("--pinned", dest="pinned", action="store_true", default=None, help="Show in kb summary")
+    pin_group.add_argument("--unpinned", dest="pinned", action="store_false", help="Hide from kb summary")
     p_update.set_defaults(func=cmd_update)

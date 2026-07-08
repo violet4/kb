@@ -4,63 +4,16 @@
 import argparse
 import ast
 import code
+import inspect
 import sys
 from datetime import datetime
 
 from sqlalchemy import select
 
-from base import Base
+import models
+import models_pg
 from context import resolve_context
-from models import (
-    ChangeLog,
-    Collection,
-    Context,
-    CurrentContext,
-    Daily,
-    DailyTier,
-    Goal,
-    GoalStatus,
-    Idea,
-    IdeaStatus,
-    InboxItem,
-    IrlItem,
-    Item,
-    Journal,
-    LogEntry,
-    Note,
-    Person,
-    PersonTier,
-    Purchase,
-    Reference,
-    Settings,
-    SessionFactory,
-    Todo,
-    TodoStatus,
-    TodoTag,
-    TodoTagLink,
-    Vendor,
-    VendorItem,
-    WishlistEffort,
-    WishlistStatus,
-    Wishlist,
-    WorkingMemory,
-    init_db,
-)
-from models_pg import (
-    PgCharacter,
-    PgDungeon,
-    PgHangout,
-    PgHangoutItem,
-    PgItem,
-    PgMob,
-    PgMobDrop,
-    PgNpc,
-    PgNpcRace,
-    PgNpcRelation,
-    PgPlayer,
-    PgQuest,
-    PgSkill,
-)
+from models import SessionFactory
 
 parser = argparse.ArgumentParser(description="KB runner")
 parser.add_argument("command", nargs="?", help="Python expression to execute")
@@ -96,56 +49,23 @@ if args.file:
 
 sess = SessionFactory()
 
-ns = {
-    "sess": sess,
-    "select": select,
-    "datetime": datetime,
-    "context": resolve_context(sess, args.context),
-    "Collection": Collection,
-    "Note": Note,
-    "ChangeLog": ChangeLog,
-    "Context": Context,
-    "CurrentContext": CurrentContext,
-    "Daily": Daily,
-    "DailyTier": DailyTier,
-    "Goal": Goal,
-    "GoalStatus": GoalStatus,
-    "Idea": Idea,
-    "IdeaStatus": IdeaStatus,
-    "InboxItem": InboxItem,
-    "IrlItem": IrlItem,
-    "Item": Item,
-    "Journal": Journal,
-    "LogEntry": LogEntry,
-    "PgCharacter": PgCharacter,
-    "PgDungeon": PgDungeon,
-    "PgHangout": PgHangout,
-    "PgHangoutItem": PgHangoutItem,
-    "PgItem": PgItem,
-    "PgMob": PgMob,
-    "PgMobDrop": PgMobDrop,
-    "PgNpc": PgNpc,
-    "PgNpcRace": PgNpcRace,
-    "PgNpcRelation": PgNpcRelation,
-    "PgPlayer": PgPlayer,
-    "PgQuest": PgQuest,
-    "PgSkill": PgSkill,
-    "Person": Person,
-    "PersonTier": PersonTier,
-    "Purchase": Purchase,
-    "Reference": Reference,
-    "Settings": Settings,
-    "Todo": Todo,
-    "TodoStatus": TodoStatus,
-    "TodoTag": TodoTag,
-    "TodoTagLink": TodoTagLink,
-    "Vendor": Vendor,
-    "VendorItem": VendorItem,
-    "Wishlist": Wishlist,
-    "WishlistEffort": WishlistEffort,
-    "WishlistStatus": WishlistStatus,
-    "WorkingMemory": WorkingMemory,
-}
+# Every class/function actually defined in models.py/models_pg.py (models, enums,
+# helpers like init_db) is pre-loaded automatically -- adding a new model there
+# needs no corresponding edit here.
+ns: dict[str, object] = {}
+for module in (models, models_pg):
+    for name, obj in vars(module).items():
+        if not name.startswith("_") and inspect.getmodule(obj) is module:
+            ns[name] = obj
+
+ns.update(
+    {
+        "sess": sess,
+        "select": select,
+        "datetime": datetime,
+        "context": resolve_context(sess, args.context),
+    }
+)
 
 if args.command:
     tree = ast.parse(args.command)

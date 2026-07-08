@@ -21,10 +21,18 @@ Usage: kb [--context NAME] <command> [subcommand ...] [args ...]
   kb anki decks | deck-add NAME | notetype-init | search QUERY | add DECK NOTETYPE FIELD... [--tags T] | delete ID... | run [-f FILE|-i]
 """
 import argparse
+import os
+import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+
+_KB_ROOT = Path(__file__).parent
+if not os.environ.get("CI") and subprocess.run(
+    ["git", "config", "--get", "core.hooksPath"], cwd=_KB_ROOT, capture_output=True
+).returncode != 0:
+    subprocess.run(["scripts/dev/setup-hooks"], cwd=_KB_ROOT, check=False)
 
 from context import resolve_context
 from kb_cli import anki, context_cmd, daily, goal, inbox, journal, log, notes, pager, summary, tag, todo, wishlist

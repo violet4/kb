@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Auto-push after every commit (solo repo, backup safety only).
+# Never blocks or fails the commit — push errors are reported, not enforced.
+# Skipped entirely under CI, where an automatic push is never wanted.
+
+if [ -n "$CI" ]; then
+    exit 0
+fi
+
+branch="$(git rev-parse --abbrev-ref HEAD)"
+
+if git push origin "$branch" 2>/tmp/kb-post-commit-push.log; then
+    echo "✓ pushed to origin/$branch"
+else
+    echo "✗ AUTO-PUSH FAILED for $branch — commit is local only" >&2
+    cat /tmp/kb-post-commit-push.log >&2
+fi
+
+exit 0

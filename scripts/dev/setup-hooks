@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Point git at the repo-tracked hooks directory and (re)install pre-commit into it.
+# Idempotent — safe to run on every clone/sync, skipped entirely under CI.
+set -euo pipefail
+
+if [ -n "${CI:-}" ]; then
+    exit 0
+fi
+
+cd "$(git rev-parse --show-toplevel)"
+
+# pre-commit refuses to install once core.hooksPath already points elsewhere, so
+# install into .git/hooks first (its default), copy the generated hook into the
+# tracked directory, then repoint git at the tracked directory.
+git config --unset-all core.hooksPath 2>/dev/null || true
+uv run pre-commit install --config .pre-commit-config.yaml
+cp .git/hooks/pre-commit scripts/hooks/pre-commit
+chmod +x scripts/hooks/pre-commit
+git config core.hooksPath scripts/hooks

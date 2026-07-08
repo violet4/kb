@@ -28,7 +28,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-_KB_ROOT = Path(__file__).parent
+_KB_ROOT = Path(__file__).resolve().parent
 if not os.environ.get("CI") and subprocess.run(
     ["git", "config", "--get", "core.hooksPath"], cwd=_KB_ROOT, capture_output=True
 ).returncode != 0:

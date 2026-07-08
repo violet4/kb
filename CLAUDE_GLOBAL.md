@@ -32,6 +32,8 @@ Return the weakest/most honest type the operation actually produces (e.g. `Seque
 
 When a helper needs to work generically across multiple classes that share one attribute/behavior, prefer a real mixin (nominal typing, actual inheritance) over an enumerated `Union[ClassA, ClassB, ...]` or a structural `Protocol`, once more than one class shares the trait — a mixin scales for free as new classes adopt it, where a hand-maintained Union has to be remembered and edited every time, and a Protocol can silently fail to structurally match in frameworks (e.g. SQLAlchemy declarative models) whose class-level attribute types don't line up with what's written in the class body. Verify the chosen approach against a real multi-class case before committing to it, the same as any other edge-case assumption.
 
+For date/time-boundary logic (recurrence windows, "overdue" thresholds, day-boundary cutoffs), don't derive the rule from prose reasoning alone, even when re-checked. Ask for or construct a concrete table of wall-clock timestamps mapped to expected states first, then write a test asserting each row before writing the implementation. A worked example: a Daily's "overdue" flag was designed and re-verified twice from written reasoning about "missing a full cycle," and was wrong both times; a table of hypothetical timestamps ("Mon 6pm: not overdue", "Tue 4am: overdue") immediately exposed the actual off-by-one-boundary bug that prose review had missed.
+
 ## Security
 
 ### Network & Privacy

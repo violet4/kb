@@ -613,6 +613,33 @@ class Daily(Base):
             q = q.where(cls.context_id == context.id)
         return session.scalars(q).all()
 
+    def is_overdue(self, session: Session) -> bool:
+        """True once a due Daily has missed a full extra cycle, not just today's window --
+        e.g. a non-recurring Daily last completed two day-boundaries ago (skipped yesterday
+        entirely, not just not-yet-done-today), or a recurring Daily more than one cadence
+        period past its next_due_at. Distinguishes "due today" from "actually neglected"."""
+
+        def _aware(dt: datetime) -> datetime:
+            return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+
+        now = _now()
+        day_start = self._day_start(session, now)
+        if self.recurrence is not None:
+            if self.next_due_at is None:
+                return False
+            next_due = _aware(self.next_due_at)
+            if next_due > now:
+                return False
+            # Compare against the previous cycle's due point: shift now back by
+            # (now - next_due_at)'s own cadence, approximated as "still due at the
+            # last day-boundary before now" -- one missed day-boundary past when it
+            # first became due counts as overdue, mirroring the non-recurrence case.
+            return next_due < day_start
+        if self.last_completed_at is None:
+            return False
+        previous_day_start = day_start - timedelta(days=1)
+        return _aware(self.last_completed_at) < previous_day_start
+
     @classmethod
     def due(cls, session: Session, domain: Optional[str] = None, tier: Optional[DailyTier] = None) -> list[Daily]:
         """Active dailies currently due: dailies with a recurrence rule are due once next_due_at

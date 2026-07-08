@@ -40,7 +40,8 @@ def dailies_section(session: Session) -> str | None:
     if critical:
         lines.append("=== DAILIES ===")
         for d in critical:
-            lines.append(f"- #{d.id} {d.description}")
+            marker = " ⚠ overdue" if d.is_overdue(session) else ""
+            lines.append(f"- #{d.id} {d.description}{marker}")
 
     all_due = Daily.due(session)
     non_critical_irl = [d for d in all_due if d.domain == "irl" and d.tier != DailyTier.CRITICAL]

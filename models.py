@@ -614,10 +614,11 @@ class Daily(Base):
         return session.scalars(q).all()
 
     def is_overdue(self, session: Session) -> bool:
-        """True once a due Daily has missed a full extra cycle, not just today's window --
-        e.g. a non-recurring Daily last completed two day-boundaries ago (skipped yesterday
-        entirely, not just not-yet-done-today), or a recurring Daily more than one cadence
-        period past its next_due_at. Distinguishes "due today" from "actually neglected"."""
+        """True once the day-boundary *after* the one that made this Daily due has
+        also passed while it's still not completed -- e.g. litter due Monday (and
+        shown from show_after_hour onward) is fine through the rest of Monday and
+        into early Tuesday, then becomes overdue right at Tuesday's day-boundary,
+        the moment the window it should have been done in has fully closed."""
 
         def _aware(dt: datetime) -> datetime:
             return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
@@ -628,17 +629,17 @@ class Daily(Base):
             if self.next_due_at is None:
                 return False
             next_due = _aware(self.next_due_at)
+            # Not due yet at all.
             if next_due > now:
                 return False
-            # Compare against the previous cycle's due point: shift now back by
-            # (now - next_due_at)'s own cadence, approximated as "still due at the
-            # last day-boundary before now" -- one missed day-boundary past when it
-            # first became due counts as overdue, mirroring the non-recurrence case.
-            return next_due < day_start
+            # Due within the window that started at next_due_at's own day-boundary;
+            # overdue once we've moved past that window into the next one.
+            next_due_window_start = self._day_start(session, next_due)
+            return day_start > next_due_window_start
         if self.last_completed_at is None:
             return False
-        previous_day_start = day_start - timedelta(days=1)
-        return _aware(self.last_completed_at) < previous_day_start
+        last_completed_window_start = self._day_start(session, _aware(self.last_completed_at))
+        return day_start > last_completed_window_start
 
     @classmethod
     def due(cls, session: Session, domain: Optional[str] = None, tier: Optional[DailyTier] = None) -> list[Daily]:

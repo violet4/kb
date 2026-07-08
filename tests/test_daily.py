@@ -155,6 +155,44 @@ def test_due_filters_by_domain_and_tier(db_session: Session) -> None:
         assert Daily.due(db_session, domain="pg") == [pg_daily]
 
 
+def test_is_overdue_flips_at_the_boundary_after_the_due_window(db_session: Session) -> None:
+    """A Daily completed mid-window stays "due but not overdue" through the rest of
+    that window and the next one, then flips to overdue at the following day-boundary
+    if still not completed -- e.g. litter completed Monday early afternoon is fine
+    until Tuesday 04:00, then overdue from Tuesday 04:00 onward until completed."""
+    _set_utc_boundary(db_session, hour=4)
+    with time_machine.travel(datetime(2026, 1, 5, 12, 26, tzinfo=timezone.utc)) as traveller:
+        daily = Daily.create(db_session, "litter")
+        daily.complete(db_session)
+        db_session.commit()
+
+        # Later the same day-window: due later today (once show_after_hour/etc. pass),
+        # but not yet overdue.
+        traveller.move_to(datetime(2026, 1, 5, 23, 0, tzinfo=timezone.utc))
+        assert not daily.is_overdue(db_session)
+
+        # Just before the next day-boundary: still not overdue.
+        traveller.move_to(datetime(2026, 1, 6, 3, 59, tzinfo=timezone.utc))
+        assert not daily.is_overdue(db_session)
+
+        # At the boundary itself: overdue, since the prior window ended uncompleted.
+        traveller.move_to(datetime(2026, 1, 6, 4, 0, tzinfo=timezone.utc))
+        assert daily.is_overdue(db_session)
+
+        # Stays overdue afterward.
+        traveller.move_to(datetime(2026, 1, 6, 5, 0, tzinfo=timezone.utc))
+        assert daily.is_overdue(db_session)
+
+
+def test_is_overdue_false_immediately_after_completion(db_session: Session) -> None:
+    _set_utc_boundary(db_session, hour=4)
+    with time_machine.travel(datetime(2026, 1, 5, 12, 0, tzinfo=timezone.utc)):
+        daily = Daily.create(db_session, "litter")
+        daily.complete(db_session)
+        db_session.commit()
+        assert not daily.is_overdue(db_session)
+
+
 def test_inactive_daily_never_due(db_session: Session) -> None:
     _set_utc_boundary(db_session)
     with time_machine.travel(datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)):

@@ -86,8 +86,8 @@ def cmd_update(args: argparse.Namespace) -> None:
         todo.defer_until = _parse_defer_until(args.defer_until)
     if args.notes is not None:
         todo.notes = args.notes
-    if args.context is not None:
-        todo.context = resolve_context(args.session, args.context)
+    if args.new_context is not None:
+        todo.context = resolve_context(args.session, args.new_context)
     if args.goal is not None:
         todo.goal_id = args.goal
     args.session.commit()
@@ -205,7 +205,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         help="HH:MM (today, or tomorrow if already past), 'YYYY-MM-DD', or 'YYYY-MM-DD HH:MM'",
     )
     p_update.add_argument("--notes")
-    p_update.add_argument("--context", metavar="NAME")
+    p_update.add_argument("--context", dest="new_context", metavar="NAME")
     p_update.add_argument("--goal", type=int, metavar="GOAL_ID")
     p_update.set_defaults(func=cmd_update)
 

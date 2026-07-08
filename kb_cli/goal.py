@@ -4,9 +4,11 @@ import argparse
 import sys
 from typing import Iterable
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from models import Goal, GoalStatus, Journal
+from context import resolve_context
+from models import Context, Goal, GoalStatus, Journal
 
 from kb_cli._util import add_history_arg, print_journal_history
 
@@ -43,6 +45,25 @@ def cmd_show(args: argparse.Namespace) -> None:
             args.history,
             f"journal show Goal {goal.id} or kb goal show {goal.id} --history [N]",
         )
+
+
+def cmd_list(args: argparse.Namespace) -> None:
+    status = GoalStatus(args.status) if args.status else None
+    q = select(Goal)
+    if status is not None:
+        q = q.where(Goal.status == status)
+    if not args.all:
+        current = resolve_context(args.session)
+        in_scope = Context.self_and_descendants(args.session, current.name) if current else None
+        if in_scope is not None:
+            ids = [c.id for c in in_scope]
+            q = q.where(Goal.context_id.in_(ids) | Goal.context_id.is_(None))
+    goals = args.session.scalars(q).all()
+    if not goals:
+        print("No goals.")
+        return
+    for g in goals:
+        print(f"#{g.id} [{g.status.value}] {g.title}")
 
 
 def _set_status(session: Session, ids: Iterable[int], status: GoalStatus, verb: str) -> None:
@@ -102,3 +123,8 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_reactivate = sub.add_parser("reactivate", help="Mark Goal(s) active again")
     p_reactivate.add_argument("ids", nargs="+", type=int)
     p_reactivate.set_defaults(func=cmd_reactivate)
+
+    p_list = sub.add_parser("list", help="List Goals, scoped to the current context by default")
+    p_list.add_argument("--status", choices=[s.value for s in GoalStatus])
+    p_list.add_argument("--all", action="store_true", help="Ignore context scoping and show Goals from every context")
+    p_list.set_defaults(func=cmd_list)

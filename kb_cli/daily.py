@@ -71,10 +71,11 @@ def cmd_list(args: argparse.Namespace) -> None:
                 d.tier.value,
                 d.recurrence or "",
                 _local_str(d.next_due_at) or "",
+                _local_str(d.last_completed_at) or "",
                 status,
             ]
         )
-    print_table(["id", "description", "tier", "recurrence", "next due", "status"], rows)
+    print_table(["id", "description", "tier", "recurrence", "next due", "last completed", "status"], rows)
 
 
 def cmd_complete(args: argparse.Namespace) -> None:

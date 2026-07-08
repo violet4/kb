@@ -613,63 +613,76 @@ class Daily(Base):
             q = q.where(cls.context_id == context.id)
         return session.scalars(q).all()
 
+    @staticmethod
+    def _aware(dt: datetime) -> datetime:
+        return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+
+    def current_window(self, session: Session) -> tuple[datetime, datetime]:
+        """The single source of truth for "what due window is this Daily in right now"
+        (both bounds UTC-aware, half-open [start, end)). Every other method (due(),
+        is_overdue(), display) is a thin check against this, so window math is never
+        re-derived independently and drifting out of sync between methods.
+
+        start is the current day-boundary (the day-boundary at/before "now"). end is
+        the following day-boundary. A recurring Daily whose next_due_at falls after
+        end simply isn't due within this window yet -- callers check next_due_at/
+        last_completed_at against [start, end) rather than the window itself shifting
+        to sit on the due date, so "overdue" and "due" both key off the *current*
+        window, matching how a Daily becomes overdue the instant a new window opens
+        while its prior window's obligation is still unmet."""
+        now = _now()
+        start = self._day_start(session, now)
+        end = self._day_start(session, start + timedelta(days=1, hours=1))
+        return start, end
+
     def is_overdue(self, session: Session) -> bool:
         """True once the day-boundary *after* the one that made this Daily due has
         also passed while it's still not completed -- e.g. litter due Monday (and
         shown from show_after_hour onward) is fine through the rest of Monday and
         into early Tuesday, then becomes overdue right at Tuesday's day-boundary,
         the moment the window it should have been done in has fully closed."""
-
-        def _aware(dt: datetime) -> datetime:
-            return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
-
-        now = _now()
-        day_start = self._day_start(session, now)
+        start, _ = self.current_window(session)
         if self.recurrence is not None:
             if self.next_due_at is None:
                 return False
-            next_due = _aware(self.next_due_at)
-            # Not due yet at all.
-            if next_due > now:
+            next_due = self._aware(self.next_due_at)
+            if next_due > _now():
                 return False
-            # Due within the window that started at next_due_at's own day-boundary;
-            # overdue once we've moved past that window into the next one.
             next_due_window_start = self._day_start(session, next_due)
-            return day_start > next_due_window_start
+            return start > next_due_window_start
         if self.last_completed_at is None:
             return False
-        last_completed_window_start = self._day_start(session, _aware(self.last_completed_at))
-        return day_start > last_completed_window_start
+        last_completed_window_start = self._day_start(session, self._aware(self.last_completed_at))
+        return start > last_completed_window_start
+
+    def is_due_now(self, session: Session) -> bool:
+        """True once this Daily is due within current_window(), gated by show_after_hour
+        (0-23 local) so evening-only items don't surface in the morning."""
+        now = _now()
+        start, _ = self.current_window(session)
+        if self.recurrence is not None:
+            is_due = self.next_due_at is None or self._aware(self.next_due_at) <= now
+        else:
+            is_due = self.last_completed_at is None or self._aware(self.last_completed_at) < start
+        if not is_due:
+            return False
+        if self.show_after_hour is not None:
+            settings = Settings.get(session)
+            local_hour = now.astimezone(settings.resolved_timezone()).hour
+            if local_hour < self.show_after_hour:
+                return False
+        return True
 
     @classmethod
     def due(cls, session: Session, domain: Optional[str] = None, tier: Optional[DailyTier] = None) -> list[Daily]:
-        """Active dailies currently due: dailies with a recurrence rule are due once next_due_at
-        has passed; dailies without one fall back to the plain day-boundary check against
-        last_completed_at. A due Daily with show_after_hour set is further suppressed until
-        that local hour, so evening-only items don't surface in the morning."""
-        now = _now()
-        day_start = cls._day_start(session, now)
-        settings = Settings.get(session)
-        local_hour = now.astimezone(settings.resolved_timezone()).hour
+        """Active dailies currently due, per is_due_now()."""
         q = select(cls).where(cls.is_active.is_(True))
         if domain is not None:
             q = q.where(cls.domain == domain)
         if tier is not None:
             q = q.where(cls.tier == tier)
         dailies = session.scalars(q).all()
-
-        def _aware(dt: datetime) -> datetime:
-            return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
-
-        result: list[Daily] = []
-        for d in dailies:
-            if d.recurrence is not None:
-                is_due = d.next_due_at is None or _aware(d.next_due_at) <= now
-            else:
-                is_due = d.last_completed_at is None or _aware(d.last_completed_at) < day_start
-            if is_due and (d.show_after_hour is None or local_hour >= d.show_after_hour):
-                result.append(d)
-        return result
+        return [d for d in dailies if d.is_due_now(session)]
 
     @classmethod
     def create(

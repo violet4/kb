@@ -1,9 +1,14 @@
 #!/usr/bin/env -S uv run --project /home/violet/kb python3
 """Global kb CLI entry point. Usable from any directory (see ~/bin/kb symlink).
 
-Usage: kb [--context NAME] <command> [subcommand ...] [args ...]
+Usage: kb [--context NAME] [--as-of WHEN] <command> [subcommand ...] [args ...]
   --context NAME acts in that context for this command only (must already exist; see
   `kb context add`). Falls back to $KB_CONTEXT, then the persisted current context.
+  --as-of WHEN runs this command as if the current time were WHEN, via time_machine --
+  for previewing/debugging time-dependent output (e.g. `kb daily list` at a future
+  hour) without waiting for real time to pass. Accepts 'HH:MM' (today), 'YYYY-MM-DD',
+  or 'YYYY-MM-DD HH:MM', interpreted in local time. Read-only use only -- any writes
+  made under --as-of (e.g. `kb daily complete`) are stamped with the simulated time.
   kb goal add "..." | show ID | complete ID | abandon ID | hold ID | reactivate ID
   kb todo add "..." | show ID | update ID | complete ID | pending [--tag NAME] | tag ID TAG... | untag ID TAG...
   kb tag add NAME [--parent P] | show NAME | set-parent NAME [PARENT] | list
@@ -24,6 +29,7 @@ import argparse
 import os
 import subprocess
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -39,9 +45,27 @@ from kb_cli import anki, context_cmd, daily, goal, inbox, journal, log, notes, p
 from kb_cli import games
 from models import SessionFactory
 
+
+def _parse_as_of(raw: str) -> datetime:
+    now = datetime.now()
+    for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(raw, fmt)
+        except ValueError:
+            pass
+    try:
+        t = datetime.strptime(raw, "%H:%M").time()
+    except ValueError:
+        raise SystemExit(f"--as-of: could not parse {raw!r} (use HH:MM, 'YYYY-MM-DD', or 'YYYY-MM-DD HH:MM')")
+    return now.replace(hour=t.hour, minute=t.minute, second=0, microsecond=0)
+
+
 parser = argparse.ArgumentParser(prog="kb", description="Global kb CLI")
 parser.add_argument(
     "--context", metavar="NAME", help="Act in context NAME for this command only (must already exist)"
+)
+parser.add_argument(
+    "--as-of", metavar="WHEN", help="Run as if the current time were WHEN (local); see usage docstring"
 )
 subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -66,4 +90,12 @@ try:
     args.context = resolve_context(args.session, args.context)
 except ValueError as e:
     parser.error(str(e))
-args.func(args)
+
+if args.as_of:
+    import time_machine
+
+    as_of_local = _parse_as_of(args.as_of).astimezone()
+    with time_machine.travel(as_of_local, tick=False):
+        args.func(args)
+else:
+    args.func(args)

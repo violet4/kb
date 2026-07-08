@@ -65,7 +65,7 @@ def _other_contexts_hint(session: Session, in_scope_ids: set[int], all_pending_c
     if not outside:
         return ""
     other_context_count = len(set(outside))
-    return f"({len(outside)} item(s) in {other_context_count} other context(s) — kb context switch NAME)"
+    return f"({len(outside)} item(s) in {other_context_count} other context(s))"
 
 
 def goals_section(session: Session) -> str | None:
@@ -177,7 +177,7 @@ def cmd_summary(args: argparse.Namespace) -> None:
     current = CurrentContext.get(args.session)
     ctx_label = f"context: {current.name}" if current else "context: none"
     print(f"{now.strftime('%Y-%m-%d %H:%M')} (week {now.isocalendar().week})")
-    print(f"{ctx_label}\n")
+    print(f"{ctx_label} — kb context switch NAME\n")
 
     if not sections:
         print("Nothing tracked yet.")

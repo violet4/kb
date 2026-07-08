@@ -208,3 +208,82 @@ def test_inactive_daily_never_due(db_session: Session) -> None:
         daily.is_active = False
         db_session.commit()
         assert daily not in Daily.due(db_session)
+
+
+def test_every_n_days_due_immediately_after_creation(db_session: Session) -> None:
+    """create() must seed next_due_at at the current window, not one recurrence
+    step ahead -- every:2/weekly/monthly dailies used to only become due a full
+    cadence after creation instead of right away, unlike the default "daily" case."""
+    _set_utc_boundary(db_session, hour=4)
+    with time_machine.travel(datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)):
+        daily = Daily.create(db_session, "alternate-day chore", recurrence="every:2")
+        db_session.commit()
+        assert daily in Daily.due(db_session)
+
+
+def test_weekly_due_immediately_after_creation(db_session: Session) -> None:
+    _set_utc_boundary(db_session, hour=4)
+    with time_machine.travel(datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)):
+        daily = Daily.create(db_session, "take out recycling", recurrence="weekly:WED")
+        db_session.commit()
+        assert daily in Daily.due(db_session)
+
+
+def test_monthly_due_immediately_after_creation(db_session: Session) -> None:
+    _set_utc_boundary(db_session, hour=4)
+    with time_machine.travel(datetime(2026, 1, 15, 12, 0, tzinfo=timezone.utc)):
+        daily = Daily.create(db_session, "pay rent", recurrence="monthly:1")
+        db_session.commit()
+        assert daily in Daily.due(db_session)
+
+
+def test_complete_late_advances_only_one_window(db_session: Session) -> None:
+    """Completing a Daily well after its window closed (e.g. finishing yesterday's
+    litter this afternoon) must land on the very next occurrence, anchored on
+    next_due_at -- not skip an extra step because of how late "now" is when
+    complete() is called."""
+    _set_utc_boundary(db_session, hour=4)
+    with time_machine.travel(datetime(2026, 1, 5, 12, 0, tzinfo=timezone.utc)):
+        daily = Daily.create(db_session, "litter")
+        db_session.commit()
+        assert daily.next_due_at is not None
+        assert daily.next_due_at.replace(tzinfo=timezone.utc) == datetime(2026, 1, 5, 4, 0, tzinfo=timezone.utc)
+
+    # Two full day-windows pass uncompleted -- now overdue -- before it's completed.
+    with time_machine.travel(datetime(2026, 1, 7, 14, 0, tzinfo=timezone.utc)):
+        assert daily.is_overdue(db_session)
+        daily.complete(db_session)
+        db_session.commit()
+        # Anchored on the missed next_due_at (Jan 5 04:00), not on "now" (Jan 7) --
+        # lands on Jan 6 04:00, the very next occurrence, not Jan 8.
+        assert daily.next_due_at is not None
+        assert daily.next_due_at.replace(tzinfo=timezone.utc) == datetime(2026, 1, 6, 4, 0, tzinfo=timezone.utc)
+
+
+def test_catch_up_advances_through_multiple_missed_windows(db_session: Session) -> None:
+    """A weekly Daily neglected for three weeks needs catch_up() to land on the
+    next non-overdue occurrence in one call, instead of requiring complete() to be
+    called once per missed window."""
+    _set_utc_boundary(db_session, hour=4)
+    with time_machine.travel(datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)):
+        # 2026-01-01 is a Thursday.
+        daily = Daily.create(db_session, "take out recycling", recurrence="weekly:WED")
+        db_session.commit()
+
+    with time_machine.travel(datetime(2026, 1, 22, 12, 0, tzinfo=timezone.utc)):
+        assert daily.is_overdue(db_session)
+        daily.catch_up(db_session)
+        db_session.commit()
+        assert daily.next_due_at is not None
+        assert daily.next_due_at.replace(tzinfo=timezone.utc) == datetime(2026, 1, 28, 4, 0, tzinfo=timezone.utc)
+        assert not daily.is_overdue(db_session)
+
+
+def test_catch_up_no_op_when_not_overdue(db_session: Session) -> None:
+    _set_utc_boundary(db_session, hour=4)
+    with time_machine.travel(datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)):
+        daily = Daily.create(db_session, "litter")
+        db_session.commit()
+        before = daily.next_due_at
+        daily.catch_up(db_session)
+        assert daily.next_due_at == before

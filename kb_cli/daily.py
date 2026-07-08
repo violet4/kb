@@ -59,7 +59,7 @@ def cmd_list(args: argparse.Namespace) -> None:
     if not dailies:
         print("No dailies due." if not args.all else "No dailies.")
         return
-    dailies = sorted(dailies, key=lambda d: d.next_due_at)
+    dailies = sorted(dailies, key=lambda d: Daily._aware(d.next_due_at))
     rows = []
     for d in dailies:
         status = "" if d.is_active else "inactive"
@@ -84,6 +84,17 @@ def cmd_complete(args: argparse.Namespace) -> None:
             continue
         daily.complete(args.session)
         print(f"Daily #{daily_id}: {daily.description!r} -> completed, next due {_local_str(daily.next_due_at)}")
+    args.session.commit()
+
+
+def cmd_catch_up(args: argparse.Namespace) -> None:
+    for daily_id in args.ids:
+        daily = args.session.get(Daily, daily_id)
+        if daily is None:
+            print(f"Daily #{daily_id}: not found", file=sys.stderr)
+            continue
+        daily.catch_up(args.session)
+        print(f"Daily #{daily_id}: {daily.description!r} -> caught up, next due {_local_str(daily.next_due_at)}")
     args.session.commit()
 
 
@@ -125,8 +136,8 @@ def cmd_update(args: argparse.Namespace) -> None:
         daily.reward = args.reward
     if args.notes is not None:
         daily.notes = args.notes
-    if args.context is not None:
-        daily.context = resolve_context(args.session, args.context)
+    if args.new_context is not None:
+        daily.context = resolve_context(args.session, args.new_context)
     args.session.commit()
     print(daily)
 
@@ -196,12 +207,18 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_update.add_argument("--location")
     p_update.add_argument("--reward")
     p_update.add_argument("--notes")
-    p_update.add_argument("--context", metavar="NAME")
+    p_update.add_argument("--context", dest="new_context", metavar="NAME")
     p_update.set_defaults(func=cmd_update)
 
     p_complete = sub.add_parser("complete", help="Mark Daily(s) completed for the current day-boundary window")
     p_complete.add_argument("ids", nargs="+", type=int)
     p_complete.set_defaults(func=cmd_complete)
+
+    p_catch_up = sub.add_parser(
+        "catch-up", help="Advance overdue Daily(s) to their next non-overdue occurrence, without marking them done"
+    )
+    p_catch_up.add_argument("ids", nargs="+", type=int)
+    p_catch_up.set_defaults(func=cmd_catch_up)
 
     p_activate = sub.add_parser("activate", help="Mark Daily(s) active")
     p_activate.add_argument("ids", nargs="+", type=int)

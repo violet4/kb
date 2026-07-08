@@ -693,7 +693,11 @@ class Daily(Base):
             reward=reward,
             notes=notes,
         )
-        daily.next_due_at = daily._compute_next_due(session, _now() - timedelta(days=1))
+        # Seed at the start of the current window, not one step back through
+        # _compute_next_due -- that only lands on "already due" for the daily
+        # cadence; every:N>1/weekly/monthly would land a full period in the future.
+        window_start, _ = daily.current_window(session)
+        daily.next_due_at = window_start
         session.add(daily)
         session.flush()
         return daily
@@ -729,7 +733,19 @@ class Daily(Base):
         return local_next.astimezone(timezone.utc)
 
     def complete(self, session: Session) -> None:
-        self.next_due_at = self._compute_next_due(session, _now())
+        """Advance next_due_at one recurrence step past the window being completed --
+        anchored on next_due_at itself, not on _now(), so completing something late
+        (after its window closed) still lands on the very next occurrence rather than
+        skipping ahead an extra step because of how late the completion happened."""
+        self.next_due_at = self._compute_next_due(session, self.next_due_at)
+
+    def catch_up(self, session: Session) -> None:
+        """Advance next_due_at forward through however many missed windows have
+        elapsed, landing on the first occurrence that isn't overdue -- for a Daily
+        that's been neglected for multiple cycles, rather than requiring complete()
+        to be called once per missed window."""
+        while self.is_overdue(session):
+            self.next_due_at = self._compute_next_due(session, self.next_due_at)
 
     def __repr__(self) -> str:
         return f"<Daily #{self.id} {self.description!r}>"

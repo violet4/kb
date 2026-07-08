@@ -34,7 +34,6 @@ def cmd_show(args: argparse.Namespace) -> None:
             ("tier", daily.tier.value),
             ("recurrence", daily.recurrence),
             ("show_after_hour", daily.show_after_hour),
-            ("last_completed_at", _local_str(daily.last_completed_at)),
             ("next_due_at", _local_str(daily.next_due_at)),
             ("context", daily.context.name if daily.context else None),
             ("location", daily.location),
@@ -60,7 +59,7 @@ def cmd_list(args: argparse.Namespace) -> None:
     if not dailies:
         print("No dailies due." if not args.all else "No dailies.")
         return
-    dailies = sorted(dailies, key=lambda d: (d.next_due_at is None, d.next_due_at))
+    dailies = sorted(dailies, key=lambda d: d.next_due_at)
     rows = []
     for d in dailies:
         status = "" if d.is_active else "inactive"
@@ -69,13 +68,12 @@ def cmd_list(args: argparse.Namespace) -> None:
                 str(d.id),
                 d.description,
                 d.tier.value,
-                d.recurrence or "",
+                d.recurrence,
                 _local_str(d.next_due_at) or "",
-                _local_str(d.last_completed_at) or "",
                 status,
             ]
         )
-    print_table(["id", "description", "tier", "recurrence", "next due", "last completed", "status"], rows)
+    print_table(["id", "description", "tier", "recurrence", "next due", "status"], rows)
 
 
 def cmd_complete(args: argparse.Namespace) -> None:
@@ -85,10 +83,7 @@ def cmd_complete(args: argparse.Namespace) -> None:
             print(f"Daily #{daily_id}: not found", file=sys.stderr)
             continue
         daily.complete(args.session)
-        if daily.recurrence is not None:
-            print(f"Daily #{daily_id}: {daily.description!r} -> completed, next due {_local_str(daily.next_due_at)}")
-        else:
-            print(f"Daily #{daily_id}: {daily.description!r} -> completed for today")
+        print(f"Daily #{daily_id}: {daily.description!r} -> completed, next due {_local_str(daily.next_due_at)}")
     args.session.commit()
 
 
@@ -176,7 +171,11 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_add.add_argument("description")
     p_add.add_argument("--domain", default="irl", help="'irl' (default) or 'pg'")
     p_add.add_argument("--tier", default="critical", choices=[t.value for t in DailyTier])
-    p_add.add_argument("--recurrence", help="'daily', 'every:N', 'weekly:MON'..'SUN', or 'monthly:D' (day 1-28)")
+    p_add.add_argument(
+        "--recurrence",
+        default="daily",
+        help="'daily' (default), 'every:N', 'weekly:MON'..'SUN', or 'monthly:D' (day 1-28)",
+    )
     p_add.add_argument(
         "--show-after-hour", type=int, dest="show_after_hour", help="Hide until this local hour (0-23), e.g. 19 for 7pm"
     )

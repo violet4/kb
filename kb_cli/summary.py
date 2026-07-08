@@ -7,7 +7,7 @@ from typing import Callable, Optional
 
 from sqlalchemy.orm import Session
 
-from models import Context, CurrentContext, Daily, DailyTier, Goal, InboxItem, Person, Todo, Wishlist
+from models import Context, CurrentContext, Daily, DailyTier, Goal, Idea, InboxItem, Person, Todo, Wishlist
 
 
 def anki_section(session: Session) -> str | None:
@@ -144,6 +144,13 @@ def inbox_section(session: Session) -> str | None:
     return f"=== INBOX ({len(items)}) ===\n{breakdown} — kb inbox pending [--category C]"
 
 
+def idea_section(session: Session) -> str | None:
+    count = len(Idea.active(session))
+    if not count:
+        return None
+    return f"{count} idea(s) — kb idea list"
+
+
 SECTIONS: dict[str, Callable[[Session], str | None]] = {
     "anki": anki_section,
     "dailies": dailies_section,
@@ -152,6 +159,7 @@ SECTIONS: dict[str, Callable[[Session], str | None]] = {
     "people": people_section,
     "wishlist": wishlist_section,
     "inbox": inbox_section,
+    "idea": idea_section,
 }
 
 

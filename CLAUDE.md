@@ -2,7 +2,7 @@
 
 Personal knowledge base. SQLite + SQLAlchemy 2.0. Run `scripts/dev/gen-api` for the full model/method surface before making any queries or updates. Every script here (including `kb.py`) is directly executable from any directory — no `uv run` prefix needed, the shebang handles it.
 
-`kb <command> [subcommand ...] [args]` is the global CLI entry point (`~/bin/kb` symlinks to `~/kb/kb`), usable from any directory on the filesystem, not just from inside `~/kb`. It dispatches to `kb_cli/*.py` — real importable Python modules (not standalone executables), each exposing an `add_subparser(subparsers)` hook that the top-level `kb` script wires into one argparse tree. `kb <command> --help` (at any nesting depth, e.g. `kb games pg entity mob --help`) documents itself natively. This covers Goal/Todo/Inbox/Journal/Notes/Log/Context/Summary/Wishlist and per-game commands (`kb games pg ...`) — anything meant to be reachable no matter which project you're currently working in. `scripts/db`, `scripts/dev`, `scripts/model`, `scripts/service` stay as plain `scripts/*` executables, kb-repo-local only, since migrating/checking schema/etc. only makes sense while actually developing kb itself — mirrors the split between `~/kb/CLAUDE.md` (this file, kb-repo-local) and `~/kb/CLAUDE_GLOBAL.md` (symlinked from `~/.claude/CLAUDE.md`, global).
+`kb <command> [subcommand ...] [args]` is the global CLI entry point (`~/bin/kb` symlinks to `~/kb/kb`), usable from any directory on the filesystem, not just from inside `~/kb`. It dispatches to `kb_cli/*.py` — real importable Python modules (not standalone executables), each exposing an `add_subparser(subparsers)` hook that the top-level `kb` script wires into one argparse tree. `kb <command> --help` (at any nesting depth, e.g. `kb games pg entity mob --help`) documents itself natively. This covers Goal/Todo/Idea/Inbox/Journal/Notes/Log/Context/Summary/Wishlist and per-game commands (`kb games pg ...`) — anything meant to be reachable no matter which project you're currently working in. `scripts/db`, `scripts/dev`, `scripts/model`, `scripts/service` stay as plain `scripts/*` executables, kb-repo-local only, since migrating/checking schema/etc. only makes sense while actually developing kb itself — mirrors the split between `~/kb/CLAUDE.md` (this file, kb-repo-local) and `~/kb/CLAUDE_GLOBAL.md` (symlinked from `~/.claude/CLAUDE.md`, global).
 
 `kb --context NAME <command> ...` is a global flag on the top-level `kb` script itself (parsed before dispatch, in `kb`, not in any `kb_cli/*.py` subparser) — it resolves once via `resolve_context()` into `args.context`, already a `Context` object, and every subcommand that accepts a context (e.g. `goal add`, `todo add`) just forwards `args.context` straight through without declaring its own `--context` argument. Don't add a per-subcommand `--context` flag to a `kb_cli/*.py` module expecting it to work like this global one; only `todo update` has its own `--context NAME` (a string, resolved inside that command) for changing an existing record's context after the fact, which is a different, per-command flag from this global one.
 
@@ -129,6 +129,18 @@ Read the newest engineering note on `batch_alter_table` column renames before re
 `Vendor`/`VendorItem`/`Purchase` track price and quantity over time for anything transactable, real or in-game — a grocery store and a PG player-shop NPC are both a `Vendor` (`domain="irl"`/`"pg"`), since neither shows a full price history at once, only snippets over time. `Item.upc` is the universal barcode (same everywhere); `VendorItem.vendor_sku` is that vendor's own code for the item (may differ store to store). Look up a scanned/typed code against `Item.upc` first, then `VendorItem.vendor_sku` for that vendor, before prompting to create a new `Item`. Real-world items are `IrlItem(Item, HasWeight)`, matching `PgItem`'s JTI pattern — every `Item` subtype needs its own `polymorphic_identity`, a bare `Item(game="whatever")` with no matching subclass breaks reads.
 
 `Journal` is structured change history for any entity (`entity_type`, `entity_id`, optional `field`/`old_value`/`new_value`/`note`) — distinct from `LogEntry` (a fact about the world, not tied to a record) and `Note` (durable reference knowledge, not history). `journal show ENTITY_TYPE ENTITY_ID` (e.g. `journal show Goal 14`) reads it. Keep a `Goal`/`Todo`'s `description`/`notes` as lean, current understanding — move decision-by-decision history into `Journal` entries instead of letting it accumulate in the record itself.
+
+## Idea
+
+```bash
+kb idea add TITLE [--description D] [--notes N]
+kb idea show ID [ID ...] [--history [N]]
+kb idea list [--all]
+kb idea promote ID --to "Goal #14"   # marks promoted, records the transition via Journal
+kb idea drop ID
+```
+
+`Idea` is GTD Someday/Maybe — a project idea you like but haven't committed to acting on, distinct from `Todo` (committed next-action work) and `Wishlist` (acquire/purchase, price-bearing). It has no `defer_until`, `priority`, or score, and never appears in `kb summary` beyond a bare count — it's reviewed deliberately (`kb idea list`), not surfaced on its own. Promoting an idea to a real `Goal`/`Todo`/`Wishlist` is a manual relocation: create the new row by hand, `kb idea promote ID --to "..."` to record what it became via `Journal` and mark it resolved — not a live foreign key, so promoted ideas don't leave a permanent cross-reference trail.
 
 ## Wishlist, Model
 

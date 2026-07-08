@@ -166,7 +166,10 @@ def cmd_summary(args: argparse.Namespace) -> None:
     sections = [s for s in rendered if s is not None]
 
     now = datetime.now()
-    print(f"{now.strftime('%Y-%m-%d %H:%M')} (week {now.isocalendar().week})\n")
+    current = CurrentContext.get(args.session)
+    ctx_label = f"context: {current.name}" if current else "context: none"
+    print(f"{now.strftime('%Y-%m-%d %H:%M')} (week {now.isocalendar().week})")
+    print(f"{ctx_label}\n")
 
     if not sections:
         print("Nothing tracked yet.")

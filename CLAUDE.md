@@ -56,11 +56,13 @@ Enum columns take the member (uppercase name, e.g. `Collection.GORGON`), not the
 ```bash
 kb goal show|complete|abandon|hold|reactivate ID [ID ...]   # hold = blocked externally, not abandoned
 kb goal add TITLE [--description D] [--notes N] [--context NAME]
-kb todo show ID [ID ...] | add TITLE [--effort grab|research|project] [--defer-until WHEN] [--notes N] [--context NAME] | update ID [--title T] [--effort E] [--defer-until WHEN] [--notes N] [--context NAME] [--goal ID] | complete ID [ID ...] | pending [--effort grab|research|project] [--all]
+kb todo show ID [ID ...] | add TITLE [--effort grab|research|project] [--defer-until WHEN] [--notes N] [--context NAME] | update ID [--title T] [--effort E] [--defer-until WHEN] [--notes N] [--context NAME] [--goal ID] | complete ID [ID ...] | pending [--effort grab|research|project] [--all] | list [--effort E] [--tag T] [--all]
 kb context current | switch NAME | list
 ```
 
 `goal show`/`todo show` print a one-line "N history entries" hint when Journal history exists, without dumping it — pass `--history` to expand it inline, or `--history N` for just the last N entries.
+
+`todo pending` always shows Todos from every context; `todo list` scopes to the current context (plus its descendants and no-context Todos) by default, matching `kb summary`'s scoping — pass `--all` to see every context instead.
 
 `Todo.defer_until` hides a Todo from `todo pending`/`kb summary` until that time passes — not a due date, a "don't show me this until it's actually relevant" filter (e.g. "vacuum" deferred to 19:00 today doesn't clutter the view until evening planning time). `--defer-until` accepts `HH:MM` (today, or tomorrow if that time already passed), `YYYY-MM-DD`, or `YYYY-MM-DD HH:MM`. `todo pending --all` (or `Todo.pending(include_deferred=True)`) surfaces deferred-but-not-yet-due items too, for deliberately planning ahead.
 

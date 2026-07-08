@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 
 from context import resolve_context
-from models import Journal, Todo, TodoStatus, TodoTag, WishlistEffort
+from models import Context, Journal, Todo, TodoStatus, TodoTag, WishlistEffort
 
 from kb_cli._util import add_history_arg, get_by_name, print_journal_history
 
@@ -122,6 +122,24 @@ def cmd_pending(args: argparse.Namespace) -> None:
         print(f"{t!r}{marker}")
 
 
+def cmd_list(args: argparse.Namespace) -> None:
+    effort = WishlistEffort(args.effort) if args.effort else None
+    tag = get_by_name(args.session, TodoTag, args.tag) if args.tag else None
+    if args.all:
+        todos = Todo.pending(args.session, effort=effort, include_deferred=True, tag=tag)
+    else:
+        current = resolve_context(args.session)
+        in_scope = Context.self_and_descendants(args.session, current.name) if current else None
+        todos = Todo.pending(
+            args.session, contexts=in_scope, include_no_context=True, effort=effort, include_deferred=True, tag=tag
+        )
+    if not todos:
+        print("No todos.")
+        return
+    for t in todos:
+        print(f"{t!r}")
+
+
 def cmd_tag(args: argparse.Namespace) -> None:
     todo = args.session.get(Todo, args.id)
     if todo is None:
@@ -200,6 +218,14 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_pending.add_argument("--tag", help="Only show Todos tagged with this (or a descendant of this) TodoTag")
     p_pending.add_argument("--all", action="store_true", help="Also include deferred Todos not yet due")
     p_pending.set_defaults(func=cmd_pending)
+
+    p_list = sub.add_parser(
+        "list", help="List pending Todos scoped to the current context (plus descendants/no-context)"
+    )
+    p_list.add_argument("--effort", choices=[e.value for e in WishlistEffort])
+    p_list.add_argument("--tag", help="Only show Todos tagged with this (or a descendant of this) TodoTag")
+    p_list.add_argument("--all", action="store_true", help="Ignore context scoping and show Todos from every context")
+    p_list.set_defaults(func=cmd_list)
 
     p_tag = sub.add_parser("tag", help="Attach one or more tags to a Todo (creates tags that don't exist yet)")
     p_tag.add_argument("id", type=int)

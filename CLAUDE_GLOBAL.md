@@ -32,7 +32,7 @@ Return the weakest/most honest type the operation actually produces (e.g. `Seque
 
 When a helper needs to work generically across multiple classes that share one attribute/behavior, prefer a real mixin (nominal typing, actual inheritance) over an enumerated `Union[ClassA, ClassB, ...]` or a structural `Protocol`, once more than one class shares the trait — a mixin scales for free as new classes adopt it, where a hand-maintained Union has to be remembered and edited every time, and a Protocol can silently fail to structurally match in frameworks (e.g. SQLAlchemy declarative models) whose class-level attribute types don't line up with what's written in the class body. Verify the chosen approach against a real multi-class case before committing to it, the same as any other edge-case assumption.
 
-For date/time-boundary logic (recurrence windows, "overdue" thresholds, day-boundary cutoffs), don't derive the rule from prose reasoning alone, even when re-checked. Ask for or construct a concrete table of wall-clock timestamps mapped to expected states first, then write a test asserting each row before writing the implementation. A worked example: a Daily's "overdue" flag was designed and re-verified twice from written reasoning about "missing a full cycle," and was wrong both times; a table of hypothetical timestamps ("Mon 6pm: not overdue", "Tue 4am: overdue") immediately exposed the actual off-by-one-boundary bug that prose review had missed.
+For date/time-boundary logic (recurrence windows, "overdue" thresholds, day-boundary cutoffs), don't derive the rule from prose reasoning alone, even when re-checked. First confirm the boundary/window concept has one owner (see Code Quality), then construct a concrete table of wall-clock timestamps mapped to expected states and write a test asserting each row before implementing. A table caught the off-by-one that two rounds of prose review missed on `Daily`'s overdue flag.
 
 ## Security
 
@@ -185,6 +185,10 @@ When a clean solution requires restructuring, prefer it over a workaround — ne
 When designing a fix, first describe the correct shape of the system independent of the current file layout — what the ideal caller/callee relationship is, where the one entry point should be, what falls out as a natural consequence. Only then map that shape onto the existing files. Starting from "which existing function do I patch" produces a plan bent around today's code instead of the right one.
 
 A late/deferred import guarded by `# noqa` to dodge a circular import is a code smell, not an acceptable pattern — it means two modules both want to be depended on by the other, which is a real dependency-direction problem. Fix the actual shape (extract the shared foundation both sides need into its own module, so the dependency only flows one way) rather than papering over the cycle.
+
+Finding a second bug in a sibling function to one just fixed (e.g. `is_overdue` and `due()` each re-deriving "is this due" with their own boundary math) means the concept has no single owner — stop patching call sites and introduce the one function that owns it, making every caller a thin check against its output. `Daily`'s `is_overdue`/`due()`/`_compute_next_due` drifted this way: `show_after_hour` was folded into `due()` but never `is_overdue()`, producing an item simultaneously "not yet due" and "overdue."
+
+Before adding another case to a hand-rolled implementation of a well-known domain (recurrence, cron scheduling, calendar/unit/currency math), check whether a battle-tested library already solves it, vetted per kb-engineering-28 and confined to one thin layer. A small, page-sized grammar is fine hand-rolled; each added case and each repeated boundary bug is a data point toward the library instead.
 
 ## Commit Messages
 

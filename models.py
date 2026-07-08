@@ -156,6 +156,12 @@ class WishlistStatus(enum.Enum):
     DROPPED = "dropped"
 
 
+class IdeaStatus(enum.Enum):
+    ACTIVE = "active"  # sitting in someday/maybe, revisited only on deliberate review
+    PROMOTED = "promoted"  # became a real Goal/Todo/Wishlist item (see Journal for which)
+    DROPPED = "dropped"
+
+
 class DailyTier(enum.Enum):
     CRITICAL = "critical"  # always surfaces in summary until completed today
     OPTIONAL = "optional"  # hidden by default, needs an explicit request (e.g. kb daily list --all)
@@ -1260,6 +1266,68 @@ class Wishlist(Base):
         priority_str = f" priority={self.priority}" if self.priority is not None else f" score={self.score}"
         pin = " pinned" if self.pinned else ""
         return f"<Wishlist #{self.id} {self.title!r}{price} effort={self.effort.value}{priority_str}{pin}>"
+
+
+class Idea(Base):
+    """GTD Someday/Maybe: a project idea you like but haven't committed to acting
+    on, distinct from Todo (committed next-action work) and Wishlist (acquire/
+    purchase, price-bearing). Deliberately has no defer_until, priority, or score --
+    it never resurfaces on its own; you visit it on your own schedule (kb idea list),
+    the same way GTD's Someday/Maybe list is only ever seen during a deliberate
+    review, never pushed at you. Promotion to a real Goal/Todo/Wishlist is a manual
+    relocation (create the new row by hand, record the transition via Journal,
+    mark this PROMOTED) -- not a live foreign key, so promoted ideas don't leave a
+    permanent cross-reference web behind them."""
+
+    __tablename__ = "idea"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status: Mapped[IdeaStatus] = mapped_column(
+        Enum(IdeaStatus, create_constraint=True, validate_strings=True), nullable=False, default=IdeaStatus.ACTIVE
+    )
+    context_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("context.id"), nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    context: Mapped[Optional[Context]] = relationship("Context")
+
+    @classmethod
+    def active(
+        cls,
+        session: Session,
+        context: Optional[Context] = None,
+        contexts: Optional[Sequence[Context]] = None,
+        include_no_context: bool = False,
+    ) -> Sequence[Idea]:
+        q = select(cls).where(cls.status == IdeaStatus.ACTIVE)
+        if context is not None:
+            q = q.where(cls.context_id == context.id)
+        if contexts is not None:
+            ids = [c.id for c in contexts]
+            q = (
+                q.where(cls.context_id.in_(ids) | cls.context_id.is_(None))
+                if include_no_context
+                else q.where(cls.context_id.in_(ids))
+            )
+        return session.scalars(q).all()
+
+    @classmethod
+    def create(
+        cls,
+        session: Session,
+        title: str,
+        description: Optional[str] = None,
+        context: Optional[Context] = None,
+        notes: Optional[str] = None,
+    ) -> Idea:
+        idea = cls(title=title, description=description, context_id=context.id if context else None, notes=notes)
+        session.add(idea)
+        session.flush()
+        return idea
+
+    def __repr__(self) -> str:
+        return f"<Idea #{self.id} {self.title!r} [{self.status.value}]>"
 
 
 # ---------------------------------------------------------------------------

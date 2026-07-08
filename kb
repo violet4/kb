@@ -10,6 +10,7 @@ Usage: kb [--context NAME] [--as-of WHEN] <command> [subcommand ...] [args ...]
   or 'YYYY-MM-DD HH:MM', interpreted in local time. Read-only use only -- any writes
   made under --as-of (e.g. `kb daily complete`) are stamped with the simulated time.
   kb goal add "..." | show ID | complete ID | abandon ID | hold ID | reactivate ID
+  kb idea add "..." | show ID | list | promote ID --to "..." | drop ID
   kb todo add "..." | show ID | update ID | complete ID | pending [--tag NAME] | tag ID TAG... | untag ID TAG...
   kb tag add NAME [--parent P] | show NAME | set-parent NAME [PARENT] | list
   kb daily add "..." | show ID | list | update ID | complete ID | activate ID | deactivate ID
@@ -25,6 +26,7 @@ Usage: kb [--context NAME] [--as-of WHEN] <command> [subcommand ...] [args ...]
   kb pager FILE [--lines N] [--reset]
   kb anki decks | deck-add NAME | notetype-init | search QUERY | add DECK NOTETYPE FIELD... [--tags T] | delete ID... | run [-f FILE|-i]
 """
+
 import argparse
 import os
 import subprocess
@@ -35,13 +37,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 _KB_ROOT = Path(__file__).resolve().parent
-if not os.environ.get("CI") and subprocess.run(
-    ["git", "config", "--get", "core.hooksPath"], cwd=_KB_ROOT, capture_output=True
-).returncode != 0:
+if (
+    not os.environ.get("CI")
+    and subprocess.run(["git", "config", "--get", "core.hooksPath"], cwd=_KB_ROOT, capture_output=True).returncode != 0
+):
     subprocess.run(["scripts/dev/setup-hooks"], cwd=_KB_ROOT, check=False)
 
 from context import resolve_context
-from kb_cli import anki, context_cmd, daily, goal, inbox, journal, log, notes, pager, summary, tag, todo, wishlist
+from kb_cli import anki, context_cmd, daily, goal, idea, inbox, journal, log, notes, pager, summary, tag, todo, wishlist
 from kb_cli import games
 from models import SessionFactory
 
@@ -61,15 +64,12 @@ def _parse_as_of(raw: str) -> datetime:
 
 
 parser = argparse.ArgumentParser(prog="kb", description="Global kb CLI")
-parser.add_argument(
-    "--context", metavar="NAME", help="Act in context NAME for this command only (must already exist)"
-)
-parser.add_argument(
-    "--as-of", metavar="WHEN", help="Run as if the current time were WHEN (local); see usage docstring"
-)
+parser.add_argument("--context", metavar="NAME", help="Act in context NAME for this command only (must already exist)")
+parser.add_argument("--as-of", metavar="WHEN", help="Run as if the current time were WHEN (local); see usage docstring")
 subparsers = parser.add_subparsers(dest="command", required=True)
 
 goal.add_subparser(subparsers)
+idea.add_subparser(subparsers)
 todo.add_subparser(subparsers)
 tag.add_subparser(subparsers)
 daily.add_subparser(subparsers)

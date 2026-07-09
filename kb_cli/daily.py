@@ -62,10 +62,11 @@ def cmd_list(args: argparse.Namespace) -> None:
                 d.tier.value,
                 d.recurrence,
                 d.next_due_date.isoformat(),
+                str(d.show_after_hour) if d.show_after_hour is not None else "",
                 status,
             ]
         )
-    print_table(["id", "description", "tier", "recurrence", "next due", "status"], rows)
+    print_table(["id", "description", "tier", "recurrence", "next due", "show after", "status"], rows)
 
 
 def cmd_complete(args: argparse.Namespace) -> None:

@@ -3,7 +3,7 @@
 import argparse
 from datetime import datetime, timezone
 
-from models import LogEntry
+from models import Context, LogEntry
 
 
 def cmd_add(args: argparse.Namespace) -> None:
@@ -18,7 +18,8 @@ def cmd_add(args: argparse.Namespace) -> None:
 
 
 def cmd_recent(args: argparse.Namespace) -> None:
-    entries = LogEntry.recent(args.session, domain=args.domain, context=args.context, limit=args.limit)
+    context = Context.get_existing(args.session, args.context_name) if args.context_name else None
+    entries = LogEntry.recent(args.session, domain=args.domain, context=context, limit=args.limit)
     if not entries:
         print("No entries.")
         return
@@ -40,5 +41,6 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
 
     p_recent = sub.add_parser("recent", help="Show recent log entries")
     p_recent.add_argument("--domain", help="Only show this domain")
+    p_recent.add_argument("--context", dest="context_name", help="Only show this context (default: all contexts)")
     p_recent.add_argument("--limit", type=int, default=20)
     p_recent.set_defaults(func=cmd_recent)

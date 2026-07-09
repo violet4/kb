@@ -60,6 +60,8 @@ Before adding any new third-party dependency (a package, a library, a tool), che
 
 Never prepend `cd <dir> &&` to a shell command when the working directory is already `<dir>` — run the command directly. Only `cd` when the user explicitly asks to change directory, since the working directory persists across commands in this session already.
 
+A bare `cd` in a Bash tool call persists across subsequent calls the same way it would in an interactive shell, including moving downward into subdirectories — it is not scoped to that one command. It is sandboxed only in the upward direction: `cd`-ing above the project's root directory (e.g. `~/kb`) silently resets the shell's cwd back to that root rather than actually leaving it, and the tool result reports this via a "Shell cwd was reset to ..." message. The `/cd` slash command is the one way to actually relocate the session root itself, including above the current project root. Verify the true cwd with `pwd` after any `cd` if there's doubt, rather than asserting the persistence/scoping rules from memory — this was gotten wrong once by assuming `cd` was single-command-scoped when it was not.
+
 Use `sed` only for targeted single-file changes; prefer the Edit tool.
 
 When a project needs the same multi-flag or hard-to-remember shell command repeatedly (service restarts, log tailing, etc.), add a small named wrapper script under the project (e.g. `scripts/service/restart`) instead of retyping the raw invocation each time. A short, well-named script reads as a domain operation and removes the need to re-derive or re-verify flags on every use.

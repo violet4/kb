@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import enum
 import struct
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from decimal import Decimal
 from pathlib import Path
@@ -13,6 +13,7 @@ from typing import Any, Optional, Sequence
 import sqlite_vec  # type: ignore[import-untyped]  # no type stubs published for this package
 from sqlalchemy import (
     Boolean,
+    Date,
     DateTime,
     Enum,
     ForeignKey,
@@ -561,10 +562,15 @@ class Daily(Base):
     OPTIONAL stays hidden unless explicitly requested.
 
     recurrence is a required cadence rule (grammar below) -- every Daily has one, so completing it
-    always computes and stores next_due_at, making "is this due" an instant timestamp comparison
-    rather than recomputed day-boundary math. next_due_at is the single source of truth for when
+    always computes and stores next_due_date, making "is this due" a plain date comparison
+    rather than recomputed day-boundary math. next_due_date is the single source of truth for when
     a Daily is next due; there is no separate "last completed" record, since only the upcoming due
     date is ever queried, not completion history.
+
+    next_due_date is a calendar date, not a timestamp -- a Daily's due-ness is a day-cycle question
+    ("which day-boundary window is this due in"), never a sub-day one, so the field only ever needs
+    to answer "is today's day-cycle at or past this date." day_boundary_hour/timezone convert
+    "now" to a day-cycle date once, via _current_day(); nothing downstream needs an instant.
 
     Recurrence grammar:
       "daily"        -- due again at the next day-boundary after completion.
@@ -572,9 +578,10 @@ class Daily(Base):
       "weekly:DAY"   -- due again on the next occurrence of DAY ("MON".."SUN") after completion.
       "monthly:D"    -- due again on day D of the next applicable month after completion (D 1-28).
 
-    show_after_hour (0-23, local time) is applied after next_due_at decides a Daily is due "today"
-    -- it further hides an already-due Daily from due()/summary until that local hour, so
-    evening-only items (e.g. "shower before bed") don't clutter the morning view.
+    show_after_hour (0-23, local time) is applied after next_due_date decides a Daily is due "today"
+    -- it further hides a Daily that's due today (but not yet overdue) from due()/summary until
+    that local hour, so evening-only items (e.g. "shower before bed") don't clutter the morning
+    view. Once overdue (next_due_date has fully passed), show_after_hour no longer applies.
     """
 
     __tablename__ = "daily"
@@ -588,7 +595,7 @@ class Daily(Base):
     )
     recurrence: Mapped[str] = mapped_column(String, nullable=False, default="daily")
     show_after_hour: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    next_due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    next_due_date: Mapped[date] = mapped_column(Date, nullable=False)
     location: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     reward: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
@@ -599,16 +606,18 @@ class Daily(Base):
     _WEEKDAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
 
     @classmethod
-    def _day_start(cls, session: Session, now: datetime) -> datetime:
-        """The start of the current day-window, in UTC -- computed by applying
+    def _current_day(cls, session: Session, now: datetime) -> date:
+        """Which day-cycle "now" falls in, as a plain date -- computed by applying
         Settings.day_boundary_hour in local time (not UTC), so a late local bedtime
-        doesn't get treated as already past a UTC-midnight-adjacent cutoff."""
+        doesn't get treated as already past a UTC-midnight-adjacent cutoff. This is
+        the only place day_boundary_hour/timezone are ever consulted; every other
+        Daily method compares dates that are already resolved to day-cycles."""
         settings = Settings.get(session)
         local_now = now.astimezone(settings.resolved_timezone())
         local_day_start = local_now.replace(hour=settings.day_boundary_hour, minute=0, second=0, microsecond=0)
         if local_now < local_day_start:
             local_day_start -= timedelta(days=1)
-        return local_day_start.astimezone(timezone.utc)
+        return local_day_start.date()
 
     @classmethod
     def active(cls, session: Session, context: Optional[Context] = None) -> Sequence[Daily]:
@@ -617,48 +626,27 @@ class Daily(Base):
             q = q.where(cls.context_id == context.id)
         return session.scalars(q).all()
 
-    @staticmethod
-    def _aware(dt: datetime) -> datetime:
-        return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
-
-    def current_window(self, session: Session) -> tuple[datetime, datetime]:
-        """The single source of truth for "what due window is this Daily in right now"
-        (both bounds UTC-aware, half-open [start, end)). is_overdue()/is_due_now() are
-        thin checks against this, so window math is never re-derived independently.
-
-        start is the current day-boundary (the day-boundary at/before "now"). end is
-        the following day-boundary."""
-        now = _now()
-        start = self._day_start(session, now)
-        end = self._day_start(session, start + timedelta(days=1, hours=1))
-        return start, end
-
     def is_overdue(self, session: Session) -> bool:
-        """True once the day-boundary *after* the one that made this Daily due has
-        also passed while it's still not completed -- e.g. litter due Monday (and
-        shown from show_after_hour onward) is fine through the rest of Monday and
-        into early Tuesday, then becomes overdue right at Tuesday's day-boundary,
-        the moment the window it should have been done in has fully closed."""
-        start, _ = self.current_window(session)
-        next_due = self._aware(self.next_due_at)
-        if next_due > _now():
-            return False
-        # Overdue once "now" has moved into a window later than the one next_due_at
-        # itself opened -- becoming due mid-window isn't yet overdue, but once a
-        # whole window has passed uncompleted, the following window's start exceeds
-        # next_due_at's own window start.
-        next_due_window_start = self._day_start(session, next_due)
-        return start > next_due_window_start
+        """True once today's day-cycle is past the one this Daily was due in --
+        e.g. litter due Monday (and shown from show_after_hour onward) is fine
+        through the rest of Monday, then becomes overdue right at Tuesday's
+        day-boundary, the moment the day it should have been done in has closed."""
+        today = self._current_day(session, _now())
+        return today > self.next_due_date
 
     def is_due_now(self, session: Session) -> bool:
-        """True once this Daily's next_due_at has passed, gated by show_after_hour
-        (0-23 local) so evening-only items don't surface in the morning."""
-        now = _now()
-        if self._aware(self.next_due_at) > now:
+        """True once today's day-cycle has reached next_due_date, gated by
+        show_after_hour (0-23 local) so evening-only items don't surface in the
+        morning -- but only on the day it first became due. Once is_overdue() is
+        true the item has already missed its day entirely, so show_after_hour no
+        longer applies: an overdue "shower before bed" must stay visible all day,
+        not just evenings."""
+        today = self._current_day(session, _now())
+        if today < self.next_due_date:
             return False
-        if self.show_after_hour is not None:
+        if self.show_after_hour is not None and today == self.next_due_date:
             settings = Settings.get(session)
-            local_hour = now.astimezone(settings.resolved_timezone()).hour
+            local_hour = _now().astimezone(settings.resolved_timezone()).hour
             if local_hour < self.show_after_hour:
                 return False
         return True
@@ -699,59 +687,51 @@ class Daily(Base):
             reward=reward,
             notes=notes,
         )
-        # Seed at the start of the current window, not one step back through
-        # _compute_next_due -- that only lands on "already due" for the daily
-        # cadence; every:N>1/weekly/monthly would land a full period in the future.
-        window_start, _ = daily.current_window(session)
-        daily.next_due_at = window_start
+        # Seed as due today, not one recurrence step back through _compute_next_due
+        # -- that only lands on "already due" for the daily cadence; every:N>1/
+        # weekly/monthly would land a full period in the future.
+        daily.next_due_date = daily._current_day(session, _now())
         session.add(daily)
         session.flush()
         return daily
 
-    def _compute_next_due(self, session: Session, after: datetime) -> datetime:
-        """The next due timestamp (UTC) per this Daily's recurrence rule, computed in local time
-        so weekly/monthly targets land on the intended local calendar day."""
-        settings = Settings.get(session)
-        tz = settings.resolved_timezone()
-        local_after = after.astimezone(tz)
+    def _compute_next_due(self, session: Session, after: date) -> date:
+        """The next due date per this Daily's recurrence rule."""
         kind, _, arg = self.recurrence.partition(":")
 
         if kind == "daily" or not kind:
-            local_next = local_after + timedelta(days=1)
+            return after + timedelta(days=1)
         elif kind == "every":
-            local_next = local_after + timedelta(days=int(arg))
+            return after + timedelta(days=int(arg))
         elif kind == "weekly":
             target = Daily._WEEKDAYS.index(arg.upper())
-            days_ahead = (target - local_after.weekday()) % 7
+            days_ahead = (target - after.weekday()) % 7
             days_ahead = days_ahead or 7
-            local_next = local_after + timedelta(days=days_ahead)
+            return after + timedelta(days=days_ahead)
         elif kind == "monthly":
             day = int(arg)
-            year, month = local_after.year, local_after.month + 1
+            year, month = after.year, after.month + 1
             if month > 12:
                 month = 1
                 year += 1
-            local_next = local_after.replace(year=year, month=month, day=day)
+            return after.replace(year=year, month=month, day=day)
         else:
             raise ValueError(f"unknown recurrence kind: {kind!r}")
 
-        local_next = local_next.replace(hour=settings.day_boundary_hour, minute=0, second=0, microsecond=0)
-        return local_next.astimezone(timezone.utc)
-
     def complete(self, session: Session) -> None:
-        """Advance next_due_at one recurrence step past the window being completed --
-        anchored on next_due_at itself, not on _now(), so completing something late
-        (after its window closed) still lands on the very next occurrence rather than
+        """Advance next_due_date one recurrence step past the day being completed --
+        anchored on next_due_date itself, not on today's date, so completing something
+        late (after its day closed) still lands on the very next occurrence rather than
         skipping ahead an extra step because of how late the completion happened."""
-        self.next_due_at = self._compute_next_due(session, self.next_due_at)
+        self.next_due_date = self._compute_next_due(session, self.next_due_date)
 
     def catch_up(self, session: Session) -> None:
-        """Advance next_due_at forward through however many missed windows have
+        """Advance next_due_date forward through however many missed days have
         elapsed, landing on the first occurrence that isn't overdue -- for a Daily
         that's been neglected for multiple cycles, rather than requiring complete()
-        to be called once per missed window."""
+        to be called once per missed day."""
         while self.is_overdue(session):
-            self.next_due_at = self._compute_next_due(session, self.next_due_at)
+            self.next_due_date = self._compute_next_due(session, self.next_due_date)
 
     def __repr__(self) -> str:
         return f"<Daily #{self.id} {self.description!r}>"

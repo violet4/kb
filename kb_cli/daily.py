@@ -2,7 +2,6 @@
 
 import argparse
 import sys
-from datetime import datetime, timezone
 from typing import Sequence
 
 from sqlalchemy import select
@@ -11,13 +10,6 @@ from context import resolve_context
 from models import Daily, DailyTier
 
 from kb_cli._util import print_fields, print_table
-
-
-def _local_str(dt: datetime | None) -> str | None:
-    if dt is None:
-        return None
-    aware = dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
-    return aware.astimezone().strftime("%Y-%m-%d %H:%M")
 
 
 def cmd_show(args: argparse.Namespace) -> None:
@@ -34,7 +26,7 @@ def cmd_show(args: argparse.Namespace) -> None:
             ("tier", daily.tier.value),
             ("recurrence", daily.recurrence),
             ("show_after_hour", daily.show_after_hour),
-            ("next_due_at", _local_str(daily.next_due_at)),
+            ("next_due_date", daily.next_due_date.isoformat()),
             ("context", daily.context.name if daily.context else None),
             ("location", daily.location),
             ("reward", daily.reward),
@@ -59,7 +51,7 @@ def cmd_list(args: argparse.Namespace) -> None:
     if not dailies:
         print("No dailies due." if not args.all else "No dailies.")
         return
-    dailies = sorted(dailies, key=lambda d: Daily._aware(d.next_due_at))
+    dailies = sorted(dailies, key=lambda d: d.next_due_date)
     rows = []
     for d in dailies:
         status = "" if d.is_active else "inactive"
@@ -69,7 +61,7 @@ def cmd_list(args: argparse.Namespace) -> None:
                 d.description,
                 d.tier.value,
                 d.recurrence,
-                _local_str(d.next_due_at) or "",
+                d.next_due_date.isoformat(),
                 status,
             ]
         )
@@ -83,7 +75,7 @@ def cmd_complete(args: argparse.Namespace) -> None:
             print(f"Daily #{daily_id}: not found", file=sys.stderr)
             continue
         daily.complete(args.session)
-        print(f"Daily #{daily_id}: {daily.description!r} -> completed, next due {_local_str(daily.next_due_at)}")
+        print(f"Daily #{daily_id}: {daily.description!r} -> completed, next due {daily.next_due_date.isoformat()}")
     args.session.commit()
 
 
@@ -94,7 +86,7 @@ def cmd_catch_up(args: argparse.Namespace) -> None:
             print(f"Daily #{daily_id}: not found", file=sys.stderr)
             continue
         daily.catch_up(args.session)
-        print(f"Daily #{daily_id}: {daily.description!r} -> caught up, next due {_local_str(daily.next_due_at)}")
+        print(f"Daily #{daily_id}: {daily.description!r} -> caught up, next due {daily.next_due_date.isoformat()}")
     args.session.commit()
 
 

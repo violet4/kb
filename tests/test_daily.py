@@ -5,7 +5,7 @@ defaults to "daily" when unspecified, so cases exercising the default overlap wi
 explicit "daily" cases but confirm the default itself behaves the same way.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import time_machine
 from sqlalchemy.orm import Session
@@ -64,8 +64,7 @@ def test_recurrence_daily_explicit_matches_default(db_session: Session) -> None:
         daily = Daily.create(db_session, "stretch", recurrence="daily")
         daily.complete(db_session)
         db_session.commit()
-        assert daily.next_due_at is not None
-        assert daily.next_due_at.replace(tzinfo=timezone.utc) == datetime(2026, 1, 2, 4, 0, tzinfo=timezone.utc)
+        assert daily.next_due_date == date(2026, 1, 2)
         assert daily not in Daily.due(db_session)
 
         traveller.move_to(datetime(2026, 1, 2, 4, 1, tzinfo=timezone.utc))
@@ -78,8 +77,7 @@ def test_recurrence_every_n_days(db_session: Session) -> None:
         daily = Daily.create(db_session, "alternate-day chore", recurrence="every:2")
         daily.complete(db_session)
         db_session.commit()
-        assert daily.next_due_at is not None
-        assert daily.next_due_at.replace(tzinfo=timezone.utc) == datetime(2026, 1, 3, 4, 0, tzinfo=timezone.utc)
+        assert daily.next_due_date == date(2026, 1, 3)
 
         traveller.move_to(datetime(2026, 1, 2, 12, 0, tzinfo=timezone.utc))
         assert daily not in Daily.due(db_session)
@@ -96,8 +94,7 @@ def test_recurrence_weekly_lands_on_target_weekday(db_session: Session) -> None:
         daily.complete(db_session)
         db_session.commit()
         # Next Wednesday after Thursday 2026-01-01 is 2026-01-07.
-        assert daily.next_due_at is not None
-        assert daily.next_due_at.replace(tzinfo=timezone.utc) == datetime(2026, 1, 7, 4, 0, tzinfo=timezone.utc)
+        assert daily.next_due_date == date(2026, 1, 7)
 
         traveller.move_to(datetime(2026, 1, 7, 3, 59, tzinfo=timezone.utc))
         assert daily not in Daily.due(db_session)
@@ -114,8 +111,7 @@ def test_recurrence_weekly_on_completion_weekday_waits_a_full_week(db_session: S
         daily = Daily.create(db_session, "weekly on same day", recurrence="weekly:THU")
         daily.complete(db_session)
         db_session.commit()
-        assert daily.next_due_at is not None
-        assert daily.next_due_at.replace(tzinfo=timezone.utc) == datetime(2026, 1, 8, 4, 0, tzinfo=timezone.utc)
+        assert daily.next_due_date == date(2026, 1, 8)
 
 
 def test_recurrence_monthly_lands_on_target_day_next_month(db_session: Session) -> None:
@@ -124,8 +120,7 @@ def test_recurrence_monthly_lands_on_target_day_next_month(db_session: Session) 
         daily = Daily.create(db_session, "pay rent", recurrence="monthly:1")
         daily.complete(db_session)
         db_session.commit()
-        assert daily.next_due_at is not None
-        assert daily.next_due_at.replace(tzinfo=timezone.utc) == datetime(2026, 2, 1, 4, 0, tzinfo=timezone.utc)
+        assert daily.next_due_date == date(2026, 2, 1)
 
         traveller.move_to(datetime(2026, 1, 31, 23, 59, tzinfo=timezone.utc))
         assert daily not in Daily.due(db_session)
@@ -140,8 +135,7 @@ def test_recurrence_monthly_rolls_over_year_boundary(db_session: Session) -> Non
         daily = Daily.create(db_session, "december chore", recurrence="monthly:15")
         daily.complete(db_session)
         db_session.commit()
-        assert daily.next_due_at is not None
-        assert daily.next_due_at.replace(tzinfo=timezone.utc) == datetime(2027, 1, 15, 4, 0, tzinfo=timezone.utc)
+        assert daily.next_due_date == date(2027, 1, 15)
 
 
 def test_due_filters_by_domain_and_tier(db_session: Session) -> None:
@@ -158,24 +152,23 @@ def test_due_filters_by_domain_and_tier(db_session: Session) -> None:
 
 
 def test_is_overdue_flips_a_full_day_after_becoming_due(db_session: Session) -> None:
-    """A Daily that becomes due at next_due_at gets the rest of that day-window to be
+    """A Daily that becomes due at next_due_date gets the rest of that day to be
     done -- not yet overdue at the exact instant it becomes due, nor for the rest of
-    that window. Only once the *following* day-boundary passes with it still not
-    completed does it flip to overdue -- e.g. litter due Tuesday 04:00 is fine all
-    through Tuesday, then overdue from Wednesday 04:00 onward until completed."""
+    that day. Only once the *following* day-boundary passes with it still not
+    completed does it flip to overdue -- e.g. litter due Tuesday is fine all through
+    Tuesday, then overdue from Wednesday's day-boundary onward until completed."""
     _set_utc_boundary(db_session, hour=4)
     with time_machine.travel(datetime(2026, 1, 5, 12, 26, tzinfo=timezone.utc)) as traveller:
         daily = Daily.create(db_session, "litter")
         daily.complete(db_session)
         db_session.commit()
-        assert daily.next_due_at is not None
-        assert daily.next_due_at.replace(tzinfo=timezone.utc) == datetime(2026, 1, 6, 4, 0, tzinfo=timezone.utc)
+        assert daily.next_due_date == date(2026, 1, 6)
 
         # The instant it becomes due: due, but not yet overdue -- gets the rest of today.
         traveller.move_to(datetime(2026, 1, 6, 4, 0, tzinfo=timezone.utc))
         assert not daily.is_overdue(db_session)
 
-        # Later the same day-window: still due today, still not overdue.
+        # Later the same day: still due today, still not overdue.
         traveller.move_to(datetime(2026, 1, 6, 23, 0, tzinfo=timezone.utc))
         assert not daily.is_overdue(db_session)
 
@@ -201,6 +194,35 @@ def test_is_overdue_false_immediately_after_completion(db_session: Session) -> N
         assert not daily.is_overdue(db_session)
 
 
+def test_show_after_hour_hides_until_hour_on_due_day_but_not_once_overdue(db_session: Session) -> None:
+    """show_after_hour (e.g. an evening-only "shower before bed" item) should hide
+    the Daily until that local hour on the day it becomes due, but must stop gating
+    once the item is actually overdue -- an overdue evening item still needs to show
+    up in the morning, not stay hidden until yet another evening arrives."""
+    _set_utc_boundary(db_session, hour=4)
+    with time_machine.travel(datetime(2026, 1, 5, 12, 0, tzinfo=timezone.utc)) as traveller:
+        daily = Daily.create(db_session, "shower before bed", show_after_hour=19)
+        daily.complete(db_session)
+        db_session.commit()
+        assert daily.next_due_date == date(2026, 1, 6)
+
+        # Due day, before show_after_hour: due but hidden.
+        traveller.move_to(datetime(2026, 1, 6, 10, 0, tzinfo=timezone.utc))
+        assert not daily.is_overdue(db_session)
+        assert not daily.is_due_now(db_session)
+
+        # Due day, at/after show_after_hour: now shown.
+        traveller.move_to(datetime(2026, 1, 6, 19, 0, tzinfo=timezone.utc))
+        assert not daily.is_overdue(db_session)
+        assert daily.is_due_now(db_session)
+
+        # Next day-boundary passes uncompleted: overdue -- must show even before
+        # show_after_hour, since the day it should've been done on is fully closed.
+        traveller.move_to(datetime(2026, 1, 7, 10, 0, tzinfo=timezone.utc))
+        assert daily.is_overdue(db_session)
+        assert daily.is_due_now(db_session)
+
+
 def test_inactive_daily_never_due(db_session: Session) -> None:
     _set_utc_boundary(db_session)
     with time_machine.travel(datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)):
@@ -211,9 +233,9 @@ def test_inactive_daily_never_due(db_session: Session) -> None:
 
 
 def test_every_n_days_due_immediately_after_creation(db_session: Session) -> None:
-    """create() must seed next_due_at at the current window, not one recurrence
-    step ahead -- every:2/weekly/monthly dailies used to only become due a full
-    cadence after creation instead of right away, unlike the default "daily" case."""
+    """create() must seed next_due_date as today, not one recurrence step ahead --
+    every:2/weekly/monthly dailies used to only become due a full cadence after
+    creation instead of right away, unlike the default "daily" case."""
     _set_utc_boundary(db_session, hour=4)
     with time_machine.travel(datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)):
         daily = Daily.create(db_session, "alternate-day chore", recurrence="every:2")
@@ -240,24 +262,22 @@ def test_monthly_due_immediately_after_creation(db_session: Session) -> None:
 def test_complete_late_advances_only_one_window(db_session: Session) -> None:
     """Completing a Daily well after its window closed (e.g. finishing yesterday's
     litter this afternoon) must land on the very next occurrence, anchored on
-    next_due_at -- not skip an extra step because of how late "now" is when
+    next_due_date -- not skip an extra step because of how late "now" is when
     complete() is called."""
     _set_utc_boundary(db_session, hour=4)
     with time_machine.travel(datetime(2026, 1, 5, 12, 0, tzinfo=timezone.utc)):
         daily = Daily.create(db_session, "litter")
         db_session.commit()
-        assert daily.next_due_at is not None
-        assert daily.next_due_at.replace(tzinfo=timezone.utc) == datetime(2026, 1, 5, 4, 0, tzinfo=timezone.utc)
+        assert daily.next_due_date == date(2026, 1, 5)
 
     # Two full day-windows pass uncompleted -- now overdue -- before it's completed.
     with time_machine.travel(datetime(2026, 1, 7, 14, 0, tzinfo=timezone.utc)):
         assert daily.is_overdue(db_session)
         daily.complete(db_session)
         db_session.commit()
-        # Anchored on the missed next_due_at (Jan 5 04:00), not on "now" (Jan 7) --
-        # lands on Jan 6 04:00, the very next occurrence, not Jan 8.
-        assert daily.next_due_at is not None
-        assert daily.next_due_at.replace(tzinfo=timezone.utc) == datetime(2026, 1, 6, 4, 0, tzinfo=timezone.utc)
+        # Anchored on the missed next_due_date (Jan 5), not on "now" (Jan 7) --
+        # lands on Jan 6, the very next occurrence, not Jan 8.
+        assert daily.next_due_date == date(2026, 1, 6)
 
 
 def test_catch_up_advances_through_multiple_missed_windows(db_session: Session) -> None:
@@ -274,8 +294,7 @@ def test_catch_up_advances_through_multiple_missed_windows(db_session: Session) 
         assert daily.is_overdue(db_session)
         daily.catch_up(db_session)
         db_session.commit()
-        assert daily.next_due_at is not None
-        assert daily.next_due_at.replace(tzinfo=timezone.utc) == datetime(2026, 1, 28, 4, 0, tzinfo=timezone.utc)
+        assert daily.next_due_date == date(2026, 1, 28)
         assert not daily.is_overdue(db_session)
 
 
@@ -284,6 +303,6 @@ def test_catch_up_no_op_when_not_overdue(db_session: Session) -> None:
     with time_machine.travel(datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)):
         daily = Daily.create(db_session, "litter")
         db_session.commit()
-        before = daily.next_due_at
+        before = daily.next_due_date
         daily.catch_up(db_session)
-        assert daily.next_due_at == before
+        assert daily.next_due_date == before

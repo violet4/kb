@@ -36,13 +36,6 @@ def anki_section(session: Session) -> str | None:
 
 def dailies_section(session: Session) -> str | None:
     critical = Daily.due(session, domain="irl", tier=DailyTier.CRITICAL)
-    lines = []
-    if critical:
-        lines.append("=== DAILIES ===")
-        for d in critical:
-            marker = " ⚠ overdue" if d.is_overdue(session) else ""
-            lines.append(f"- #{d.id} {d.description}{marker}")
-
     all_due = Daily.due(session)
     non_critical_irl = [d for d in all_due if d.domain == "irl" and d.tier != DailyTier.CRITICAL]
     game = [d for d in all_due if d.domain != "irl"]
@@ -51,10 +44,18 @@ def dailies_section(session: Session) -> str | None:
         hints.append(f"{len(non_critical_irl)} non-critical")
     if game:
         hints.append(f"{len(game)} game")
+
+    if not critical and not hints:
+        return None
+
+    lines = ["=== DAILIES ==="]
+    for d in critical:
+        marker = " ⚠ overdue" if d.is_overdue(session) else ""
+        lines.append(f"- #{d.id} {d.description}{marker}")
     if hints:
         lines.append(f"({'; '.join(hints)} also due today — kb daily list --all)")
 
-    return "\n".join(lines) if lines else None
+    return "\n".join(lines)
 
 
 def _other_contexts_hint(session: Session, in_scope_ids: set[int], all_pending_context_ids: list[Optional[int]]) -> str:

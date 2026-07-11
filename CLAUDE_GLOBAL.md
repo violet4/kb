@@ -166,6 +166,8 @@ Code must be written in a way that humans with limited mental context space can 
 
 When integrating a third-party library, evaluate whether confining it to a single layer with a thin API would reduce complexity for the rest of the codebase.
 
+Layer boundaries should work like the network stack: each layer only needs to know the protocol it speaks to the layer directly above and below it, not how any other layer is implemented internally. The application layer sends a message down the stack knowing only the data format it hands off and the format it expects back — it has no idea whether that payload ends up on Ethernet, Wi-Fi, or a satellite link, and it doesn't need to. Each layer in between composes independently and focuses solely on its own concern (framing, routing, reliability, encryption), which is what makes it possible to stack TCP under TLS under HTTP, or nest a VPN inside an SSH tunnel inside another tunnel, without any layer being rewritten to accommodate the others. Apply the same discipline when layering application code (data model / business logic / rendering, or a thin wrapper around a third-party library): define the protocol — the shape of data crossing the boundary — precisely, then let each layer be freely swapped, reimplemented, or wrapped again without the others noticing, the same way a new transport can slot in under an unchanged application protocol.
+
 Always provide clear visual feedback to the user about what the code did. This applies everywhere — CLI scripts, UI, APIs. The user should never have to guess whether something happened or what changed.
 
 Use idiomatic APIs. If the language, framework, or library you're using provides a construct for something, use it — don't reimplement it with lower-level primitives.

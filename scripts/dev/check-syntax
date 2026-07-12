@@ -1,0 +1,23 @@
+#!/usr/bin/env -S uv run --project /home/violet/kb python3
+"""Check that Python file(s) parse as valid syntax, without importing/running them.
+Usage: check-syntax FILE [FILE ...]"""
+import ast
+import sys
+
+if len(sys.argv) < 2:
+    print("usage: check-syntax FILE [FILE ...]", file=sys.stderr)
+    sys.exit(2)
+
+failed = False
+for path in sys.argv[1:]:
+    with open(path) as f:
+        source = f.read()
+    try:
+        ast.parse(source, filename=path)
+    except SyntaxError as e:
+        print(f"{path}: SYNTAX ERROR — {e}", file=sys.stderr)
+        failed = True
+    else:
+        print(f"{path}: OK")
+
+sys.exit(1 if failed else 0)

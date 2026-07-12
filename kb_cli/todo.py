@@ -3,11 +3,12 @@
 import argparse
 import sys
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from sqlalchemy import select
 
 from context import resolve_context
-from models import Context, Journal, Todo, TodoStatus, TodoTag, WishlistEffort
+from models import Context, Journal, Tag, Todo, TodoStatus, WishlistEffort
 
 from kb_cli._util import add_history_arg, get_by_name, print_journal_history
 
@@ -46,10 +47,10 @@ def cmd_show(args: argparse.Namespace) -> None:
             print(f"goal: {todo.goal.title}")
         if todo.context:
             print(f"context: {todo.context.name}")
+        if todo.tag:
+            print(f"tag: {todo.tag.name}")
         if todo.blocked_by:
             print(f"blocked_by: #{todo.blocked_by.id} {todo.blocked_by.title} [{todo.blocked_by.status.value}]")
-        if todo.tags:
-            print(f"tags: {', '.join(t.name for t in todo.tags)}")
         if todo.notes:
             print(f"notes: {todo.notes}")
 
@@ -64,10 +65,20 @@ def cmd_show(args: argparse.Namespace) -> None:
 
 
 def cmd_add(args: argparse.Namespace) -> None:
+    if args.tag and args.context_explicit:
+        print("--tag and --context are mutually exclusive", file=sys.stderr)
+        sys.exit(2)
     effort = WishlistEffort(args.effort) if args.effort else None
     defer_until = _parse_defer_until(args.defer_until) if args.defer_until else None
+    tag = get_by_name(args.session, Tag, args.tag) if args.tag else None
     todo = Todo.create(
-        args.session, args.title, notes=args.notes, effort=effort, defer_until=defer_until, context=args.context
+        args.session,
+        args.title,
+        notes=args.notes,
+        effort=effort,
+        defer_until=defer_until,
+        context=None if tag else args.context,
+        tag=tag,
     )
     args.session.commit()
     print(todo)
@@ -87,7 +98,11 @@ def cmd_update(args: argparse.Namespace) -> None:
     if args.notes is not None:
         todo.notes = args.notes
     if args.new_context is not None:
+        todo.tag = None
         todo.context = resolve_context(args.session, args.new_context)
+    if args.new_tag is not None:
+        todo.context = None
+        todo.tag = get_by_name(args.session, Tag, args.new_tag)
     if args.goal is not None:
         todo.goal_id = args.goal
     args.session.commit()
@@ -107,8 +122,7 @@ def cmd_complete(args: argparse.Namespace) -> None:
 
 def cmd_pending(args: argparse.Namespace) -> None:
     effort = WishlistEffort(args.effort) if args.effort else None
-    tag = get_by_name(args.session, TodoTag, args.tag) if args.tag else None
-    todos = Todo.pending(args.session, effort=effort, include_deferred=args.all, tag=tag)
+    todos = Todo.pending(args.session, effort=effort, include_deferred=args.all)
     if not todos:
         print("No pending todos.")
         return
@@ -124,14 +138,13 @@ def cmd_pending(args: argparse.Namespace) -> None:
 
 def cmd_list(args: argparse.Namespace) -> None:
     effort = WishlistEffort(args.effort) if args.effort else None
-    tag = get_by_name(args.session, TodoTag, args.tag) if args.tag else None
     if args.all:
-        todos = Todo.pending(args.session, effort=effort, include_deferred=True, tag=tag)
+        todos = Todo.pending(args.session, effort=effort, include_deferred=True)
     else:
         current = resolve_context(args.session)
         in_scope = Context.self_and_descendants(args.session, current.name) if current else None
         todos = Todo.pending(
-            args.session, contexts=in_scope, include_no_context=True, effort=effort, include_deferred=True, tag=tag
+            args.session, contexts=in_scope, include_no_context=True, effort=effort, include_deferred=True
         )
     if not todos:
         print("No todos.")
@@ -140,34 +153,56 @@ def cmd_list(args: argparse.Namespace) -> None:
         print(f"{t!r}")
 
 
-def cmd_tag(args: argparse.Namespace) -> None:
-    todo = args.session.get(Todo, args.id)
-    if todo is None:
-        print(f"Todo #{args.id}: not found", file=sys.stderr)
-        sys.exit(1)
-    for name in args.tags:
-        tag = args.session.scalars(select(TodoTag).where(TodoTag.name == name)).one_or_none()
-        if tag is None:
-            tag = TodoTag(name=name)
-            args.session.add(tag)
-            args.session.flush()
-        if tag not in todo.tags:
-            todo.tags.append(tag)
-    args.session.commit()
-    print(todo)
+def cmd_tree(args: argparse.Namespace) -> None:
+    """Render pending Todos nested under the Context tree, tree(1)-style -- a
+    tag-addressed Todo (e.g. "buy salt" @tavern) prints under every Context in the
+    tree that carries that tag, not just once, so it's visible wherever it's
+    actually actionable without having to check another location's list."""
+    contexts = args.session.scalars(select(Context)).all()
+    todos = Todo.pending(args.session, include_deferred=args.all)
 
+    children: dict[Any, list[Context]] = {}
+    for c in contexts:
+        children.setdefault(c.parent_id, []).append(c)
+    for kids in children.values():
+        kids.sort(key=lambda c: c.name)
 
-def cmd_untag(args: argparse.Namespace) -> None:
-    todo = args.session.get(Todo, args.id)
-    if todo is None:
-        print(f"Todo #{args.id}: not found", file=sys.stderr)
-        sys.exit(1)
-    for name in args.tags:
-        tag = get_by_name(args.session, TodoTag, name)
-        if tag in todo.tags:
-            todo.tags.remove(tag)
-    args.session.commit()
-    print(todo)
+    by_context_id: dict[int, list[Todo]] = {}
+    by_tag_id: dict[int, list[Todo]] = {}
+    unplaced: list[Todo] = []
+    for t in todos:
+        if t.context_id is not None:
+            by_context_id.setdefault(t.context_id, []).append(t)
+        elif t.tag_id is not None:
+            by_tag_id.setdefault(t.tag_id, []).append(t)
+        else:
+            unplaced.append(t)
+
+    def render(node: Context, prefix: str, is_last: bool) -> None:
+        branch = "└── " if is_last else "├── "
+        tag_str = f" [{', '.join(t.name for t in node.tags)}]" if node.tags else ""
+        print(f"{prefix}{branch}{node.name}{tag_str}")
+        extension = "    " if is_last else "│   "
+
+        here = list(by_context_id.get(node.id, []))
+        for tag in node.tags:
+            here.extend(by_tag_id.get(tag.id, []))
+
+        kids = children.get(node.id, [])
+        for i, t in enumerate(here):
+            is_leaf_last = (i == len(here) - 1) and not kids
+            leaf_branch = "└── " if is_leaf_last else "├── "
+            print(f"{prefix}{extension}{leaf_branch}t{t.id} {t.title}")
+
+        for i, kid in enumerate(kids):
+            render(kid, prefix + extension, i == len(kids) - 1)
+
+    roots = children.get(None, [])
+    for i, root in enumerate(roots):
+        render(root, "", i == len(roots) - 1)
+
+    if unplaced:
+        print(f"\n({len(unplaced)} todo(s) with no context/tag -- see kb todo list)")
 
 
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
@@ -193,6 +228,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         "'YYYY-MM-DD', or 'YYYY-MM-DD HH:MM'",
     )
     p_add.add_argument("--notes")
+    p_add.add_argument("--tag", help="Address by Tag instead of context (mutually exclusive with the global --context)")
     p_add.set_defaults(func=cmd_add)
 
     p_update = sub.add_parser("update", help="Update fields on an existing Todo")
@@ -205,7 +241,9 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         help="HH:MM (today, or tomorrow if already past), 'YYYY-MM-DD', or 'YYYY-MM-DD HH:MM'",
     )
     p_update.add_argument("--notes")
-    p_update.add_argument("--context", dest="new_context", metavar="NAME")
+    p_update_ctx = p_update.add_mutually_exclusive_group()
+    p_update_ctx.add_argument("--context", dest="new_context", metavar="NAME")
+    p_update_ctx.add_argument("--tag", dest="new_tag", metavar="NAME")
     p_update.add_argument("--goal", type=int, metavar="GOAL_ID")
     p_update.set_defaults(func=cmd_update)
 
@@ -213,9 +251,8 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_complete.add_argument("ids", nargs="+", type=int)
     p_complete.set_defaults(func=cmd_complete)
 
-    p_pending = sub.add_parser("pending", help="List pending Todos, optionally filtered by effort/tag")
+    p_pending = sub.add_parser("pending", help="List pending Todos, optionally filtered by effort")
     p_pending.add_argument("--effort", choices=[e.value for e in WishlistEffort])
-    p_pending.add_argument("--tag", help="Only show Todos tagged with this (or a descendant of this) TodoTag")
     p_pending.add_argument("--all", action="store_true", help="Also include deferred Todos not yet due")
     p_pending.set_defaults(func=cmd_pending)
 
@@ -223,16 +260,11 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         "list", help="List pending Todos scoped to the current context (plus descendants/no-context)"
     )
     p_list.add_argument("--effort", choices=[e.value for e in WishlistEffort])
-    p_list.add_argument("--tag", help="Only show Todos tagged with this (or a descendant of this) TodoTag")
     p_list.add_argument("--all", action="store_true", help="Ignore context scoping and show Todos from every context")
     p_list.set_defaults(func=cmd_list)
 
-    p_tag = sub.add_parser("tag", help="Attach one or more tags to a Todo (creates tags that don't exist yet)")
-    p_tag.add_argument("id", type=int)
-    p_tag.add_argument("tags", nargs="+")
-    p_tag.set_defaults(func=cmd_tag)
-
-    p_untag = sub.add_parser("untag", help="Remove one or more tags from a Todo")
-    p_untag.add_argument("id", type=int)
-    p_untag.add_argument("tags", nargs="+")
-    p_untag.set_defaults(func=cmd_untag)
+    p_tree = sub.add_parser(
+        "tree", help="Render pending Todos nested under the Context tree (tag-addressed Todos repeat per match)"
+    )
+    p_tree.add_argument("--all", action="store_true", help="Also include deferred Todos not yet due")
+    p_tree.set_defaults(func=cmd_tree)

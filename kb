@@ -86,6 +86,7 @@ games.add_subparser(subparsers)
 
 args = parser.parse_args()
 args.session = SessionFactory()
+args.context_explicit = args.context is not None
 try:
     args.context = resolve_context(args.session, args.context)
 except ValueError as e:

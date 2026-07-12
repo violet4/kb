@@ -49,16 +49,19 @@ def cmd_show(args: argparse.Namespace) -> None:
 
 def cmd_list(args: argparse.Namespace) -> None:
     status = GoalStatus(args.status) if args.status else None
-    q = select(Goal)
-    if status is not None:
-        q = q.where(Goal.status == status)
-    if not args.all:
+    if args.all:
+        # Goal.active() only returns ACTIVE Goals -- an explicit non-ACTIVE status or no
+        # status filter at all both need a plain query instead.
+        q = select(Goal)
+        if status is not None:
+            q = q.where(Goal.status == status)
+        goals = args.session.scalars(q).all()
+    elif status is not None and status != GoalStatus.ACTIVE:
+        goals = args.session.scalars(select(Goal).where(Goal.status == status)).all()
+    else:
         current = resolve_context(args.session)
         in_scope = Context.self_and_descendants(args.session, current.name) if current else None
-        if in_scope is not None:
-            ids = [c.id for c in in_scope]
-            q = q.where(Goal.context_id.in_(ids) | Goal.context_id.is_(None))
-    goals = args.session.scalars(q).all()
+        goals = Goal.active(args.session, contexts=in_scope, include_no_context=True)
     if not goals:
         print("No goals.")
         return

@@ -36,6 +36,7 @@ from sqlalchemy.orm import (
     object_session,
     relationship,
     sessionmaker,
+    validates,
 )
 from sqlalchemy.engine.interfaces import DBAPIConnection
 from sqlalchemy.orm.base import NO_VALUE, NEVER_SET
@@ -179,12 +180,23 @@ class WishlistEffort(enum.Enum):
 # ---------------------------------------------------------------------------
 
 
-class Context(Base):
+class Context(Base, HasUniqueName):
+    """A GTD-style location/situation node (e.g. "pg" -> "Serbule Hills" -> "Serbule Hills
+    Tavern") -- where/with-what an item is actionable. Single-parent tree via parent_id
+    (adjacency list): every node has at most one parent, matching the physical reality that
+    a place lives in exactly one broader place. See Tag for the orthogonal "what kind of
+    place is this" facet (a Context can carry several Tags, e.g. two different taverns both
+    tagged "tavern"), which is how a Todo like "buy salt" surfaces under any tavern without
+    being pinned to one."""
+
     __tablename__ = "context"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    parent_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("context.id"), nullable=True)
+
+    parent: Mapped[Optional[Context]] = relationship("Context", remote_side=[id])
+    tags: Mapped[list["Tag"]] = relationship("Tag", secondary="context_tag")
 
     @classmethod
     def get_or_create(cls, session: Session, name: str, description: Optional[str] = None) -> Context:
@@ -206,16 +218,94 @@ class Context(Base):
             raise ValueError(f"no such context: {name!r} (create it with: kb context add {name!r})")
         return obj
 
+    def ancestors(self) -> list[Context]:
+        """This context plus every parent up the chain, broadest last."""
+        chain = [self]
+        node = self
+        while node.parent is not None:
+            node = node.parent
+            chain.append(node)
+        return chain
+
     @classmethod
     def self_and_descendants(cls, session: Session, name: str) -> Sequence[Context]:
-        """`name` itself plus every context whose dot-separated name is a descendant
-        of it (e.g. "pg" matches "pg", "pg.towns", "pg.towns.serbule_keep")."""
-        cls.get_existing(session, name)  # raise if name itself doesn't exist
-        q = select(cls).where((cls.name == name) | (cls.name.like(f"{name}.%")))
-        return session.scalars(q).all()
+        """`name` itself plus every context reachable by walking parent_id downward
+        (e.g. "pg" matches "pg", "pg"'s children, their children, ...)."""
+        root = cls.get_existing(session, name)
+        all_contexts = session.scalars(select(cls)).all()
+        by_parent: dict[Optional[int], list[Context]] = {}
+        for c in all_contexts:
+            by_parent.setdefault(c.parent_id, []).append(c)
+
+        result = [root]
+        frontier = [root]
+        while frontier:
+            next_frontier = []
+            for node in frontier:
+                next_frontier.extend(by_parent.get(node.id, []))
+            result.extend(next_frontier)
+            frontier = next_frontier
+        return result
+
+    @classmethod
+    def active_tag_ids(cls, contexts: Sequence[Context]) -> list[int]:
+        """Every Tag id carried by any Context in `contexts` (e.g. from
+        self_and_descendants) -- the set a tag_id-addressed Goal/Todo/Daily/Idea
+        must match to surface under this context subtree. See HasContextOrTag."""
+        ids: set[int] = set()
+        for c in contexts:
+            ids.update(t.id for t in c.tags)
+        return list(ids)
 
     def __repr__(self) -> str:
-        return f"<Context {self.name!r}>"
+        parent_str = f" -> {self.parent.name}" if self.parent else ""
+        return f"<Context {self.name!r}{parent_str}>"
+
+
+class Tag(Base, HasUniqueName):
+    """A flat, non-hierarchical label for "what kind of place/thing is this"
+    (e.g. "tavern") -- orthogonal to Context's tree. A Context can carry several
+    Tags (context_tag, many-to-many); Goal/Todo/Daily/Idea can carry at most one
+    Tag, mutually exclusive with having a context_id (see each entity's validation).
+    A tagged, context-free item (e.g. "buy salt" tagged "tavern") surfaces under
+    any active Context whose subtree contains a Context carrying that same Tag,
+    without being pinned to one specific place."""
+
+    __tablename__ = "tag"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    def __repr__(self) -> str:
+        return f"<Tag {self.name!r}>"
+
+
+class ContextTag(Base):
+    __tablename__ = "context_tag"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    context_id: Mapped[int] = mapped_column(Integer, ForeignKey("context.id"), nullable=False)
+    tag_id: Mapped[int] = mapped_column(Integer, ForeignKey("tag.id"), nullable=False)
+
+
+class HasContextOrTag:
+    """A single tag_id, mutually exclusive with the entity's own context_id: a Goal/Todo/Daily/
+    Idea is either pinned to one place (context_id) or floats to anywhere carrying a matching
+    Tag (tag_id), never both -- see Context/Tag docstrings for why. Composed alongside each
+    entity's own context_id column, which predates this mixin and stays entity-local."""
+
+    tag_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("tag.id"), nullable=True)
+
+    @validates("tag_id")
+    def _validate_tag_id(self, key: str, value: Optional[int]) -> Optional[int]:
+        if value is not None and getattr(self, "context_id", None) is not None:
+            raise ValueError(f"{type(self).__name__}: context_id and tag_id are mutually exclusive")
+        return value
+
+    @validates("context_id")
+    def _validate_context_id(self, key: str, value: Optional[int]) -> Optional[int]:
+        if value is not None and getattr(self, "tag_id", None) is not None:
+            raise ValueError(f"{type(self).__name__}: context_id and tag_id are mutually exclusive")
+        return value
 
 
 class CurrentContext(Base):
@@ -354,7 +444,7 @@ class Person(Base):
 # ---------------------------------------------------------------------------
 
 
-class Goal(Base):
+class Goal(Base, HasContextOrTag):
     __tablename__ = "goal"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -367,6 +457,7 @@ class Goal(Base):
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     context: Mapped[Optional[Context]] = relationship("Context")
+    tag: Mapped[Optional[Tag]] = relationship("Tag")
     todos: Mapped[list[Todo]] = relationship("Todo", back_populates="goal")
 
     @classmethod
@@ -378,19 +469,22 @@ class Goal(Base):
         include_no_context: bool = False,
     ) -> Sequence[Goal]:
         """`context` matches that single context exactly; `contexts` (e.g. from
-        Context.self_and_descendants) matches any context in the given set -- use
-        the latter for a context-plus-sub-contexts filter. include_no_context also
-        surfaces Goals with no context at all (e.g. for a summary view that treats
+        Context.self_and_descendants) matches any context in the given set, plus any
+        Goal whose tag_id is carried by a Context in that set (see HasContextOrTag) --
+        use the latter for a context-plus-sub-contexts filter. include_no_context also
+        surfaces Goals with no context/tag at all (e.g. for a summary view that treats
         untagged items as always-relevant, regardless of which context is active)."""
         q = select(cls).where(cls.status == GoalStatus.ACTIVE)
         if context is not None:
             q = q.where(cls.context_id == context.id)
         if contexts is not None:
             ids = [c.id for c in contexts]
+            tag_ids = Context.active_tag_ids(contexts)
+            matches = cls.context_id.in_(ids) | cls.tag_id.in_(tag_ids)
             q = (
-                q.where(cls.context_id.in_(ids) | cls.context_id.is_(None))
+                q.where(matches | (cls.context_id.is_(None) & cls.tag_id.is_(None)))
                 if include_no_context
-                else q.where(cls.context_id.in_(ids))
+                else q.where(matches)
             )
         return session.scalars(q).all()
 
@@ -418,7 +512,7 @@ class Goal(Base):
 # ---------------------------------------------------------------------------
 
 
-class Todo(Base):
+class Todo(Base, HasContextOrTag):
     __tablename__ = "todo"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -437,8 +531,8 @@ class Todo(Base):
 
     goal: Mapped[Optional[Goal]] = relationship("Goal", back_populates="todos")
     context: Mapped[Optional[Context]] = relationship("Context")
+    tag: Mapped[Optional[Tag]] = relationship("Tag")
     blocked_by: Mapped[Optional[Todo]] = relationship("Todo", remote_side=[id])
-    tags: Mapped[list["TodoTag"]] = relationship("TodoTag", secondary="todo_tag_link")
 
     @classmethod
     def pending(
@@ -449,33 +543,30 @@ class Todo(Base):
         include_no_context: bool = False,
         effort: Optional[WishlistEffort] = None,
         include_deferred: bool = False,
-        tag: Optional["TodoTag"] = None,
     ) -> Sequence[Todo]:
         """`context` matches that single context exactly; `contexts` (e.g. from
-        Context.self_and_descendants) matches any context in the given set -- use
-        the latter for a context-plus-sub-contexts filter. include_no_context also
-        surfaces Todos with no context at all (e.g. for a summary view that treats
+        Context.self_and_descendants) matches any context in the given set, plus any
+        Todo whose tag_id is carried by a Context in that set (see HasContextOrTag) --
+        use the latter for a context-plus-sub-contexts filter. include_no_context also
+        surfaces Todos with no context/tag at all (e.g. for a summary view that treats
         untagged items as always-relevant, regardless of which context is active)."""
         q = select(cls).where(cls.status.in_([TodoStatus.PENDING, TodoStatus.IN_PROGRESS]))
         if context is not None:
             q = q.where(cls.context_id == context.id)
         if contexts is not None:
             ids = [c.id for c in contexts]
+            tag_ids = Context.active_tag_ids(contexts)
+            matches = cls.context_id.in_(ids) | cls.tag_id.in_(tag_ids)
             q = (
-                q.where(cls.context_id.in_(ids) | cls.context_id.is_(None))
+                q.where(matches | (cls.context_id.is_(None) & cls.tag_id.is_(None)))
                 if include_no_context
-                else q.where(cls.context_id.in_(ids))
+                else q.where(matches)
             )
         if effort is not None:
             q = q.where(cls.effort == effort)
         if not include_deferred:
             q = q.where((cls.defer_until.is_(None)) | (cls.defer_until <= _now()))
-        todos = session.scalars(q).all()
-        if tag is not None:
-            # Match if the Todo carries `tag` itself, or any tag whose ancestor chain includes it
-            # (e.g. filtering by "grocery" also matches a Todo tagged only "winco").
-            todos = [t for t in todos if any(tag in tg.ancestors() for tg in t.tags)]
-        return todos
+        return session.scalars(q).all()
 
     @classmethod
     def create(
@@ -484,6 +575,7 @@ class Todo(Base):
         title: str,
         goal: Optional[Goal] = None,
         context: Optional[Context] = None,
+        tag: Optional[Tag] = None,
         notes: Optional[str] = None,
         blocked_by: Optional[Todo] = None,
         effort: Optional[WishlistEffort] = None,
@@ -493,6 +585,7 @@ class Todo(Base):
             title=title,
             goal_id=goal.id if goal else None,
             context_id=context.id if context else None,
+            tag_id=tag.id if tag else None,
             notes=notes,
             blocked_by_id=blocked_by.id if blocked_by else None,
             effort=effort,
@@ -506,47 +599,8 @@ class Todo(Base):
         effort_str = f" ({self.effort.value})" if self.effort else ""
         defer_str = f" defer_until={self.defer_until.strftime('%Y-%m-%d %H:%M')}" if self.defer_until else ""
         context_str = f" [{self.context.name}]" if self.context else ""
-        tags_str = f" @{','.join(t.name for t in self.tags)}" if self.tags else ""
-        return f"<Todo #{self.id} {self.title!r} [{self.status.value}]{effort_str}{defer_str}{context_str}{tags_str}>"
-
-
-class TodoTag(Base, HasUniqueName):
-    """A GTD-style actionability tag (e.g. 'serbule-keep', 'has-carrots') -- distinct from Context
-    (which game/character), this is many-to-many: a Todo surfaces when any of its tags currently
-    applies (you're at that location, you're holding that item, etc).
-
-    parent_id forms a tag hierarchy (adjacency list) -- e.g. 'winco' has parent 'grocery', so a
-    Todo tagged only 'winco' still surfaces when filtering by the broader 'grocery' tag, without
-    needing to be tagged with both. Standard taxonomy-tree pattern, same shape as folder trees or
-    category trees; matches this project's own hierarchy-over-flat-lists principle."""
-
-    __tablename__ = "todo_tag"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    parent_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("todo_tag.id"), nullable=True)
-
-    parent: Mapped[Optional[TodoTag]] = relationship("TodoTag", remote_side=[id])
-
-    def ancestors(self) -> list[TodoTag]:
-        """This tag plus every parent up the chain, broadest last."""
-        chain = [self]
-        node = self
-        while node.parent is not None:
-            node = node.parent
-            chain.append(node)
-        return chain
-
-    def __repr__(self) -> str:
-        parent_str = f" -> {self.parent.name}" if self.parent else ""
-        return f"<TodoTag {self.name!r}{parent_str}>"
-
-
-class TodoTagLink(Base):
-    __tablename__ = "todo_tag_link"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    todo_id: Mapped[int] = mapped_column(Integer, ForeignKey("todo.id"), nullable=False)
-    tag_id: Mapped[int] = mapped_column(Integer, ForeignKey("todo_tag.id"), nullable=False)
+        tag_str = f" @{self.tag.name}" if self.tag else ""
+        return f"<Todo #{self.id} {self.title!r} [{self.status.value}]{effort_str}{defer_str}{context_str}{tag_str}>"
 
 
 # ---------------------------------------------------------------------------
@@ -554,7 +608,7 @@ class TodoTagLink(Base):
 # ---------------------------------------------------------------------------
 
 
-class Daily(Base):
+class Daily(Base, HasContextOrTag):
     """A recurring/optional item — distinct from Goal (a purpose/end-state) and Todo (a step toward one).
 
     domain ("irl"/"pg", mirrors Vendor.domain) separates life-maintenance dailies from game dailies.
@@ -602,6 +656,7 @@ class Daily(Base):
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     context: Mapped[Optional[Context]] = relationship("Context")
+    tag: Mapped[Optional[Tag]] = relationship("Tag")
 
     _WEEKDAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
 
@@ -620,10 +675,28 @@ class Daily(Base):
         return local_day_start.date()
 
     @classmethod
-    def active(cls, session: Session, context: Optional[Context] = None) -> Sequence[Daily]:
+    def active(
+        cls,
+        session: Session,
+        context: Optional[Context] = None,
+        contexts: Optional[Sequence[Context]] = None,
+        include_no_context: bool = False,
+    ) -> Sequence[Daily]:
+        """`context` matches that single context exactly; `contexts` (e.g. from
+        Context.self_and_descendants) matches any context in the given set, plus any
+        Daily whose tag_id is carried by a Context in that set (see HasContextOrTag)."""
         q = select(cls).where(cls.is_active.is_(True))
         if context is not None:
             q = q.where(cls.context_id == context.id)
+        if contexts is not None:
+            ids = [c.id for c in contexts]
+            tag_ids = Context.active_tag_ids(contexts)
+            matches = cls.context_id.in_(ids) | cls.tag_id.in_(tag_ids)
+            q = (
+                q.where(matches | (cls.context_id.is_(None) & cls.tag_id.is_(None)))
+                if include_no_context
+                else q.where(matches)
+            )
         return session.scalars(q).all()
 
     def is_overdue(self, session: Session) -> bool:
@@ -668,6 +741,7 @@ class Daily(Base):
         session: Session,
         description: str,
         context: Optional[Context] = None,
+        tag: Optional[Tag] = None,
         domain: str = "irl",
         tier: DailyTier = DailyTier.CRITICAL,
         recurrence: str = "daily",
@@ -679,6 +753,7 @@ class Daily(Base):
         daily = cls(
             description=description,
             context_id=context.id if context else None,
+            tag_id=tag.id if tag else None,
             domain=domain,
             tier=tier,
             recurrence=recurrence,
@@ -1248,7 +1323,7 @@ class Wishlist(Base):
         return f"<Wishlist #{self.id} {self.title!r}{price} effort={self.effort.value}{priority_str}{pin}>"
 
 
-class Idea(Base):
+class Idea(Base, HasContextOrTag):
     """GTD Someday/Maybe: a project idea you like but haven't committed to acting
     on, distinct from Todo (committed next-action work) and Wishlist (acquire/
     purchase, price-bearing). Deliberately has no defer_until, priority, or score --
@@ -1271,6 +1346,7 @@ class Idea(Base):
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     context: Mapped[Optional[Context]] = relationship("Context")
+    tag: Mapped[Optional[Tag]] = relationship("Tag")
 
     @classmethod
     def active(
@@ -1280,15 +1356,20 @@ class Idea(Base):
         contexts: Optional[Sequence[Context]] = None,
         include_no_context: bool = False,
     ) -> Sequence[Idea]:
+        """`context` matches that single context exactly; `contexts` (e.g. from
+        Context.self_and_descendants) matches any context in the given set, plus any
+        Idea whose tag_id is carried by a Context in that set (see HasContextOrTag)."""
         q = select(cls).where(cls.status == IdeaStatus.ACTIVE)
         if context is not None:
             q = q.where(cls.context_id == context.id)
         if contexts is not None:
             ids = [c.id for c in contexts]
+            tag_ids = Context.active_tag_ids(contexts)
+            matches = cls.context_id.in_(ids) | cls.tag_id.in_(tag_ids)
             q = (
-                q.where(cls.context_id.in_(ids) | cls.context_id.is_(None))
+                q.where(matches | (cls.context_id.is_(None) & cls.tag_id.is_(None)))
                 if include_no_context
-                else q.where(cls.context_id.in_(ids))
+                else q.where(matches)
             )
         return session.scalars(q).all()
 
@@ -1299,9 +1380,16 @@ class Idea(Base):
         title: str,
         description: Optional[str] = None,
         context: Optional[Context] = None,
+        tag: Optional[Tag] = None,
         notes: Optional[str] = None,
     ) -> Idea:
-        idea = cls(title=title, description=description, context_id=context.id if context else None, notes=notes)
+        idea = cls(
+            title=title,
+            description=description,
+            context_id=context.id if context else None,
+            tag_id=tag.id if tag else None,
+            notes=notes,
+        )
         session.add(idea)
         session.flush()
         return idea

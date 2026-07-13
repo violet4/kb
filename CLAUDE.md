@@ -70,6 +70,14 @@ kb context current | switch NAME | list
 
 SQLite silently drops timezone info on `DateTime(timezone=True)` columns on read-back (the column stores it, but the Python value comes back naive). Every such column is written exclusively through `_now()` (`base.py`), which is always UTC — so a naive value read back from one of these columns is safely known to be UTC, and `.replace(tzinfo=timezone.utc)` should be applied before using it for anything: comparing it, displaying it, or reasoning about it, rather than reading the raw attribute at face value. If a new writer for one of these columns is ever added that doesn't go through `_now()` (e.g. a hand-built local timestamp), fix that writer to store UTC too, rather than adding a special case to how the value is read. SQL-level comparisons (inside a `select(...).where(...)`) aren't affected, only Python-level use after the ORM has already loaded the value.
 
+## Daily
+
+```bash
+kb daily show ID | list [--domain D] [--tier critical|optional] | add DESCRIPTION [--domain D] [--tier critical|optional] [--recurrence R] [--show-after-hour H] [--location L] [--reward R] [--notes N] | update ID [...same flags] | complete ID [ID ...] | catch-up ID [ID ...] | activate ID [ID ...] | deactivate ID [ID ...]
+```
+
+`--recurrence` is `daily` (default), `every:N`, `weekly:MON..SUN`, or `monthly:D` (day 1-28) — `kb daily add --help` prints this grammar natively, no need to read `Daily`'s docstring in `models.py` for it. A recurring item has a CLI, same as Goal/Todo/Wishlist; only reach for `kb.py`/`Daily.create(...)` for something the CLI doesn't expose.
+
 ## Log and Journal
 
 ```bash

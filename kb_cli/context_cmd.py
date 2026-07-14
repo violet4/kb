@@ -4,12 +4,29 @@ import argparse
 import sys
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from context import KB_CONTEXT_ENV_VAR, switch_current
-from models import Context, CurrentContext, Tag
+from models import (
+    Context,
+    CurrentContext,
+    Daily,
+    Goal,
+    Idea,
+    Item,
+    LogEntry,
+    Reference,
+    Tag,
+    Timer,
+    Todo,
+    WorkingMemory,
+    Wishlist,
+)
 
 from kb_cli._util import get_by_name
+
+# Every model that can be pinned to a context, in the order counts should print.
+CONTEXT_LINKED_MODELS = (Goal, Todo, Daily, Item, Reference, WorkingMemory, LogEntry, Wishlist, Idea, Timer)
 
 
 def cmd_current(args: argparse.Namespace) -> None:
@@ -68,6 +85,16 @@ def cmd_list(args: argparse.Namespace) -> None:
         print(f"#{c.id} {c.name}{marker}")
 
 
+def _content_counts(session: Any, context_id: int) -> str:
+    """' (Todo: 2, Daily: 1)'-style summary of everything linked to one context, empty string if nothing."""
+    parts = []
+    for model in CONTEXT_LINKED_MODELS:
+        count = session.scalar(select(func.count()).select_from(model).where(model.context_id == context_id))
+        if count:
+            parts.append(f"{model.__name__}: {count}")
+    return f" ({', '.join(parts)})" if parts else ""
+
+
 def cmd_tree(args: argparse.Namespace) -> None:
     """Render the real parent_id tree, tree(1)-style."""
     contexts = args.session.scalars(select(Context)).all()
@@ -75,6 +102,7 @@ def cmd_tree(args: argparse.Namespace) -> None:
         print("No contexts yet.")
         return
     current = CurrentContext.get(args.session)
+    show_counts = args.counts
 
     children: dict[Any, list[Context]] = {}
     for c in contexts:
@@ -86,7 +114,8 @@ def cmd_tree(args: argparse.Namespace) -> None:
         branch = "└── " if is_last else "├── "
         marker = " (current)" if current and current.id == node.id else ""
         tag_str = f" [{', '.join(t.name for t in node.tags)}]" if node.tags else ""
-        print(f"{prefix}{branch}{node.name}{tag_str}{marker}")
+        counts_str = _content_counts(args.session, node.id) if show_counts else ""
+        print(f"{prefix}{branch}{node.name}{tag_str}{marker}{counts_str}")
         extension = "    " if is_last else "│   "
         kids = children.get(node.id, [])
         for i, kid in enumerate(kids):
@@ -160,6 +189,11 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_list.set_defaults(func=cmd_list)
 
     p_tree = sub.add_parser("tree", help="Render the context tree")
+    p_tree.add_argument(
+        "--counts",
+        action="store_true",
+        help="Annotate each context with counts of everything linked to it (Goals, Todos, Dailies, ...)",
+    )
     p_tree.set_defaults(func=cmd_tree)
 
     p_tag = sub.add_parser("tag", help="Attach one or more tags to a context (creates tags that don't exist yet)")

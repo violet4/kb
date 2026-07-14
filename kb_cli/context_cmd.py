@@ -12,6 +12,7 @@ from models import (
     CurrentContext,
     Daily,
     Goal,
+    GoalStatus,
     Idea,
     Item,
     LogEntry,
@@ -19,6 +20,7 @@ from models import (
     Tag,
     Timer,
     Todo,
+    TodoStatus,
     WorkingMemory,
     Wishlist,
 )
@@ -29,7 +31,12 @@ from kb_cli._util import get_by_name
 CONTEXT_LINKED_MODELS = (Goal, Todo, Daily, Item, Reference, WorkingMemory, LogEntry, Wishlist, Idea, Timer)
 
 # LogEntry is a timestamped fact, not a status-bearing item -- worth counting but not worth listing in --items.
-ITEM_LISTED_MODELS = tuple(m for m in CONTEXT_LINKED_MODELS if m is not LogEntry)
+# Idea gets its own --ideas flag instead of clogging up the default --items listing.
+ITEM_LISTED_MODELS = tuple(m for m in CONTEXT_LINKED_MODELS if m not in (LogEntry, Idea))
+
+# Terminal statuses to exclude from --items by default -- only active work should clutter the tree.
+_GOAL_TERMINAL = (GoalStatus.COMPLETED, GoalStatus.ABANDONED)
+_TODO_TERMINAL = (TodoStatus.DONE, TodoStatus.DROPPED)
 
 
 def cmd_current(args: argparse.Namespace) -> None:
@@ -99,11 +106,21 @@ def _content_counts(session: Any, context_id: int) -> str:
 
 
 def _content_items(session: Any, context_id: int) -> list[Any]:
-    """Every row linked to one context, across all context-bearing models -- reuses each model's own __repr__."""
+    """Every non-terminal row linked to one context, across all context-bearing models -- reuses each model's own __repr__."""
     items: list[Any] = []
     for model in ITEM_LISTED_MODELS:
-        items.extend(session.scalars(select(model).where(model.context_id == context_id)).all())
+        q = select(model).where(model.context_id == context_id)
+        if model is Goal:
+            q = q.where(Goal.status.notin_(_GOAL_TERMINAL))
+        elif model is Todo:
+            q = q.where(Todo.status.notin_(_TODO_TERMINAL))
+        items.extend(session.scalars(q).all())
     return items
+
+
+def _content_ideas(session: Any, context_id: int) -> list[Any]:
+    """Every Idea linked to one context."""
+    return list(session.scalars(select(Idea).where(Idea.context_id == context_id)).all())
 
 
 def cmd_tree(args: argparse.Namespace) -> None:
@@ -113,8 +130,9 @@ def cmd_tree(args: argparse.Namespace) -> None:
         print("No contexts yet.")
         return
     current = CurrentContext.get(args.session)
-    show_counts = args.counts or args.items
+    show_counts = args.counts or args.items or args.ideas
     show_items = args.items
+    show_ideas = args.ideas
 
     children: dict[Any, list[Context]] = {}
     for c in contexts:
@@ -131,9 +149,11 @@ def cmd_tree(args: argparse.Namespace) -> None:
         extension = "    " if is_last else "│   "
         kids = children.get(node.id, [])
         items = _content_items(args.session, node.id) if show_items else []
+        ideas = _content_ideas(args.session, node.id) if show_ideas else []
+        entries = items + ideas
         child_prefix = prefix + extension
-        for i, item in enumerate(items):
-            item_is_last = (i == len(items) - 1) and not kids
+        for i, item in enumerate(entries):
+            item_is_last = (i == len(entries) - 1) and not kids
             item_branch = "└── " if item_is_last else "├── "
             print(f"{child_prefix}{item_branch}{item!r}")
         for i, kid in enumerate(kids):
@@ -236,7 +256,12 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_tree.add_argument(
         "--items",
         action="store_true",
-        help="List every item linked to each context (implies --counts)",
+        help="List every active (non-terminal) item linked to each context (implies --counts)",
+    )
+    p_tree.add_argument(
+        "--ideas",
+        action="store_true",
+        help="List every Idea linked to each context (implies --counts)",
     )
     p_tree.set_defaults(func=cmd_tree)
 

@@ -129,13 +129,15 @@ def cmd_tree(args: argparse.Namespace) -> None:
         counts_str = _content_counts(args.session, node.id) if show_counts else ""
         print(f"{prefix}{branch}{node.name} #{node.id}{tag_str}{marker}{counts_str}")
         extension = "    " if is_last else "│   "
-        if show_items:
-            item_prefix = prefix + extension + "    "
-            for item in _content_items(args.session, node.id):
-                print(f"{item_prefix}{item!r}")
         kids = children.get(node.id, [])
+        items = _content_items(args.session, node.id) if show_items else []
+        child_prefix = prefix + extension
+        for i, item in enumerate(items):
+            item_is_last = (i == len(items) - 1) and not kids
+            item_branch = "└── " if item_is_last else "├── "
+            print(f"{child_prefix}{item_branch}{item!r}")
         for i, kid in enumerate(kids):
-            render(kid, prefix + extension, i == len(kids) - 1)
+            render(kid, child_prefix, i == len(kids) - 1)
 
     if args.name:
         node = get_by_name(args.session, Context, args.name)

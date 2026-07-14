@@ -30,9 +30,16 @@ from kb_cli._util import get_by_name
 # Every model that can be pinned to a context, in the order counts should print.
 CONTEXT_LINKED_MODELS = (Goal, Todo, Daily, Item, Reference, WorkingMemory, LogEntry, Wishlist, Idea, Timer)
 
-# LogEntry is a timestamped fact, not a status-bearing item -- worth counting but not worth listing in --items.
-# Idea gets its own --ideas flag instead of clogging up the default --items listing.
-ITEM_LISTED_MODELS = tuple(m for m in CONTEXT_LINKED_MODELS if m not in (LogEntry, Idea))
+# LogEntry is a timestamped fact, not a status-bearing entity -- worth counting but not worth listing.
+# Idea gets its own --ideas flag instead of clogging up the default listing.
+# One flag's model tuple per --<flag> in `context tree`; --entities is the union of all of these.
+ENTITY_FLAG_MODELS: dict[str, tuple[Any, ...]] = {
+    "goals": (Goal,),
+    "todos": (Todo,),
+    "dailies": (Daily,),
+    "items": (Item,),
+}
+ALL_ENTITY_MODELS = tuple(m for m in CONTEXT_LINKED_MODELS if m not in (LogEntry, Idea))
 
 # Terminal statuses to exclude from --items by default -- only active work should clutter the tree.
 _GOAL_TERMINAL = (GoalStatus.COMPLETED, GoalStatus.ABANDONED)
@@ -105,10 +112,10 @@ def _content_counts(session: Any, context_id: int) -> str:
     return f" ({', '.join(parts)})" if parts else ""
 
 
-def _content_items(session: Any, context_id: int) -> list[Any]:
-    """Every non-terminal row linked to one context, across all context-bearing models -- reuses each model's own __repr__."""
+def _content_items(session: Any, context_id: int, models: tuple[Any, ...]) -> list[Any]:
+    """Every non-terminal row linked to one context, across the given models -- reuses each model's own __repr__."""
     items: list[Any] = []
-    for model in ITEM_LISTED_MODELS:
+    for model in models:
         q = select(model).where(model.context_id == context_id)
         if model is Goal:
             q = q.where(Goal.status.notin_(_GOAL_TERMINAL))
@@ -130,8 +137,19 @@ def cmd_tree(args: argparse.Namespace) -> None:
         print("No contexts yet.")
         return
     current = CurrentContext.get(args.session)
-    show_counts = args.counts or args.items or args.ideas
-    show_items = args.items
+    want_goals = args.goals or args.gtd
+    want_todos = args.todos or args.gtd
+    want_dailies = args.dailies or args.gtd
+    if args.entities:
+        entity_models = ALL_ENTITY_MODELS
+    else:
+        entity_models = (
+            (ENTITY_FLAG_MODELS["goals"] if want_goals else ())
+            + (ENTITY_FLAG_MODELS["todos"] if want_todos else ())
+            + (ENTITY_FLAG_MODELS["dailies"] if want_dailies else ())
+            + (ENTITY_FLAG_MODELS["items"] if args.items else ())
+        )
+    show_counts = args.counts or bool(entity_models) or args.ideas
     show_ideas = args.ideas
 
     children: dict[Any, list[Context]] = {}
@@ -148,7 +166,7 @@ def cmd_tree(args: argparse.Namespace) -> None:
         print(f"{prefix}{branch}{node.name} #{node.id}{tag_str}{marker}{counts_str}")
         extension = "    " if is_last else "│   "
         kids = children.get(node.id, [])
-        items = _content_items(args.session, node.id) if show_items else []
+        items = _content_items(args.session, node.id, entity_models) if entity_models else []
         ideas = _content_ideas(args.session, node.id) if show_ideas else []
         entries = items + ideas
         child_prefix = prefix + extension
@@ -246,7 +264,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         "--all",
         "-a",
         action="store_true",
-        help="Show the full tree instead of scoping to the current context",
+        help="Show the full context tree instead of scoping to the current context",
     )
     p_tree.add_argument(
         "--counts",
@@ -254,9 +272,34 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         help="Annotate each context with counts of everything linked to it (Goals, Todos, Dailies, ...)",
     )
     p_tree.add_argument(
+        "--goals",
+        action="store_true",
+        help="List active (non-terminal) Goals linked to each context (implies --counts)",
+    )
+    p_tree.add_argument(
+        "--todos",
+        action="store_true",
+        help="List active (non-terminal) Todos linked to each context (implies --counts)",
+    )
+    p_tree.add_argument(
+        "--dailies",
+        action="store_true",
+        help="List Dailies linked to each context (implies --counts)",
+    )
+    p_tree.add_argument(
+        "--gtd",
+        action="store_true",
+        help="Shorthand for --goals --todos --dailies",
+    )
+    p_tree.add_argument(
         "--items",
         action="store_true",
-        help="List every active (non-terminal) item linked to each context (implies --counts)",
+        help="List Items linked to each context (implies --counts)",
+    )
+    p_tree.add_argument(
+        "--entities",
+        action="store_true",
+        help="List every active (non-terminal) entity of every kind linked to each context, i.e. --gtd --items plus Reference/WorkingMemory/Wishlist/Timer (implies --counts)",
     )
     p_tree.add_argument(
         "--ideas",

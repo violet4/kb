@@ -97,7 +97,7 @@ Every piece of information has exactly one correct home, chosen by what kind of 
 
 - **How to operate a project** (commands, running tests, migrations, service management) → that project's `CLAUDE.md`/`README.md`.
 - **Durable knowledge that outlives any single task** (lore, tips, hard-earned discoveries, reference facts) → a kb Note, in the collection that matches its domain.
-- **Active, trackable work with a status** (something with a beginning and an end, or a step toward one) → a kb `Goal` (the end/purpose) or `Todo` (a step toward one), scoped to the right `Context`.
+- **Active, trackable work with a status** (something with a beginning and an end, or a step toward one) → a kb `Goal` (the end/purpose) or `Todo` (a step toward one), scoped to the right `Context`. Neither name implies a size limit — a `Goal`/`Todo` can carry a full design writeup (options considered, tradeoffs, ordered sub-steps) the same as a one-line errand; the word "todo" evokes a short household checklist item by everyday connotation, not by anything in the schema, so don't let that connotation push multi-step or design-heavy work into a new file or table instead. Route by *status-bearing-ness*, not by how much text the item holds.
 - **What's currently being worked on, right now, in this session** → the ephemeral `TaskCreate` list, kept as thin pointers into the durable kb records above — never the sole copy of anything worth keeping.
 - **Cross-conversation facts about how to collaborate** (user preferences, corrections, confirmed approaches) → a `~/.claude/memory/` file, per the Memory section below.
 - **A fact true only for this exact moment** (today's date, the current directory, an in-progress diff) → don't persist it anywhere; it isn't information, it's state.

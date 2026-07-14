@@ -28,6 +28,9 @@ from kb_cli._util import get_by_name
 # Every model that can be pinned to a context, in the order counts should print.
 CONTEXT_LINKED_MODELS = (Goal, Todo, Daily, Item, Reference, WorkingMemory, LogEntry, Wishlist, Idea, Timer)
 
+# LogEntry is a timestamped fact, not a status-bearing item -- worth counting but not worth listing in --items.
+ITEM_LISTED_MODELS = tuple(m for m in CONTEXT_LINKED_MODELS if m is not LogEntry)
+
 
 def cmd_current(args: argparse.Namespace) -> None:
     context = CurrentContext.get(args.session)
@@ -98,7 +101,7 @@ def _content_counts(session: Any, context_id: int) -> str:
 def _content_items(session: Any, context_id: int) -> list[Any]:
     """Every row linked to one context, across all context-bearing models -- reuses each model's own __repr__."""
     items: list[Any] = []
-    for model in CONTEXT_LINKED_MODELS:
+    for model in ITEM_LISTED_MODELS:
         items.extend(session.scalars(select(model).where(model.context_id == context_id)).all())
     return items
 

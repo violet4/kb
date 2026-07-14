@@ -137,6 +137,11 @@ def cmd_tree(args: argparse.Namespace) -> None:
         for i, kid in enumerate(kids):
             render(kid, prefix + extension, i == len(kids) - 1)
 
+    if args.name:
+        node = get_by_name(args.session, Context, args.name)
+        render(node, "", True)
+        return
+
     if not args.all and current:
         render(current, "", True)
         print("(scoped to current context -- pass --all to see the full tree)")
@@ -210,6 +215,11 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_list.set_defaults(func=cmd_list)
 
     p_tree = sub.add_parser("tree", help="Render the context tree, scoped to the current context by default")
+    p_tree.add_argument(
+        "name",
+        nargs="?",
+        help="Show the subtree rooted at this named context instead of the current context",
+    )
     p_tree.add_argument(
         "--all",
         "-a",

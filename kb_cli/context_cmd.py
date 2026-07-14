@@ -212,6 +212,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_tree = sub.add_parser("tree", help="Render the context tree, scoped to the current context by default")
     p_tree.add_argument(
         "--all",
+        "-a",
         action="store_true",
         help="Show the full tree instead of scoping to the current context",
     )

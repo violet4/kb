@@ -95,6 +95,14 @@ def _content_counts(session: Any, context_id: int) -> str:
     return f" ({', '.join(parts)})" if parts else ""
 
 
+def _content_items(session: Any, context_id: int) -> list[Any]:
+    """Every row linked to one context, across all context-bearing models -- reuses each model's own __repr__."""
+    items: list[Any] = []
+    for model in CONTEXT_LINKED_MODELS:
+        items.extend(session.scalars(select(model).where(model.context_id == context_id)).all())
+    return items
+
+
 def cmd_tree(args: argparse.Namespace) -> None:
     """Render the real parent_id tree, tree(1)-style."""
     contexts = args.session.scalars(select(Context)).all()
@@ -102,7 +110,8 @@ def cmd_tree(args: argparse.Namespace) -> None:
         print("No contexts yet.")
         return
     current = CurrentContext.get(args.session)
-    show_counts = args.counts
+    show_counts = args.counts or args.items
+    show_items = args.items
 
     children: dict[Any, list[Context]] = {}
     for c in contexts:
@@ -115,11 +124,20 @@ def cmd_tree(args: argparse.Namespace) -> None:
         marker = " (current)" if current and current.id == node.id else ""
         tag_str = f" [{', '.join(t.name for t in node.tags)}]" if node.tags else ""
         counts_str = _content_counts(args.session, node.id) if show_counts else ""
-        print(f"{prefix}{branch}{node.name}{tag_str}{marker}{counts_str}")
+        print(f"{prefix}{branch}{node.name} #{node.id}{tag_str}{marker}{counts_str}")
         extension = "    " if is_last else "│   "
+        if show_items:
+            item_prefix = prefix + extension + "    "
+            for item in _content_items(args.session, node.id):
+                print(f"{item_prefix}{item!r}")
         kids = children.get(node.id, [])
         for i, kid in enumerate(kids):
             render(kid, prefix + extension, i == len(kids) - 1)
+
+    if not args.all and current:
+        render(current, "", True)
+        print("(scoped to current context -- pass --all to see the full tree)")
+        return
 
     roots = children.get(None, [])
     for i, root in enumerate(roots):
@@ -188,11 +206,21 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_list = sub.add_parser("list", help="List all known contexts (flat)")
     p_list.set_defaults(func=cmd_list)
 
-    p_tree = sub.add_parser("tree", help="Render the context tree")
+    p_tree = sub.add_parser("tree", help="Render the context tree, scoped to the current context by default")
+    p_tree.add_argument(
+        "--all",
+        action="store_true",
+        help="Show the full tree instead of scoping to the current context",
+    )
     p_tree.add_argument(
         "--counts",
         action="store_true",
         help="Annotate each context with counts of everything linked to it (Goals, Todos, Dailies, ...)",
+    )
+    p_tree.add_argument(
+        "--items",
+        action="store_true",
+        help="List every item linked to each context (implies --counts)",
     )
     p_tree.set_defaults(func=cmd_tree)
 

@@ -11,6 +11,7 @@ from context import resolve_context
 from models import Context, Goal, GoalStatus, Journal
 
 from kb_cli._util import add_history_arg, print_journal_history
+from kb_cli.search import cmd_search
 
 
 def cmd_add(args: argparse.Namespace) -> None:
@@ -131,3 +132,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_list.add_argument("--status", choices=[s.value for s in GoalStatus])
     p_list.add_argument("--all", action="store_true", help="Ignore context scoping and show Goals from every context")
     p_list.set_defaults(func=cmd_list)
+
+    p_search = sub.add_parser("search", help="Search Goals by text")
+    p_search.add_argument("query")
+    p_search.set_defaults(func=cmd_search, model=Goal)

@@ -5,6 +5,7 @@ import sys
 from typing import Iterable
 
 from models import Wishlist, WishlistEffort, WishlistStatus
+from kb_cli.search import cmd_search
 
 
 def _validate_0_100(args: argparse.Namespace, names: Iterable[str]) -> None:
@@ -106,3 +107,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     pin_group.add_argument("--pinned", dest="pinned", action="store_true", default=None, help="Show in kb summary")
     pin_group.add_argument("--unpinned", dest="pinned", action="store_false", help="Hide from kb summary")
     p_update.set_defaults(func=cmd_update)
+
+    p_search = sub.add_parser("search", help="Search wishlist items by text")
+    p_search.add_argument("query")
+    p_search.set_defaults(func=cmd_search, model=Wishlist)

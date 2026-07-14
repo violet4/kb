@@ -9,6 +9,7 @@ from kb_cli.context_cmd import render_tree
 from models import Context, Journal, Tag, Todo, TodoStatus, WishlistEffort
 
 from kb_cli._util import add_history_arg, get_by_name, print_journal_history
+from kb_cli.search import cmd_search
 
 
 def _parse_defer_until(raw: str) -> datetime:
@@ -233,3 +234,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         "--all", action="store_true", help="Show the full tree (not just current context) and include deferred Todos"
     )
     p_tree.set_defaults(func=cmd_tree)
+
+    p_search = sub.add_parser("search", help="Search Todos by text")
+    p_search.add_argument("query")
+    p_search.set_defaults(func=cmd_search, model=Todo)

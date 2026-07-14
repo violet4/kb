@@ -20,7 +20,8 @@ Usage: kb [--context NAME] [--as-of WHEN] <command> [subcommand ...] [args ...]
   kb log add ... | recent
   kb context current | add NAME | switch NAME [--local] | clear [--local] | list | tree
   kb summary|sum|s [SECTION ...]
-  kb wishlist add ... | update ID ...
+  kb wishlist add ... | update ID ... | search QUERY
+  kb search QUERY   # search Goals, Todos, and Wishlist by text, plus Notes by semantic similarity
   kb games pg entity npc|mob|mob-drop|item|player|character|relation|skill|hangout ...
   kb games pg quest show|add|complete ...
   kb pager FILE [--lines N] [--reset]
@@ -44,7 +45,7 @@ if (
     subprocess.run(["scripts/dev/setup-hooks"], cwd=_KB_ROOT, check=False)
 
 from context import resolve_context
-from kb_cli import anki, context_cmd, daily, goal, idea, inbox, journal, log, notes, pager, summary, tag, timer, todo, wishlist
+from kb_cli import anki, context_cmd, daily, goal, idea, inbox, journal, log, notes, pager, search, summary, tag, timer, todo, wishlist
 from kb_cli import games
 from models import SessionFactory
 
@@ -84,6 +85,7 @@ timer.add_subparser(subparsers)
 pager.add_subparser(subparsers)
 anki.add_subparser(subparsers)
 games.add_subparser(subparsers)
+search.add_subparser(subparsers)
 
 args = parser.parse_args()
 args.session = SessionFactory()

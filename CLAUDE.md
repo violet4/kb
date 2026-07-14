@@ -2,7 +2,7 @@
 
 Personal knowledge base. SQLite + SQLAlchemy 2.0. Run `scripts/dev/gen-api` for the full model/method surface before making any queries or updates. Every script here (including `kb.py`) is directly executable from any directory — no `uv run` prefix needed, the shebang handles it.
 
-`kb <command> [subcommand ...] [args]` is the global CLI entry point (`~/bin/kb` symlinks to `~/kb/kb`), usable from any directory on the filesystem, not just from inside `~/kb`. It dispatches to `kb_cli/*.py` — real importable Python modules (not standalone executables), each exposing an `add_subparser(subparsers)` hook that the top-level `kb` script wires into one argparse tree. `kb <command> --help` (at any nesting depth, e.g. `kb games pg entity mob --help`) documents itself natively. This covers Goal/Todo/Idea/Inbox/Journal/Notes/Log/Context/Summary/Wishlist and per-game commands (`kb games pg ...`) — anything meant to be reachable no matter which project you're currently working in. `scripts/db`, `scripts/dev`, `scripts/model`, `scripts/service` stay as plain `scripts/*` executables, kb-repo-local only, since migrating/checking schema/etc. only makes sense while actually developing kb itself — mirrors the split between `~/kb/CLAUDE.md` (this file, kb-repo-local) and `~/kb/CLAUDE_GLOBAL.md` (symlinked from `~/.claude/CLAUDE.md`, global).
+`kb <command> [subcommand ...] [args]` is the global CLI entry point (`~/bin/kb` symlinks to `~/kb/kb`), usable from any directory on the filesystem, not just from inside `~/kb`. It dispatches to `kb_cli/*.py` — real importable Python modules (not standalone executables), each exposing an `add_subparser(subparsers)` hook that the top-level `kb` script wires into one argparse tree. `kb <command> --help` (at any nesting depth, e.g. `kb games pg entity mob --help`) documents itself natively. This covers Goal/Todo/Idea/Inbox/Journal/Notes/Log/Context/Summary/Wishlist/Search and per-game commands (`kb games pg ...`) — anything meant to be reachable no matter which project you're currently working in. `scripts/db`, `scripts/dev`, `scripts/model`, `scripts/service` stay as plain `scripts/*` executables, kb-repo-local only, since migrating/checking schema/etc. only makes sense while actually developing kb itself — mirrors the split between `~/kb/CLAUDE.md` (this file, kb-repo-local) and `~/kb/CLAUDE_GLOBAL.md` (symlinked from `~/.claude/CLAUDE.md`, global).
 
 `kb --context NAME <command> ...` is a global flag on the top-level `kb` script itself (parsed before dispatch, in `kb`, not in any `kb_cli/*.py` subparser) — it resolves once via `resolve_context()` into `args.context`, already a `Context` object, and every subcommand that accepts a context (e.g. `goal add`, `todo add`) just forwards `args.context` straight through without declaring its own `--context` argument. Don't add a per-subcommand `--context` flag to a `kb_cli/*.py` module expecting it to work like this global one; only `todo update` has its own `--context NAME` (a string, resolved inside that command) for changing an existing record's context after the fact, which is a different, per-command flag from this global one.
 
@@ -23,6 +23,17 @@ Cache stable-but-frequently-referenced facts locally (e.g. game mechanics, refer
 ```bash
 kb summary [goals|todos|people|wishlist|inbox ...]   # active/pending overview; no args shows all sections
 ```
+
+## Search
+
+```bash
+kb search QUERY              # everything at once: Goal/Todo/Wishlist by substring, Notes by semantic similarity
+kb goal search QUERY         # Goal only
+kb todo search QUERY         # Todo only
+kb wishlist search QUERY     # Wishlist only
+```
+
+Check here before writing an ad hoc `kb.py` query — "is X in the wishlist/goals/todos" is exactly what `kb search` is for. `kb_cli/search.py`'s `search_entities` is the one substring-search engine (title/description/notes, `ilike`) shared by all four commands above; `kb search` additionally calls `Note.search(..., Collection.ALL)` for the RAG side, since notes need their own embedding-based mechanism, not a text substring match.
 
 ## Inbox
 

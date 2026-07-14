@@ -3,11 +3,9 @@
 import argparse
 import sys
 from datetime import datetime, timedelta, timezone
-from typing import Any
-
-from sqlalchemy import select
 
 from context import resolve_context
+from context_tree import render_context_tree
 from models import Context, Journal, Tag, Todo, TodoStatus, WishlistEffort
 
 from kb_cli._util import add_history_arg, get_by_name, print_journal_history
@@ -158,48 +156,8 @@ def cmd_tree(args: argparse.Namespace) -> None:
     tag-addressed Todo (e.g. "buy salt" @tavern) prints under every Context in the
     tree that carries that tag, not just once, so it's visible wherever it's
     actually actionable without having to check another location's list."""
-    contexts = args.session.scalars(select(Context)).all()
     todos = Todo.pending(args.session, include_deferred=args.all)
-
-    children: dict[Any, list[Context]] = {}
-    for c in contexts:
-        children.setdefault(c.parent_id, []).append(c)
-    for kids in children.values():
-        kids.sort(key=lambda c: c.name)
-
-    by_context_id: dict[int, list[Todo]] = {}
-    by_tag_id: dict[int, list[Todo]] = {}
-    unplaced: list[Todo] = []
-    for t in todos:
-        if t.context_id is not None:
-            by_context_id.setdefault(t.context_id, []).append(t)
-        elif t.tag_id is not None:
-            by_tag_id.setdefault(t.tag_id, []).append(t)
-        else:
-            unplaced.append(t)
-
-    def render(node: Context, prefix: str, is_last: bool) -> None:
-        branch = "└── " if is_last else "├── "
-        tag_str = f" [{', '.join(t.name for t in node.tags)}]" if node.tags else ""
-        print(f"{prefix}{branch}{node.name}{tag_str}")
-        extension = "    " if is_last else "│   "
-
-        here = list(by_context_id.get(node.id, []))
-        for tag in node.tags:
-            here.extend(by_tag_id.get(tag.id, []))
-
-        kids = children.get(node.id, [])
-        for i, t in enumerate(here):
-            is_leaf_last = (i == len(here) - 1) and not kids
-            leaf_branch = "└── " if is_leaf_last else "├── "
-            print(f"{prefix}{extension}{leaf_branch}t{t.id} {t.title}")
-
-        for i, kid in enumerate(kids):
-            render(kid, prefix + extension, i == len(kids) - 1)
-
-    roots = children.get(None, [])
-    for i, root in enumerate(roots):
-        render(root, "", i == len(roots) - 1)
+    unplaced = render_context_tree(args.session, todos, lambda t: f"t{t.id} {t.title}")
 
     if unplaced:
         print(f"\n({len(unplaced)} todo(s) with no context/tag -- see kb todo list)")

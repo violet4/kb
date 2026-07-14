@@ -44,7 +44,7 @@ if (
     subprocess.run(["scripts/dev/setup-hooks"], cwd=_KB_ROOT, check=False)
 
 from context import resolve_context
-from kb_cli import anki, context_cmd, daily, goal, idea, inbox, journal, log, notes, pager, summary, tag, todo, wishlist
+from kb_cli import anki, context_cmd, daily, goal, idea, inbox, journal, log, notes, pager, summary, tag, timer, todo, wishlist
 from kb_cli import games
 from models import SessionFactory
 
@@ -80,6 +80,7 @@ log.add_subparser(subparsers)
 context_cmd.add_subparser(subparsers)
 summary.add_subparser(subparsers)
 wishlist.add_subparser(subparsers)
+timer.add_subparser(subparsers)
 pager.add_subparser(subparsers)
 anki.add_subparser(subparsers)
 games.add_subparser(subparsers)

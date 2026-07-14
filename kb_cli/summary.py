@@ -90,7 +90,7 @@ def goals_section(session: Session) -> str | None:
 def todos_section(session: Session) -> str | None:
     current = CurrentContext.get(session)
     in_scope = Context.self_and_descendants(session, current.name) if current else None
-    todos = Todo.pending(session, contexts=in_scope, include_no_context=True)
+    todos = Todo.active(session, contexts=in_scope, include_no_context=True)
     if not todos:
         return None
     lines = ["=== TODOS ==="]
@@ -99,7 +99,7 @@ def todos_section(session: Session) -> str | None:
         ctx = f" [{t.context.name}]" if t.context else ""
         lines.append(f"- #{t.id} [{t.status.value}] {t.title}{goal}{ctx}")
     if current is not None:
-        all_ids = [t.context_id for t in Todo.pending(session)]
+        all_ids = [t.context_id for t in Todo.active(session)]
         hint = _other_contexts_hint(session, {c.id for c in in_scope} if in_scope else set(), all_ids)
         if hint:
             lines.append(hint)

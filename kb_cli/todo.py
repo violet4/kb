@@ -5,7 +5,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 from context import resolve_context
-from context_tree import render_context_tree
+from kb_cli.context_cmd import render_tree
 from models import Context, Journal, Tag, Todo, TodoStatus, WishlistEffort
 
 from kb_cli._util import add_history_arg, get_by_name, print_journal_history
@@ -120,7 +120,7 @@ def cmd_complete(args: argparse.Namespace) -> None:
 
 def cmd_pending(args: argparse.Namespace) -> None:
     effort = WishlistEffort(args.effort) if args.effort else None
-    todos = Todo.pending(args.session, effort=effort, include_deferred=args.all)
+    todos = Todo.active(args.session, effort=effort, include_deferred=args.all)
     if not todos:
         print("No pending todos.")
         return
@@ -137,11 +137,11 @@ def cmd_pending(args: argparse.Namespace) -> None:
 def cmd_list(args: argparse.Namespace) -> None:
     effort = WishlistEffort(args.effort) if args.effort else None
     if args.all:
-        todos = Todo.pending(args.session, effort=effort, include_deferred=True)
+        todos = Todo.active(args.session, effort=effort, include_deferred=True)
     else:
         current = resolve_context(args.session)
         in_scope = Context.self_and_descendants(args.session, current.name) if current else None
-        todos = Todo.pending(
+        todos = Todo.active(
             args.session, contexts=in_scope, include_no_context=True, effort=effort, include_deferred=True
         )
     if not todos:
@@ -152,15 +152,20 @@ def cmd_list(args: argparse.Namespace) -> None:
 
 
 def cmd_tree(args: argparse.Namespace) -> None:
-    """Render pending Todos nested under the Context tree, tree(1)-style -- a
+    """Render active Todos nested under the Context tree, tree(1)-style -- thin wrapper
+    around `kb context tree --todos` (see render_tree in context_cmd.py), so a
     tag-addressed Todo (e.g. "buy salt" @tavern) prints under every Context in the
     tree that carries that tag, not just once, so it's visible wherever it's
-    actually actionable without having to check another location's list."""
-    todos = Todo.pending(args.session, include_deferred=args.all)
-    unplaced = render_context_tree(args.session, todos, lambda t: f"t{t.id} {t.title}")
+    actually actionable without having to check another location's list.
 
-    if unplaced:
-        print(f"\n({len(unplaced)} todo(s) with no context/tag -- see kb todo list)")
+    Scoped to the current context by default, matching `kb context tree`/`kb todo list` --
+    `--all` shows the full tree and includes not-yet-due deferred Todos too."""
+    render_tree(
+        args.session,
+        entity_models=(Todo,),
+        active_kwargs={Todo: {"include_deferred": args.all}},
+        scope_to_current=not args.all,
+    )
 
 
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
@@ -224,5 +229,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_tree = sub.add_parser(
         "tree", help="Render pending Todos nested under the Context tree (tag-addressed Todos repeat per match)"
     )
-    p_tree.add_argument("--all", action="store_true", help="Also include deferred Todos not yet due")
+    p_tree.add_argument(
+        "--all", action="store_true", help="Show the full tree (not just current context) and include deferred Todos"
+    )
     p_tree.set_defaults(func=cmd_tree)

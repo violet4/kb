@@ -2,7 +2,7 @@
 
 import argparse
 import sys
-from typing import Any
+from typing import Any, Optional
 
 from sqlalchemy import func, select
 
@@ -12,7 +12,6 @@ from models import (
     CurrentContext,
     Daily,
     Goal,
-    GoalStatus,
     Idea,
     Item,
     LogEntry,
@@ -20,7 +19,6 @@ from models import (
     Tag,
     Timer,
     Todo,
-    TodoStatus,
     WorkingMemory,
     Wishlist,
 )
@@ -40,10 +38,6 @@ ENTITY_FLAG_MODELS: dict[str, tuple[Any, ...]] = {
     "items": (Item,),
 }
 ALL_ENTITY_MODELS = tuple(m for m in CONTEXT_LINKED_MODELS if m not in (LogEntry, Idea))
-
-# Terminal statuses to exclude from --items by default -- only active work should clutter the tree.
-_GOAL_TERMINAL = (GoalStatus.COMPLETED, GoalStatus.ABANDONED)
-_TODO_TERMINAL = (TodoStatus.DONE, TodoStatus.DROPPED)
 
 
 def cmd_current(args: argparse.Namespace) -> None:
@@ -102,41 +96,131 @@ def cmd_list(args: argparse.Namespace) -> None:
         print(f"#{c.id} {c.name}{marker}")
 
 
-def _content_counts(session: Any, context_id: int) -> str:
-    """' (Todo: 2, Daily: 1)'-style summary of everything linked to one context, empty string if nothing."""
+def _matches_node(model: Any, node: Context) -> Any:
+    """Match expression for one model against a single Context -- context_id.in_([node.id])
+    plus tag_id fan-out for models that support it (see HasContextOrTag.matches_contexts).
+    Models without tag_id (Item, LogEntry, ...) fall back to a plain context_id match."""
+    if hasattr(model, "matches_contexts"):
+        return model.matches_contexts([node])
+    return model.context_id == node.id
+
+
+def _content_counts(session: Any, node: Context) -> str:
+    """' (Todo: 2, Daily: 1)'-style summary of everything linked to one context, empty string if nothing.
+
+    Counts tag-addressed rows too, for any tag this context carries -- see _content_items.
+    """
     parts = []
     for model in CONTEXT_LINKED_MODELS:
-        count = session.scalar(select(func.count()).select_from(model).where(model.context_id == context_id))
+        count = session.scalar(select(func.count()).select_from(model).where(_matches_node(model, node)))
         if count:
             parts.append(f"{model.__name__}: {count}")
     return f" ({', '.join(parts)})" if parts else ""
 
 
-def _content_items(session: Any, context_id: int, models: tuple[Any, ...]) -> list[Any]:
-    """Every non-terminal row linked to one context, across the given models -- reuses each model's own __repr__."""
+def _content_items(
+    session: Any,
+    node: Context,
+    models: tuple[Any, ...],
+    active_kwargs: Optional[dict[Any, dict[str, Any]]] = None,
+) -> list[Any]:
+    """Every row linked to one context that its own entity considers active right now, across
+    the given models -- reuses each model's own __repr__.
+
+    Delegates to each model's own .active(contexts=[node]) (Goal/Todo/Daily/Idea/Timer -- every
+    HasContextOrTag model, keyed off matches_contexts rather than active() itself since Wishlist
+    also defines .active() but with an unrelated, context-free signature) rather than re-deriving
+    "what counts as active" here -- that's the one place status/defer_until/etc. filtering is
+    owned, so kb todo tree / kb goal tree / kb context tree --todos can never drift out of sync
+    with each other or with `kb todo pending`. Models with no matches_contexts (Item, Reference,
+    LogEntry, WorkingMemory, Wishlist) fall back to a plain context/tag match, since they have no
+    separate notion of "active" beyond being linked here at all.
+
+    active_kwargs lets a caller pass extra per-model .active() kwargs (e.g. Todo's
+    include_deferred=True for `kb todo tree --all`) without this function needing to know
+    what any particular model's extra flags mean.
+    """
+    active_kwargs = active_kwargs or {}
     items: list[Any] = []
     for model in models:
-        q = select(model).where(model.context_id == context_id)
-        if model is Goal:
-            q = q.where(Goal.status.notin_(_GOAL_TERMINAL))
-        elif model is Todo:
-            q = q.where(Todo.status.notin_(_TODO_TERMINAL))
-        items.extend(session.scalars(q).all())
+        if hasattr(model, "matches_contexts"):
+            items.extend(model.active(session, contexts=[node], **active_kwargs.get(model, {})))
+        else:
+            items.extend(session.scalars(select(model).where(_matches_node(model, node))).all())
     return items
 
 
-def _content_ideas(session: Any, context_id: int) -> list[Any]:
-    """Every Idea linked to one context."""
-    return list(session.scalars(select(Idea).where(Idea.context_id == context_id)).all())
+def _content_ideas(session: Any, node: Context) -> list[Any]:
+    """Every Idea linked to one context, including tag-addressed Ideas for tags this context carries."""
+    matches = Idea.matches_contexts([node])
+    return list(session.scalars(select(Idea).where(matches)).all())
+
+
+def render_tree(
+    session: Any,
+    entity_models: tuple[Any, ...] = (),
+    show_ideas: bool = False,
+    root_name: Optional[str] = None,
+    scope_to_current: bool = False,
+    active_kwargs: Optional[dict[Any, dict[str, Any]]] = None,
+) -> None:
+    """Render the real parent_id Context tree, tree(1)-style, with each entry an entity linked
+    to that Context (directly or via a shared Tag -- see _content_items).
+
+    The one tree-rendering engine behind `kb context tree [--goals|--todos|--dailies|...]`,
+    `kb todo tree`, `kb goal tree`, and friends -- each of those is a thin call into this with a
+    different `entity_models`, so "what counts as active/visible here" is defined once (in each
+    model's own .active(), via _content_items) rather than redefined per command.
+    """
+    contexts = session.scalars(select(Context)).all()
+    if not contexts:
+        print("No contexts yet.")
+        return
+    current = CurrentContext.get(session)
+    show_counts = bool(entity_models) or show_ideas
+
+    children: dict[Any, list[Context]] = {}
+    for c in contexts:
+        children.setdefault(c.parent_id, []).append(c)
+    for kids in children.values():
+        kids.sort(key=lambda c: c.name)
+
+    def render(node: Context, prefix: str, is_last: bool) -> None:
+        branch = "└── " if is_last else "├── "
+        marker = " (current)" if current and current.id == node.id else ""
+        tag_str = f" [{', '.join(t.name for t in node.tags)}]" if node.tags else ""
+        counts_str = _content_counts(session, node) if show_counts else ""
+        print(f"{prefix}{branch}{node.name} #{node.id}{tag_str}{marker}{counts_str}")
+        extension = "    " if is_last else "│   "
+        kids = children.get(node.id, [])
+        items = _content_items(session, node, entity_models, active_kwargs) if entity_models else []
+        ideas = _content_ideas(session, node) if show_ideas else []
+        entries = items + ideas
+        child_prefix = prefix + extension
+        for i, item in enumerate(entries):
+            item_is_last = (i == len(entries) - 1) and not kids
+            item_branch = "└── " if item_is_last else "├── "
+            print(f"{child_prefix}{item_branch}{item!r}")
+        for i, kid in enumerate(kids):
+            render(kid, child_prefix, i == len(kids) - 1)
+
+    if root_name:
+        node = get_by_name(session, Context, root_name)
+        render(node, "", True)
+        return
+
+    if scope_to_current and current:
+        render(current, "", True)
+        print("(scoped to current context -- pass --all to see the full tree)")
+        return
+
+    roots = children.get(None, [])
+    for i, root in enumerate(roots):
+        render(root, "", i == len(roots) - 1)
 
 
 def cmd_tree(args: argparse.Namespace) -> None:
     """Render the real parent_id tree, tree(1)-style."""
-    contexts = args.session.scalars(select(Context)).all()
-    if not contexts:
-        print("No contexts yet.")
-        return
-    current = CurrentContext.get(args.session)
     want_goals = args.goals or args.gtd
     want_todos = args.todos or args.gtd
     want_dailies = args.dailies or args.gtd
@@ -149,47 +233,13 @@ def cmd_tree(args: argparse.Namespace) -> None:
             + (ENTITY_FLAG_MODELS["dailies"] if want_dailies else ())
             + (ENTITY_FLAG_MODELS["items"] if args.items else ())
         )
-    show_counts = args.counts or bool(entity_models) or args.ideas
-    show_ideas = args.ideas
-
-    children: dict[Any, list[Context]] = {}
-    for c in contexts:
-        children.setdefault(c.parent_id, []).append(c)
-    for kids in children.values():
-        kids.sort(key=lambda c: c.name)
-
-    def render(node: Context, prefix: str, is_last: bool) -> None:
-        branch = "└── " if is_last else "├── "
-        marker = " (current)" if current and current.id == node.id else ""
-        tag_str = f" [{', '.join(t.name for t in node.tags)}]" if node.tags else ""
-        counts_str = _content_counts(args.session, node.id) if show_counts else ""
-        print(f"{prefix}{branch}{node.name} #{node.id}{tag_str}{marker}{counts_str}")
-        extension = "    " if is_last else "│   "
-        kids = children.get(node.id, [])
-        items = _content_items(args.session, node.id, entity_models) if entity_models else []
-        ideas = _content_ideas(args.session, node.id) if show_ideas else []
-        entries = items + ideas
-        child_prefix = prefix + extension
-        for i, item in enumerate(entries):
-            item_is_last = (i == len(entries) - 1) and not kids
-            item_branch = "└── " if item_is_last else "├── "
-            print(f"{child_prefix}{item_branch}{item!r}")
-        for i, kid in enumerate(kids):
-            render(kid, child_prefix, i == len(kids) - 1)
-
-    if args.name:
-        node = get_by_name(args.session, Context, args.name)
-        render(node, "", True)
-        return
-
-    if not args.all and current:
-        render(current, "", True)
-        print("(scoped to current context -- pass --all to see the full tree)")
-        return
-
-    roots = children.get(None, [])
-    for i, root in enumerate(roots):
-        render(root, "", i == len(roots) - 1)
+    render_tree(
+        args.session,
+        entity_models=entity_models,
+        show_ideas=args.ideas,
+        root_name=args.name,
+        scope_to_current=not args.all,
+    )
 
 
 def cmd_tag(args: argparse.Namespace) -> None:

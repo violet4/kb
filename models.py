@@ -291,9 +291,12 @@ class HasContextOrTag:
     """A single tag_id, mutually exclusive with the entity's own context_id: a Goal/Todo/Daily/
     Idea is either pinned to one place (context_id) or floats to anywhere carrying a matching
     Tag (tag_id), never both -- see Context/Tag docstrings for why. Composed alongside each
-    entity's own context_id column, which predates this mixin and stays entity-local."""
+    entity's own context_id column, which predates this mixin and stays entity-local -- declared
+    here too (Optional[int], no mapped_column) purely so mypy knows every subclass provides it;
+    the real column comes from the subclass's own mapped_column(..., ForeignKey("context.id"))."""
 
     tag_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("tag.id"), nullable=True)
+    context_id: Mapped[Optional[int]]
 
     @validates("tag_id")
     def _validate_tag_id(self, key: str, value: Optional[int]) -> Optional[int]:
@@ -306,6 +309,17 @@ class HasContextOrTag:
         if value is not None and getattr(self, "tag_id", None) is not None:
             raise ValueError(f"{type(self).__name__}: context_id and tag_id are mutually exclusive")
         return value
+
+    @classmethod
+    def matches_contexts(cls, contexts: Sequence[Context]) -> Any:
+        """The one 'is this row addressable from this set of Contexts' expression --
+        true for a row pinned to one of these contexts directly (context_id), or floating
+        via a tag_id any of these contexts carries (see Tag docstring). Every caller that
+        needs this match (a subtree-scoped .active() query, a single-node tree render) should
+        go through this instead of re-deriving the context_id/tag_id OR by hand."""
+        ids = [c.id for c in contexts]
+        tag_ids = Context.active_tag_ids(contexts)
+        return cls.context_id.in_(ids) | cls.tag_id.in_(tag_ids)
 
 
 class CurrentContext(Base):
@@ -478,9 +492,7 @@ class Goal(Base, HasContextOrTag):
         if context is not None:
             q = q.where(cls.context_id == context.id)
         if contexts is not None:
-            ids = [c.id for c in contexts]
-            tag_ids = Context.active_tag_ids(contexts)
-            matches = cls.context_id.in_(ids) | cls.tag_id.in_(tag_ids)
+            matches = cls.matches_contexts(contexts)
             q = (
                 q.where(matches | (cls.context_id.is_(None) & cls.tag_id.is_(None)))
                 if include_no_context
@@ -535,7 +547,7 @@ class Todo(Base, HasContextOrTag):
     blocked_by: Mapped[Optional[Todo]] = relationship("Todo", remote_side=[id])
 
     @classmethod
-    def pending(
+    def active(
         cls,
         session: Session,
         context: Optional[Context] = None,
@@ -549,14 +561,14 @@ class Todo(Base, HasContextOrTag):
         Todo whose tag_id is carried by a Context in that set (see HasContextOrTag) --
         use the latter for a context-plus-sub-contexts filter. include_no_context also
         surfaces Todos with no context/tag at all (e.g. for a summary view that treats
-        untagged items as always-relevant, regardless of which context is active)."""
+        untagged items as always-relevant, regardless of which context is active).
+        Named to match Goal/Daily/Idea's own .active() -- every context/tag-addressable
+        entity exposes the same shape so a generic renderer can call it uniformly."""
         q = select(cls).where(cls.status.in_([TodoStatus.PENDING, TodoStatus.IN_PROGRESS]))
         if context is not None:
             q = q.where(cls.context_id == context.id)
         if contexts is not None:
-            ids = [c.id for c in contexts]
-            tag_ids = Context.active_tag_ids(contexts)
-            matches = cls.context_id.in_(ids) | cls.tag_id.in_(tag_ids)
+            matches = cls.matches_contexts(contexts)
             q = (
                 q.where(matches | (cls.context_id.is_(None) & cls.tag_id.is_(None)))
                 if include_no_context
@@ -689,9 +701,7 @@ class Daily(Base, HasContextOrTag):
         if context is not None:
             q = q.where(cls.context_id == context.id)
         if contexts is not None:
-            ids = [c.id for c in contexts]
-            tag_ids = Context.active_tag_ids(contexts)
-            matches = cls.context_id.in_(ids) | cls.tag_id.in_(tag_ids)
+            matches = cls.matches_contexts(contexts)
             q = (
                 q.where(matches | (cls.context_id.is_(None) & cls.tag_id.is_(None)))
                 if include_no_context
@@ -1363,9 +1373,7 @@ class Idea(Base, HasContextOrTag):
         if context is not None:
             q = q.where(cls.context_id == context.id)
         if contexts is not None:
-            ids = [c.id for c in contexts]
-            tag_ids = Context.active_tag_ids(contexts)
-            matches = cls.context_id.in_(ids) | cls.tag_id.in_(tag_ids)
+            matches = cls.matches_contexts(contexts)
             q = (
                 q.where(matches | (cls.context_id.is_(None) & cls.tag_id.is_(None)))
                 if include_no_context
@@ -1435,8 +1443,26 @@ class Timer(Base, HasContextOrTag):
     tag: Mapped[Optional[Tag]] = relationship("Tag")
 
     @classmethod
-    def active(cls, session: Session) -> Sequence[Timer]:
-        return session.scalars(select(cls).where(cls.status == TimerStatus.ACTIVE)).all()
+    def active(
+        cls,
+        session: Session,
+        context: Optional[Context] = None,
+        contexts: Optional[Sequence[Context]] = None,
+        include_no_context: bool = False,
+    ) -> Sequence[Timer]:
+        """Same shape as Goal/Todo/Daily/Idea's .active() -- see Todo.active's docstring
+        for why every context/tag-addressable entity matches this signature."""
+        q = select(cls).where(cls.status == TimerStatus.ACTIVE)
+        if context is not None:
+            q = q.where(cls.context_id == context.id)
+        if contexts is not None:
+            matches = cls.matches_contexts(contexts)
+            q = (
+                q.where(matches | (cls.context_id.is_(None) & cls.tag_id.is_(None)))
+                if include_no_context
+                else q.where(matches)
+            )
+        return session.scalars(q).all()
 
     @classmethod
     def create(

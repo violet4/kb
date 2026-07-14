@@ -97,7 +97,7 @@ def cmd_reactivate(args: argparse.Namespace) -> None:
 
 
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
-    parser = subparsers.add_parser("goal", help="Goal operations")
+    parser = subparsers.add_parser("goal", aliases=["g"], help="Goal operations")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_add = sub.add_parser("add", help="Add a Goal")

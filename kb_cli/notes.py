@@ -64,7 +64,7 @@ def cmd_reembed(args: argparse.Namespace) -> None:
 
 
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
-    parser = subparsers.add_parser("notes", help="Note operations")
+    parser = subparsers.add_parser("notes", aliases=["n", "note"], help="Note operations")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_get = sub.add_parser("get", help="Show a note by id")

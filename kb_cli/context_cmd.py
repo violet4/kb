@@ -122,7 +122,7 @@ def cmd_untag(args: argparse.Namespace) -> None:
 
 
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
-    parser = subparsers.add_parser("context", help="Context operations")
+    parser = subparsers.add_parser("context", aliases=["c"], help="Context operations")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_current = sub.add_parser("current", help="Show the active context")

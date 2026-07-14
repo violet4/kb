@@ -206,7 +206,7 @@ def cmd_tree(args: argparse.Namespace) -> None:
 
 
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
-    parser = subparsers.add_parser("todo", help="Todo operations")
+    parser = subparsers.add_parser("todo", aliases=["t"], help="Todo operations")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_show = sub.add_parser("show", help="Show Todo details")

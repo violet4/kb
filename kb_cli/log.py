@@ -30,7 +30,7 @@ def cmd_recent(args: argparse.Namespace) -> None:
 
 
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
-    parser = subparsers.add_parser("log", help="Log operations")
+    parser = subparsers.add_parser("log", aliases=["l"], help="Log operations")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_add = sub.add_parser("add", help="Add a log entry")

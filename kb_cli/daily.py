@@ -158,7 +158,7 @@ def cmd_deactivate(args: argparse.Namespace) -> None:
 
 
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
-    parser = subparsers.add_parser("daily", help="Daily operations")
+    parser = subparsers.add_parser("daily", aliases=["d"], help="Daily operations")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_show = sub.add_parser("show", help="Show Daily details")

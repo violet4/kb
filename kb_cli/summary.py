@@ -163,14 +163,23 @@ SECTIONS: dict[str, Callable[[Session], str | None]] = {
     "idea": idea_section,
 }
 
+SECTION_ALIASES: dict[str, str] = {
+    "d": "dailies",
+    "g": "goals",
+    "t": "todos",
+    "w": "wishlist",
+    "i": "inbox",
+}
+
 
 def cmd_summary(args: argparse.Namespace) -> None:
-    unknown = [s for s in args.section if s not in SECTIONS]
+    requested = [SECTION_ALIASES.get(s, s) for s in args.section]
+    unknown = [s for s in requested if s not in SECTIONS]
     if unknown:
         print(f"invalid section(s) {unknown}; choose from {', '.join(SECTIONS)}", file=sys.stderr)
         sys.exit(2)
 
-    names = args.section or list(SECTIONS)
+    names = requested or list(SECTIONS)
     rendered = [SECTIONS[name](args.session) for name in names]
     sections = [s for s in rendered if s is not None]
 
@@ -191,6 +200,9 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         "summary", aliases=["sum", "s"], help="Print an overview of active Goals/Todos/overdue contacts/wishlist"
     )
     parser.add_argument(
-        "section", nargs="*", metavar="SECTION", help=f"Only show these sections ({'/'.join(SECTIONS)}); default: all"
+        "section",
+        nargs="*",
+        metavar="SECTION",
+        help=f"Only show these sections ({'/'.join(SECTIONS)}; single-letter aliases: d/g/t/w/i); default: all",
     )
     parser.set_defaults(func=cmd_summary)

@@ -72,7 +72,7 @@ def cmd_update(args: argparse.Namespace) -> None:
 
 
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
-    parser = subparsers.add_parser("wishlist", help="Wishlist operations")
+    parser = subparsers.add_parser("wishlist", aliases=["w"], help="Wishlist operations")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_add = sub.add_parser("add", help="Add a wishlist item")

@@ -4,11 +4,11 @@ import argparse
 import sys
 from datetime import datetime, timedelta, timezone
 
-from context import resolve_context
+from context import resolve_context, warn_ambient_context
 from kb_cli.context_cmd import render_tree
 from models import Context, Journal, Tag, Todo, TodoStatus, WishlistEffort
 
-from kb_cli._util import add_history_arg, get_by_name, print_journal_history
+from kb_cli._util import add_history_arg, apply_context_or_tag_update, apply_updates, get_by_name, print_journal_history
 from kb_cli.search import cmd_search
 
 
@@ -80,30 +80,26 @@ def cmd_add(args: argparse.Namespace) -> None:
         tag=tag,
     )
     args.session.commit()
+    if not tag:
+        warn_ambient_context(args, "Todo", "todo", todo.id)
     print(todo)
 
 
 def cmd_update(args: argparse.Namespace) -> None:
-    todo = args.session.get(Todo, args.id)
-    if todo is None:
-        print(f"Todo #{args.id}: not found", file=sys.stderr)
-        sys.exit(1)
-    if args.title is not None:
-        todo.title = args.title
-    if args.effort is not None:
-        todo.effort = WishlistEffort(args.effort)
-    if args.defer_until is not None:
-        todo.defer_until = _parse_defer_until(args.defer_until)
-    if args.notes is not None:
-        todo.notes = args.notes
-    if args.new_context is not None:
-        todo.tag = None
-        todo.context = resolve_context(args.session, args.new_context)
-    if args.new_tag is not None:
-        todo.context = None
-        todo.tag = get_by_name(args.session, Tag, args.new_tag)
-    if args.goal is not None:
-        todo.goal_id = args.goal
+    todo = apply_updates(
+        args.session,
+        Todo,
+        args.id,
+        "Todo",
+        {
+            "title": args.title,
+            "effort": WishlistEffort(args.effort) if args.effort else None,
+            "defer_until": _parse_defer_until(args.defer_until) if args.defer_until else None,
+            "notes": args.notes,
+            "goal_id": args.goal,
+        },
+    )
+    apply_context_or_tag_update(args.session, todo, args.new_context, args.new_tag)
     args.session.commit()
     print(todo)
 

@@ -293,10 +293,15 @@ class HasContextOrTag:
     Tag (tag_id), never both -- see Context/Tag docstrings for why. Composed alongside each
     entity's own context_id column, which predates this mixin and stays entity-local -- declared
     here too (Optional[int], no mapped_column) purely so mypy knows every subclass provides it;
-    the real column comes from the subclass's own mapped_column(..., ForeignKey("context.id"))."""
+    the real column comes from the subclass's own mapped_column(..., ForeignKey("context.id")).
+    context/tag (the relationship attributes, not the _id FK columns) are declared the same
+    type-only way, so shared helpers (e.g. kb_cli._util.apply_context_or_tag_update) can assign
+    through the mixin type -- the real relationship() comes from each subclass."""
 
     tag_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("tag.id"), nullable=True)
     context_id: Mapped[Optional[int]]
+    context: Mapped[Optional[Context]]
+    tag: Mapped[Optional["Tag"]]
 
     @validates("tag_id")
     def _validate_tag_id(self, key: str, value: Optional[int]) -> Optional[int]:

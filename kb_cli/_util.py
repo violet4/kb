@@ -7,13 +7,14 @@ dependencies flow one way, from command modules down to here.
 
 import argparse
 import sys
-from typing import Iterable, Sequence, Type, TypeVar
+from typing import Any, Iterable, Optional, Sequence, Type, TypeVar
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from context import resolve_context
 from mixins import HasUniqueName
-from models import Journal
+from models import HasContextOrTag, Journal, Tag
 from models_pg import PgItem
 
 # SQLAlchemy declarative classes don't satisfy structural Protocol matching (their
@@ -33,6 +34,40 @@ def get_by_name(sess: Session, cls: Type[T], name: str) -> T:
         print(f"{cls.__name__} {name!r}: not found", file=sys.stderr)
         sys.exit(1)
     return obj
+
+
+E = TypeVar("E")
+
+
+def apply_updates(session: Session, model: Type[E], entity_id: int, entity_label: str, fields: dict[str, Any]) -> E:
+    """The one `cmd_update` body shared by every entity's update command: look up
+    the row by id (exit with an error if missing) and set each attr whose new value
+    isn't None. `fields` maps attr name -> already-transformed new value (enum
+    coercion, parsing, etc. is the caller's job -- this only skips None entries and
+    assigns the rest). Does not commit -- the caller commits once, after any further
+    mutation (e.g. apply_context_or_tag_update) is applied in the same transaction."""
+    row = session.get(model, entity_id)
+    if row is None:
+        print(f"{entity_label} #{entity_id}: not found", file=sys.stderr)
+        sys.exit(1)
+    for attr, value in fields.items():
+        if value is not None:
+            setattr(row, attr, value)
+    return row
+
+
+def apply_context_or_tag_update(
+    session: Session, row: HasContextOrTag, new_context: Optional[str], new_tag: Optional[str]
+) -> None:
+    """Re-pin a HasContextOrTag row's context/tag after creation, the shared logic
+    behind every entity's `update --context`/`--tag` flags. Setting one clears the
+    other, matching HasContextOrTag's mutual-exclusivity validator."""
+    if new_context is not None:
+        row.tag = None
+        row.context = resolve_context(session, new_context)
+    if new_tag is not None:
+        row.context = None
+        row.tag = get_by_name(session, Tag, new_tag)
 
 
 def print_fields(fields: Iterable[tuple[str, object]]) -> None:

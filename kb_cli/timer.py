@@ -6,6 +6,7 @@ import argparse
 import sys
 from datetime import datetime, timezone
 
+from context import warn_ambient_context
 from context_tree import render_context_tree
 from models import Tag, Timer, TimerStatus
 
@@ -49,6 +50,8 @@ def cmd_add(args: argparse.Namespace) -> None:
         repeat_count=args.repeat,
     )
     args.session.commit()
+    if not tag:
+        warn_ambient_context(args, "Timer")
     print(timer)
 
 

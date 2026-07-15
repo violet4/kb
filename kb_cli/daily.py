@@ -6,10 +6,10 @@ from typing import Sequence
 
 from sqlalchemy import select
 
-from context import resolve_context
+from context import warn_ambient_context
 from models import Daily, DailyTier
 
-from kb_cli._util import print_fields, print_table
+from kb_cli._util import apply_context_or_tag_update, apply_updates, print_fields, print_table
 
 
 def cmd_show(args: argparse.Namespace) -> None:
@@ -105,32 +105,28 @@ def cmd_add(args: argparse.Namespace) -> None:
         notes=args.notes,
     )
     args.session.commit()
+    warn_ambient_context(args, "Daily", "daily", daily.id)
     print(daily)
 
 
 def cmd_update(args: argparse.Namespace) -> None:
-    daily = args.session.get(Daily, args.id)
-    if daily is None:
-        print(f"Daily #{args.id}: not found", file=sys.stderr)
-        sys.exit(1)
-    if args.description is not None:
-        daily.description = args.description
-    if args.domain is not None:
-        daily.domain = args.domain
-    if args.tier is not None:
-        daily.tier = DailyTier(args.tier)
-    if args.recurrence is not None:
-        daily.recurrence = args.recurrence
-    if args.show_after_hour is not None:
-        daily.show_after_hour = args.show_after_hour
-    if args.location is not None:
-        daily.location = args.location
-    if args.reward is not None:
-        daily.reward = args.reward
-    if args.notes is not None:
-        daily.notes = args.notes
-    if args.new_context is not None:
-        daily.context = resolve_context(args.session, args.new_context)
+    daily = apply_updates(
+        args.session,
+        Daily,
+        args.id,
+        "Daily",
+        {
+            "description": args.description,
+            "domain": args.domain,
+            "tier": DailyTier(args.tier) if args.tier else None,
+            "recurrence": args.recurrence,
+            "show_after_hour": args.show_after_hour,
+            "location": args.location,
+            "reward": args.reward,
+            "notes": args.notes,
+        },
+    )
+    apply_context_or_tag_update(args.session, daily, args.new_context, args.new_tag)
     args.session.commit()
     print(daily)
 
@@ -201,6 +197,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_update.add_argument("--reward")
     p_update.add_argument("--notes")
     p_update.add_argument("--context", dest="new_context", metavar="NAME")
+    p_update.add_argument("--tag", dest="new_tag", metavar="NAME", help="Address by Tag instead of context")
     p_update.set_defaults(func=cmd_update)
 
     p_complete = sub.add_parser("complete", help="Mark Daily(s) completed for the current day-boundary window")

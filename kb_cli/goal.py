@@ -7,15 +7,33 @@ from typing import Iterable
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from context import resolve_context
+from context import resolve_context, warn_ambient_context
 from models import Context, Goal, GoalStatus, Journal
 
-from kb_cli._util import add_history_arg, print_journal_history
+from kb_cli._util import add_history_arg, apply_context_or_tag_update, apply_updates, print_journal_history
 from kb_cli.search import cmd_search
 
 
 def cmd_add(args: argparse.Namespace) -> None:
     goal = Goal.create(args.session, args.title, description=args.description, context=args.context, notes=args.notes)
+    args.session.commit()
+    warn_ambient_context(args, "Goal", "goal", goal.id)
+    print(goal)
+
+
+def cmd_update(args: argparse.Namespace) -> None:
+    goal = apply_updates(
+        args.session,
+        Goal,
+        args.id,
+        "Goal",
+        {
+            "title": args.title,
+            "description": args.description,
+            "notes": args.notes,
+        },
+    )
+    apply_context_or_tag_update(args.session, goal, args.new_context, args.new_tag)
     args.session.commit()
     print(goal)
 
@@ -106,6 +124,16 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_add.add_argument("--description")
     p_add.add_argument("--notes")
     p_add.set_defaults(func=cmd_add)
+
+    p_update = sub.add_parser("update", help="Update fields on an existing Goal")
+    p_update.add_argument("id", type=int)
+    p_update.add_argument("--title")
+    p_update.add_argument("--description")
+    p_update.add_argument("--notes")
+    p_update_ctx = p_update.add_mutually_exclusive_group()
+    p_update_ctx.add_argument("--context", dest="new_context", metavar="NAME")
+    p_update_ctx.add_argument("--tag", dest="new_tag", metavar="NAME")
+    p_update.set_defaults(func=cmd_update)
 
     p_show = sub.add_parser("show", help="Show Goal details")
     p_show.add_argument("ids", nargs="+", type=int)

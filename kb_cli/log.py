@@ -3,6 +3,7 @@
 import argparse
 from datetime import datetime, timezone
 
+from context import warn_ambient_context
 from models import Context, LogEntry
 
 
@@ -14,6 +15,7 @@ def cmd_add(args: argparse.Namespace) -> None:
         args.session, body=args.body, domain=args.domain, context=args.context, occurred_at=occurred_at
     )
     args.session.commit()
+    warn_ambient_context(args, "LogEntry")
     print(entry)
 
 

@@ -39,6 +39,36 @@ def get_by_name(sess: Session, cls: Type[T], name: str) -> T:
 E = TypeVar("E")
 
 
+def apply_text_edit(current: str, entity_label: str, append: Optional[str], replace: Optional[tuple[str, str]]) -> str:
+    """Compute a new value for a large free-text field (Instruction.body, Note.body, a
+    Goal/Todo's notes, ...) from a small delta instead of requiring the caller to resend
+    the entire unchanged field -- the same motivation as preferring the Edit tool's
+    old_string/new_string over rewriting a whole file for a one-line change.
+
+    append adds a paragraph; replace substitutes one occurrence of (old, new), erroring
+    (rather than guessing) if old is missing or not unique in the field -- exits the
+    process directly, matching this module's existing get_by_name/apply_updates error
+    style, since these are CLI-only helpers with no non-CLI caller today.
+    Pass only one of append/replace -- the caller decides which, if either, applies."""
+    if append is not None:
+        return f"{current}\n\n{append}" if current else append
+    if replace is not None:
+        old, new = replace
+        count = current.count(old)
+        if count == 0:
+            print(f"--replace: old text not found in {entity_label}", file=sys.stderr)
+            sys.exit(1)
+        if count > 1:
+            print(
+                f"--replace: old text appears {count} times in {entity_label} -- "
+                "make it unique (more surrounding context) before replacing",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        return current.replace(old, new)
+    return current
+
+
 def apply_updates(session: Session, model: Type[E], entity_id: int, entity_label: str, fields: dict[str, Any]) -> E:
     """The one `cmd_update` body shared by every entity's update command: look up
     the row by id (exit with an error if missing) and set each attr whose new value

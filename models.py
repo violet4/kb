@@ -356,6 +356,56 @@ class CurrentContext(Base):
         return f"<CurrentContext {self.context.name if self.context else None!r}>"
 
 
+class Instruction(Base, HasContextOrTag):
+    """A node in the topic tree of durable guidance -- unifies what would otherwise be scattered
+    across CLAUDE.md files, Claude Code skills, and Claude Code memory into one structure. Single-
+    parent tree via parent_id (adjacency list), same shape as Context but a SEPARATE tree: Context
+    is where something is actionable (e.g. "pg" -> "Serbule Hills Tavern"); Instruction's parent_id
+    tree is what topic something belongs to (e.g. "engineering" -> "react" -> "dnd-kit"), independent
+    of place. A node can optionally also carry a context_id/tag_id (via HasContextOrTag) to link it
+    into the Context tree when it's genuinely tied to a place, not just a topic (e.g. NPC lore that
+    should surface automatically when Context walks into that location).
+
+    trigger is the whole loading mechanism: null means the node is unconditionally relevant to
+    anyone who reaches it by tree traversal (its body loads automatically). Non-null means only the
+    short trigger string surfaces by default when the node is reached -- the full body is a separate,
+    deliberate fetch, made only once the trigger's condition actually matches what's being worked on.
+    There is no separate "trigger tree" -- a trigger-worded node's children ARE topic-tree navigation,
+    just phrased as conditions ("whenever doing a merge") instead of topic names ("merge").
+
+    Intended navigation is root-to-leaf, one level at a time, judgment-based (which of this level's
+    handful of children is obviously relevant), not a search/similarity operation -- keep each node's
+    children few enough (~5-10) that this stays cheap; restructure (insert an intermediate node)
+    rather than letting any level's fanout grow past that. See kb Goal #23 for full design rationale."""
+
+    __tablename__ = "instruction"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    trigger: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    parent_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("instruction.id"), nullable=True)
+    context_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("context.id"), nullable=True)
+
+    parent: Mapped[Optional[Instruction]] = relationship("Instruction", remote_side=[id])
+    context: Mapped[Optional[Context]] = relationship("Context")
+    tag: Mapped[Optional["Tag"]] = relationship("Tag")
+
+    @classmethod
+    def roots(cls, session: Session) -> Sequence[Instruction]:
+        """Top-level nodes (no parent) -- the entry points to the tree."""
+        return session.scalars(select(cls).where(cls.parent_id.is_(None))).all()
+
+    @classmethod
+    def children(cls, session: Session, parent_id: int) -> Sequence[Instruction]:
+        """Direct children of a node, for one level of tree expansion."""
+        return session.scalars(select(cls).where(cls.parent_id == parent_id)).all()
+
+    def __repr__(self) -> str:
+        trigger_note = f" trigger={self.trigger!r}" if self.trigger else ""
+        return f"<Instruction #{self.id} {self.title!r}{trigger_note}>"
+
+
 class Settings(Base):
     """Single-row table (id=1) for small standalone config values that don't belong on any
     other model. Start here before adding a dedicated settings table for a new value."""

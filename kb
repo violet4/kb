@@ -15,6 +15,8 @@ Usage: kb [--context NAME] [--as-of WHEN] <command> [subcommand ...] [args ...]
   kb tag add NAME [--parent P] | show NAME | set-parent NAME [PARENT] | list
   kb daily add "..." | show ID | list | update ID | complete ID | activate ID | deactivate ID
   kb inbox add ... | pending | triage ID
+  kb instructions root | show TITLE | search QUERY | add TITLE BODY [--parent TITLE] [--trigger "..."] | set-parent TITLE [--parent TITLE] | edit TITLE [--title T] [--body B|--append TEXT|--replace OLD NEW] [--trigger "..."] | delete TITLE [--reparent-children] | tree [--bodies]
+    # nodes are referenced by title everywhere; prefix with # for an id (only needed if a title is ambiguous). Use global --context to link a node into the Context tree.
   kb journal add ENTITY_TYPE ID NOTE | show ENTITY_TYPE ID
   kb notes get ID | add ... | update ... | search ... | reembed
   kb log add ... | recent
@@ -45,7 +47,25 @@ if (
     subprocess.run(["scripts/dev/setup-hooks"], cwd=_KB_ROOT, check=False)
 
 from context import resolve_context
-from kb_cli import anki, context_cmd, daily, goal, idea, inbox, journal, log, notes, pager, search, summary, tag, timer, todo, wishlist
+from kb_cli import (
+    anki,
+    context_cmd,
+    daily,
+    goal,
+    idea,
+    inbox,
+    instruction,
+    journal,
+    log,
+    notes,
+    pager,
+    search,
+    summary,
+    tag,
+    timer,
+    todo,
+    wishlist,
+)
 from kb_cli import games
 from models import SessionFactory
 
@@ -75,6 +95,7 @@ todo.add_subparser(subparsers)
 tag.add_subparser(subparsers)
 daily.add_subparser(subparsers)
 inbox.add_subparser(subparsers)
+instruction.add_subparser(subparsers)
 journal.add_subparser(subparsers)
 notes.add_subparser(subparsers)
 log.add_subparser(subparsers)

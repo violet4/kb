@@ -118,6 +118,8 @@ Always name the specific persistence mechanism explicitly instead of saying "sav
 
 When writing any instruction or memory entry that points to another file for conventions to apply, write it as an imperative to read and apply those conventions, not a passive "see X" pointer.
 
+When a skill, memory file, or other instruction document needs to apply a rule that's already stated elsewhere (e.g. this file's Information Routing rules), point at it by name and section rather than restating it. A restated copy silently goes stale the moment the source changes, since nothing signals that the copy needs updating too — the same DRY failure as duplicated code, just in prose.
+
 Prefer putting operational rules (how to run migrations, how to build, etc.) in the project's discoverable README and docs rather than hidden memory.
 
 Write instructions and context-file guidance in positive/declarative form: state the correct way to do something first, with a concrete example, before mentioning any fallback or exception. Fallbacks come second, scoped to the specific condition that triggers them — don't lead with what to avoid.
@@ -194,6 +196,8 @@ Write every card with the reverse-plus-typed-answer note type in mind by default
 
 ## Code Quality
 
+A rule in this section about structural drift — duplication, single ownership of a concept, schema/structural validation — applies equally to kb's Context/Goal/Todo/Instruction system and other durable prose artifacts (CLAUDE.md files, kb Notes, skills), not just code. When adding or editing such a rule, extend it to say so explicitly rather than leaving the transfer implicit. A rule about compile-time/runtime proof (strict typing, test coverage, formatting) does not transfer automatically — treat applying that class to prose/instructions as an open research question, not something to assume works, per the formal-verification-for-instructions research findings (Astrogator, vericoding vs. vibe coding, POPL 2026) rather than inventing an ad hoc equivalent.
+
 Complexity must be earned. Before adding a new mechanism, the existing code must be fully understandable. If it isn't, refactor first. Refactoring is part of building, not a separate activity. The codebase should never outgrow our ability to reason about it — if the next feature would make it harder to reason about, that's a signal to refactor first, then add. Code we're proud of is code we can fully understand with ease, even after time has passed and our own mental context has changed many times over.
 
 When a clean solution requires restructuring, prefer it over a workaround — necessary restructuring is in scope, not beyond it.
@@ -266,6 +270,12 @@ Before defining an `Enum(...)` column on SQLite, read kb-engineering-10.
 ## Browser Development
 
 We only provide direct support for Firefox.
+
+this is new content added inside browser development section. can you see me? hello!
+
+this is another new line. do you see me?
+
+this is yet another new line.
 
 ## User
 

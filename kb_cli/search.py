@@ -12,12 +12,12 @@ from typing import Any, Sequence
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from models import Collection, Goal, Note, Todo, Wishlist
+from models import Collection, Goal, Instruction, Note, Todo, Wishlist
 
 # Models searchable from the top-level `kb search`, in display order.
-ALL_SEARCHABLE: tuple[Any, ...] = (Goal, Todo, Wishlist)
+ALL_SEARCHABLE: tuple[Any, ...] = (Goal, Todo, Wishlist, Instruction)
 
-_TEXT_COLUMNS = ("title", "description", "notes")
+_TEXT_COLUMNS = ("title", "description", "notes", "body")
 
 
 def search_entities(session: Session, models: Sequence[Any], query: str) -> list[Any]:

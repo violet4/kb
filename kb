@@ -84,7 +84,33 @@ def _parse_as_of(raw: str) -> datetime:
     return now.replace(hour=t.hour, minute=t.minute, second=0, microsecond=0)
 
 
-parser = argparse.ArgumentParser(prog="kb", description="Global kb CLI")
+_ROUTING_EPILOG = """
+Routing a plain statement to the right subcommand:
+  A stated fact/observation about the world -> log add
+  A stated need/intent, not yet done -> todo add
+  A bigger purpose/end-goal, or multi-step work -> goal add
+  A decision/change to an existing record -> journal add ENTITY_TYPE ID NOTE
+  Durable reference knowledge (not tied to a task) -> notes add COLLECTION TITLE BODY
+  Something to buy/acquire, price-bearing -> wishlist add
+  An idea you like but haven't committed to -> idea add
+  Unsure where it goes -> inbox add, triage later
+
+If the need/fact is tied to a place ("next time I'm in X"), that's a --context pin, not
+just words in the title -- check `kb todo --help` for the real flag shape before guessing
+syntax from memory. Example: "I need salt next time I'm in Serbule Keep" is
+  kb --context "serbule keep" todo add "buy salt"
+not a title that mentions the place in passing.
+
+Run kb <command> --help before typing a command from memory -- flags and shapes here are
+illustrative, not exhaustive. See also: kb instructions root.
+"""
+
+parser = argparse.ArgumentParser(
+    prog="kb",
+    description="Global kb CLI",
+    epilog=_ROUTING_EPILOG,
+    formatter_class=argparse.RawDescriptionHelpFormatter,
+)
 parser.add_argument("--context", metavar="NAME", help="Act in context NAME for this command only (must already exist)")
 parser.add_argument("--as-of", metavar="WHEN", help="Run as if the current time were WHEN (local); see usage docstring")
 subparsers = parser.add_subparsers(dest="command", required=True)

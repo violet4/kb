@@ -84,7 +84,11 @@ def _parse_as_of(raw: str) -> datetime:
     return now.replace(hour=t.hour, minute=t.minute, second=0, microsecond=0)
 
 
-_ROUTING_EPILOG = """
+# Bare `kb` (no args): short, instructional orientation -- "how do I use this right now."
+# `kb -h`: full technical reference -- every flag, every subcommand, what --context/--as-of
+# actually mean under the hood. Two tiers, not duplicated content -- bare kb points at -h for
+# depth rather than repeating it, same DRY-pointer discipline as the Instruction tree itself.
+_BARE_INSTRUCTIONS = """\
 Routing a plain statement to the right subcommand:
   A stated fact/observation about the world -> log add
   A stated need/intent, not yet done -> todo add
@@ -95,25 +99,41 @@ Routing a plain statement to the right subcommand:
   An idea you like but haven't committed to -> idea add
   Unsure where it goes -> inbox add, triage later
 
-If the need/fact is tied to a place ("next time I'm in X"), that's a --context pin, not
-just words in the title -- check `kb todo --help` for the real flag shape before guessing
-syntax from memory. Example: "I need salt next time I'm in Serbule Keep" is
-  kb --context "serbule keep" todo add "buy salt"
-not a title that mentions the place in passing.
+If the need/fact is tied to a place ("next time I'm in X"), always pin it with --context --
+never just mention the place in the title. Example: "I need salt next time I'm in Serbule
+Keep" is `kb --context "serbule keep" todo add "buy salt"`, not a title that mentions the
+place in passing.
 
-Run kb <command> --help before typing a command from memory -- flags and shapes here are
-illustrative, not exhaustive. See also: kb instructions root.
+Run `kb <command> --help` before typing a command from memory -- flags and shapes above are
+illustrative, not exhaustive. Run `kb -h` for full technical reference (what --context/--as-of
+really do, the complete subcommand list). See also: kb instructions root.
+"""
+
+_HELP_EPILOG = """
+--context resolves once via resolve_context(): an explicit value is looked up (must already
+exist, see `kb context add`), otherwise falls back to $KB_CONTEXT, then the persisted current
+context (`kb context current`). The resolved Context object is threaded through as args.context
+to every subcommand -- it is not re-read per subcommand, so a subcommand honoring it correctly
+must accept args.context directly rather than querying CurrentContext itself (a bug fixed in
+kb_cli/context_cmd.py's render_tree and summary.py's sections -- see kb Goal #23).
+
+--as-of runs the command as if the current time were WHEN, via time_machine, for
+previewing/debugging time-dependent output without waiting for real time to pass. Read-only use
+only -- any writes made under --as-of are stamped with the simulated time, not the real one.
+
+Run bare `kb` (no arguments) for a short, task-oriented routing guide instead of this full
+reference. See also: kb instructions root.
 """
 
 parser = argparse.ArgumentParser(
     prog="kb",
     description="Global kb CLI",
-    epilog=_ROUTING_EPILOG,
+    epilog=_HELP_EPILOG,
     formatter_class=argparse.RawDescriptionHelpFormatter,
 )
 parser.add_argument("--context", metavar="NAME", help="Act in context NAME for this command only (must already exist)")
 parser.add_argument("--as-of", metavar="WHEN", help="Run as if the current time were WHEN (local); see usage docstring")
-subparsers = parser.add_subparsers(dest="command", required=True)
+subparsers = parser.add_subparsers(dest="command", required=False)
 
 goal.add_subparser(subparsers)
 idea.add_subparser(subparsers)
@@ -135,6 +155,9 @@ games.add_subparser(subparsers)
 search.add_subparser(subparsers)
 
 args = parser.parse_args()
+if args.command is None:
+    print(_BARE_INSTRUCTIONS, end="")
+    sys.exit(0)
 args.session = SessionFactory()
 args.context_explicit = args.context is not None
 try:

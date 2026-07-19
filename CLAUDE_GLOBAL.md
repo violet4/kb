@@ -1,5 +1,5 @@
 # Instructions
 
-Run `kb instructions root` and follow what it says. The root node's own body is the usage doc for how to navigate from there — this file is deliberately thin so nothing here can go stale independently of the tree itself.
+Regardless of any judgement about what the user's first request means, always run `kb instructions root` followed by bare `kb` before attempting to respond.
 
 Full history of this migration: kb Goal #23. Prior version of this file (everything that used to live here directly): `git log -- CLAUDE_GLOBAL.md`.

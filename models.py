@@ -376,7 +376,11 @@ class Instruction(Base, HasContextOrTag):
     Intended navigation is root-to-leaf, one level at a time, judgment-based (which of this level's
     handful of children is obviously relevant), not a search/similarity operation -- keep each node's
     children few enough (~5-10) that this stays cheap; restructure (insert an intermediate node)
-    rather than letting any level's fanout grow past that. See kb Goal #23 for full design rationale."""
+    rather than letting any level's fanout grow past that. See kb Goal #23 for full design rationale.
+
+    This is the one table meant for shareable, git-trackable export (a design in progress as of
+    2026-07 -- see Goal #23) -- unlike Note (a personal notebook), Instruction's content is
+    operational reference documentation, genuinely useful to someone else running this system."""
 
     __tablename__ = "instruction"
 
@@ -1241,6 +1245,13 @@ def _embed_text(title: str, body: str) -> bytes:
 
 
 class Note(Base):
+    """A personal knowledge base / lab notebook entry -- durable facts worth keeping because
+    they were useful or interesting to this user, with no claim of being fact-checked, curated,
+    or written for an audience. Deliberately NOT designed for shareable/git-tracked export the
+    way Instruction is -- see kb Goal #23's Journal for the reasoning (Instruction is reference
+    documentation, meant for an audience; Note is a personal notebook, correctness bar is
+    "good enough for me")."""
+
     __tablename__ = "note"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

@@ -69,9 +69,8 @@ def _other_contexts_hint(session: Session, in_scope_ids: set[int], all_pending_c
     return f"({len(outside)} item(s) in {other_context_count} other context(s))"
 
 
-def goals_section(session: Session) -> str | None:
-    current = CurrentContext.get(session)
-    in_scope = Context.self_and_descendants(session, current.name) if current else None
+def goals_section(session: Session, context: Optional[Context]) -> str | None:
+    in_scope = Context.self_and_descendants(session, context.name) if context else None
     goals = Goal.active(session, contexts=in_scope, include_no_context=True)
     if not goals:
         return None
@@ -79,7 +78,7 @@ def goals_section(session: Session) -> str | None:
     for g in goals:
         ctx = f" [{g.context.name}]" if g.context else ""
         lines.append(f"- #{g.id} {g.title}{ctx}")
-    if current is not None:
+    if context is not None:
         all_ids = [g.context_id for g in Goal.active(session)]
         hint = _other_contexts_hint(session, {c.id for c in in_scope} if in_scope else set(), all_ids)
         if hint:
@@ -87,9 +86,8 @@ def goals_section(session: Session) -> str | None:
     return "\n".join(lines)
 
 
-def todos_section(session: Session) -> str | None:
-    current = CurrentContext.get(session)
-    in_scope = Context.self_and_descendants(session, current.name) if current else None
+def todos_section(session: Session, context: Optional[Context]) -> str | None:
+    in_scope = Context.self_and_descendants(session, context.name) if context else None
     todos = Todo.active(session, contexts=in_scope, include_no_context=True)
     if not todos:
         return None
@@ -98,7 +96,7 @@ def todos_section(session: Session) -> str | None:
         goal = f" → {t.goal.title}" if t.goal else ""
         ctx = f" [{t.context.name}]" if t.context else ""
         lines.append(f"- #{t.id} [{t.status.value}] {t.title}{goal}{ctx}")
-    if current is not None:
+    if context is not None:
         all_ids = [t.context_id for t in Todo.active(session)]
         hint = _other_contexts_hint(session, {c.id for c in in_scope} if in_scope else set(), all_ids)
         if hint:
@@ -152,16 +150,24 @@ def idea_section(session: Session) -> str | None:
     return f"{count} idea(s) — kb idea list"
 
 
-SECTIONS: dict[str, Callable[[Session], str | None]] = {
-    "anki": anki_section,
-    "dailies": dailies_section,
-    "goals": goals_section,
-    "todos": todos_section,
-    "people": people_section,
-    "wishlist": wishlist_section,
-    "inbox": inbox_section,
-    "idea": idea_section,
-}
+SECTION_NAMES: tuple[str, ...] = ("anki", "dailies", "goals", "todos", "people", "wishlist", "inbox", "idea")
+
+
+# Every section is Callable[[Session], str | None] except goals/todos, which also need the
+# resolved --context override (see cmd_summary) -- built as a closure over that context rather
+# than widening every section's signature just for the two that use it.
+def _sections(context: Optional[Context]) -> dict[str, Callable[[Session], str | None]]:
+    return {
+        "anki": anki_section,
+        "dailies": dailies_section,
+        "goals": lambda session: goals_section(session, context),
+        "todos": lambda session: todos_section(session, context),
+        "people": people_section,
+        "wishlist": wishlist_section,
+        "inbox": inbox_section,
+        "idea": idea_section,
+    }
+
 
 SECTION_ALIASES: dict[str, str] = {
     "d": "dailies",
@@ -173,19 +179,23 @@ SECTION_ALIASES: dict[str, str] = {
 
 
 def cmd_summary(args: argparse.Namespace) -> None:
+    sections_map = _sections(args.context)
     requested = [SECTION_ALIASES.get(s, s) for s in args.section]
-    unknown = [s for s in requested if s not in SECTIONS]
+    unknown = [s for s in requested if s not in sections_map]
     if unknown:
-        print(f"invalid section(s) {unknown}; choose from {', '.join(SECTIONS)}", file=sys.stderr)
+        print(f"invalid section(s) {unknown}; choose from {', '.join(sections_map)}", file=sys.stderr)
         sys.exit(2)
 
-    names = requested or list(SECTIONS)
-    rendered = [SECTIONS[name](args.session) for name in names]
+    names = requested or list(sections_map)
+    rendered = [sections_map[name](args.session) for name in names]
     sections = [s for s in rendered if s is not None]
 
     now = datetime.now()
-    current = CurrentContext.get(args.session)
-    ctx_label = f"context: {current.name}" if current else "context: none"
+    persisted_current = CurrentContext.get(args.session)
+    if args.context is not None and (persisted_current is None or args.context.id != persisted_current.id):
+        ctx_label = f"context: {args.context.name} (override; persisted: {persisted_current.name if persisted_current else 'none'})"
+    else:
+        ctx_label = f"context: {persisted_current.name}" if persisted_current else "context: none"
     print(f"{now.strftime('%Y-%m-%d %H:%M')} (week {now.isocalendar().week})")
     print(f"{ctx_label} — kb context switch NAME\n")
 
@@ -203,6 +213,6 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         "section",
         nargs="*",
         metavar="SECTION",
-        help=f"Only show these sections ({'/'.join(SECTIONS)}; single-letter aliases: d/g/t/w/i); default: all",
+        help=f"Only show these sections ({'/'.join(SECTION_NAMES)}; single-letter aliases: d/g/t/w/i); default: all",
     )
     parser.set_defaults(func=cmd_summary)

@@ -163,6 +163,7 @@ def render_tree(
     root_name: Optional[str] = None,
     scope_to_current: bool = False,
     active_kwargs: Optional[dict[Any, dict[str, Any]]] = None,
+    context: Optional[Context] = None,
 ) -> None:
     """Render the real parent_id Context tree, tree(1)-style, with each entry an entity linked
     to that Context (directly or via a shared Tag -- see _content_items).
@@ -171,12 +172,19 @@ def render_tree(
     `kb todo tree`, `kb goal tree`, and friends -- each of those is a thin call into this with a
     different `entity_models`, so "what counts as active/visible here" is defined once (in each
     model's own .active(), via _content_items) rather than redefined per command.
+
+    `context` is the resolved scope (args.context -- honors a `--context` override, falling back
+    to the persisted current context via resolve_context) used for scope_to_current's tree root.
+    It's deliberately separate from the persisted CurrentContext used for the `(current)` marker
+    below -- an override changes what's rendered, not what's remembered as "current" for later
+    commands, so the marker still reflects the real persisted context even under an override.
     """
     contexts = session.scalars(select(Context)).all()
     if not contexts:
         print("No contexts yet.")
         return
-    current = CurrentContext.get(session)
+    persisted_current = CurrentContext.get(session)
+    scope_root = context if context is not None else persisted_current
     show_counts = bool(entity_models) or show_ideas
 
     children: dict[Any, list[Context]] = {}
@@ -187,7 +195,7 @@ def render_tree(
 
     def render(node: Context, prefix: str, is_last: bool) -> None:
         branch = "└── " if is_last else "├── "
-        marker = " (current)" if current and current.id == node.id else ""
+        marker = " (current)" if persisted_current and persisted_current.id == node.id else ""
         tag_str = f" [{', '.join(t.name for t in node.tags)}]" if node.tags else ""
         counts_str = _content_counts(session, node) if show_counts else ""
         print(f"{prefix}{branch}{node.name} #{node.id}{tag_str}{marker}{counts_str}")
@@ -209,8 +217,8 @@ def render_tree(
         render(node, "", True)
         return
 
-    if scope_to_current and current:
-        render(current, "", True)
+    if scope_to_current and scope_root:
+        render(scope_root, "", True)
         print("(scoped to current context -- pass --all to see the full tree)")
         return
 
@@ -239,6 +247,7 @@ def cmd_tree(args: argparse.Namespace) -> None:
         show_ideas=args.ideas,
         root_name=args.name,
         scope_to_current=not args.all,
+        context=args.context,
     )
 
 

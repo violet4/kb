@@ -162,6 +162,7 @@ def cmd_tree(args: argparse.Namespace) -> None:
         entity_models=(Todo,),
         active_kwargs={Todo: {"include_deferred": args.all}},
         scope_to_current=not args.all,
+        context=args.context,
     )
 
 

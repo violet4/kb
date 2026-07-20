@@ -5,16 +5,23 @@ import sys
 
 from sqlalchemy import select
 
-from context import resolve_context, warn_ambient_context
-from models import Context, Idea, IdeaStatus, Journal
+from context import creation_context, resolve_context
+from models import Idea, IdeaStatus, Journal
 
-from kb_cli._util import add_history_arg, apply_context_or_tag_update, apply_updates, print_journal_history
+from kb_cli._util import (
+    add_history_arg,
+    apply_context_or_tag_update,
+    apply_updates,
+    print_journal_history,
+    scope_to_context,
+)
 
 
 def cmd_add(args: argparse.Namespace) -> None:
-    idea = Idea.create(args.session, args.title, description=args.description, context=args.context, notes=args.notes)
+    idea = Idea.create(
+        args.session, args.title, description=args.description, context=creation_context(args), notes=args.notes
+    )
     args.session.commit()
-    warn_ambient_context(args, "Idea", "idea", idea.id)
     print(idea)
 
 
@@ -68,7 +75,7 @@ def cmd_list(args: argparse.Namespace) -> None:
         ideas = args.session.scalars(select(Idea).where(Idea.status == IdeaStatus.ACTIVE)).all()
     else:
         current = resolve_context(args.session)
-        in_scope = Context.self_and_descendants(args.session, current.name) if current else None
+        in_scope = scope_to_context(args.session, current)
         ideas = Idea.active(args.session, contexts=in_scope, include_no_context=True)
     if not ideas:
         print("No ideas.")

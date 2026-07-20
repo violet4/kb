@@ -6,7 +6,7 @@ from typing import Sequence
 
 from sqlalchemy import select
 
-from context import warn_ambient_context
+from context import creation_context
 from models import Daily, DailyTier
 
 from kb_cli._util import apply_context_or_tag_update, apply_updates, print_fields, print_table
@@ -95,7 +95,7 @@ def cmd_add(args: argparse.Namespace) -> None:
     daily = Daily.create(
         args.session,
         args.description,
-        context=args.context,
+        context=creation_context(args),
         domain=args.domain,
         tier=DailyTier(args.tier),
         recurrence=args.recurrence,
@@ -105,7 +105,6 @@ def cmd_add(args: argparse.Namespace) -> None:
         notes=args.notes,
     )
     args.session.commit()
-    warn_ambient_context(args, "Daily", "daily", daily.id)
     print(daily)
 
 

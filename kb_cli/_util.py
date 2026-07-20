@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from context import resolve_context
 from mixins import HasUniqueName
-from models import HasContextOrTag, Journal, Tag
+from models import Context, HasContextOrTag, Journal, Tag
 from models_pg import PgItem
 
 # SQLAlchemy declarative classes don't satisfy structural Protocol matching (their
@@ -34,6 +34,15 @@ def get_by_name(sess: Session, cls: Type[T], name: str) -> T:
         print(f"{cls.__name__} {name!r}: not found", file=sys.stderr)
         sys.exit(1)
     return obj
+
+
+def scope_to_context(session: Session, context: Optional[Context]) -> Optional[Sequence[Context]]:
+    """Print the "context: X"/"context: none" banner a read-scoped list/tree command is
+    filtering by, then return the self_and_descendants scope for that context (or None for
+    everywhere) -- so scoping to the ambient current context never happens silently. See
+    creation_context in context.py for the equivalent, stricter rule for `add` commands."""
+    print(f"context: {context.name}" if context else "context: none", file=sys.stderr)
+    return Context.self_and_descendants(session, context.name) if context else None
 
 
 E = TypeVar("E")

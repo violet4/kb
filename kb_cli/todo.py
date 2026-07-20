@@ -4,11 +4,18 @@ import argparse
 import sys
 from datetime import datetime, timedelta, timezone
 
-from context import resolve_context, warn_ambient_context
+from context import creation_context, resolve_context
 from kb_cli.context_cmd import render_tree
-from models import Context, Journal, Tag, Todo, TodoStatus, WishlistEffort
+from models import Journal, Tag, Todo, TodoStatus, WishlistEffort
 
-from kb_cli._util import add_history_arg, apply_context_or_tag_update, apply_updates, get_by_name, print_journal_history
+from kb_cli._util import (
+    add_history_arg,
+    apply_context_or_tag_update,
+    apply_updates,
+    get_by_name,
+    print_journal_history,
+    scope_to_context,
+)
 from kb_cli.search import cmd_search
 
 
@@ -76,12 +83,10 @@ def cmd_add(args: argparse.Namespace) -> None:
         notes=args.notes,
         effort=effort,
         defer_until=defer_until,
-        context=None if tag else args.context,
+        context=None if tag else creation_context(args),
         tag=tag,
     )
     args.session.commit()
-    if not tag:
-        warn_ambient_context(args, "Todo", "todo", todo.id)
     print(todo)
 
 
@@ -137,7 +142,7 @@ def cmd_list(args: argparse.Namespace) -> None:
         todos = Todo.active(args.session, effort=effort, include_deferred=True)
     else:
         current = resolve_context(args.session)
-        in_scope = Context.self_and_descendants(args.session, current.name) if current else None
+        in_scope = scope_to_context(args.session, current)
         todos = Todo.active(
             args.session, contexts=in_scope, include_no_context=True, effort=effort, include_deferred=True
         )

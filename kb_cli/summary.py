@@ -192,10 +192,12 @@ def cmd_summary(args: argparse.Namespace) -> None:
 
     now = datetime.now()
     persisted_current = CurrentContext.get(args.session)
-    if args.context is not None and (persisted_current is None or args.context.id != persisted_current.id):
-        ctx_label = f"context: {args.context.name} (override; persisted: {persisted_current.name if persisted_current else 'none'})"
+    if persisted_current is None:
+        ctx_label = f"context: {args.context.name} (default, no context ever switched to)"
+    elif args.context.id != persisted_current.id:
+        ctx_label = f"context: {args.context.name} (override; persisted: {persisted_current.name})"
     else:
-        ctx_label = f"context: {persisted_current.name}" if persisted_current else "context: none"
+        ctx_label = f"context: {persisted_current.name}"
     print(f"{now.strftime('%Y-%m-%d %H:%M')} (week {now.isocalendar().week})")
     print(f"{ctx_label} — kb context switch NAME\n")
 

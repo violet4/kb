@@ -7,17 +7,24 @@ from typing import Iterable
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from context import resolve_context, warn_ambient_context
-from models import Context, Goal, GoalStatus, Journal
+from context import creation_context, resolve_context
+from models import Goal, GoalStatus, Journal
 
-from kb_cli._util import add_history_arg, apply_context_or_tag_update, apply_updates, print_journal_history
+from kb_cli._util import (
+    add_history_arg,
+    apply_context_or_tag_update,
+    apply_updates,
+    print_journal_history,
+    scope_to_context,
+)
 from kb_cli.search import cmd_search
 
 
 def cmd_add(args: argparse.Namespace) -> None:
-    goal = Goal.create(args.session, args.title, description=args.description, context=args.context, notes=args.notes)
+    goal = Goal.create(
+        args.session, args.title, description=args.description, context=creation_context(args), notes=args.notes
+    )
     args.session.commit()
-    warn_ambient_context(args, "Goal", "goal", goal.id)
     print(goal)
 
 
@@ -79,7 +86,7 @@ def cmd_list(args: argparse.Namespace) -> None:
         goals = args.session.scalars(select(Goal).where(Goal.status == status)).all()
     else:
         current = resolve_context(args.session)
-        in_scope = Context.self_and_descendants(args.session, current.name) if current else None
+        in_scope = scope_to_context(args.session, current)
         goals = Goal.active(args.session, contexts=in_scope, include_no_context=True)
     if not goals:
         print("No goals.")

@@ -3,7 +3,11 @@
 
 Usage: kb [--context NAME] [--as-of WHEN] <command> [subcommand ...] [args ...]
   --context NAME acts in that context for this command only (must already exist; see
-  `kb context add`). Falls back to $KB_CONTEXT, then the persisted current context.
+  `kb context add`). Falls back to the persisted current context (shared by every shell --
+  for READ-scoped commands only (`todo list`, `context tree`, `kb summary`, ...), which
+  always print which context they resolved to. `add` commands ignore this ambient
+  fallback entirely: with no explicit --context, a new row lands in the fixed `inbox`
+  context instead, never whatever the current context happens to be.
   --as-of WHEN runs this command as if the current time were WHEN, via time_machine --
   for previewing/debugging time-dependent output (e.g. `kb daily list` at a future
   hour) without waiting for real time to pass. Accepts 'HH:MM' (today), 'YYYY-MM-DD',
@@ -20,7 +24,7 @@ Usage: kb [--context NAME] [--as-of WHEN] <command> [subcommand ...] [args ...]
   kb journal add ENTITY_TYPE ID NOTE | show ENTITY_TYPE ID
   kb notes get ID | add ... | update ... | search ... | reembed
   kb log add ... | recent
-  kb context current | add NAME | switch NAME [--local] | clear [--local] | list | tree
+  kb context current | add NAME | switch NAME | clear | list | tree
   kb summary|sum|s [SECTION ...]
   kb wishlist add ... | update ID ... | search QUERY
   kb search QUERY   # search Goals, Todos, and Wishlist by text, plus Notes by semantic similarity
@@ -120,11 +124,22 @@ really do, the complete subcommand list). See also: kb instructions root.
 
 _HELP_EPILOG = """
 --context resolves once via resolve_context(): an explicit value is looked up (must already
-exist, see `kb context add`), otherwise falls back to $KB_CONTEXT, then the persisted current
-context (`kb context current`). The resolved Context object is threaded through as args.context
-to every subcommand -- it is not re-read per subcommand, so a subcommand honoring it correctly
-must accept args.context directly rather than querying CurrentContext itself (a bug fixed in
-kb_cli/context_cmd.py's render_tree and summary.py's sections -- see kb Goal #23).
+exist, see `kb context add`), otherwise falls back to the persisted current context (`kb
+context current`) -- shared by every shell/tab, there is no per-shell override. The resolved
+Context object is threaded through as args.context to every subcommand -- it is not re-read
+per subcommand, so a subcommand honoring it correctly must accept args.context directly rather
+than querying CurrentContext itself (a bug fixed in kb_cli/context_cmd.py's render_tree and
+summary.py's sections -- see kb Goal #23).
+
+This ambient args.context (CurrentContext) is for READ-scoping only (`todo list`, `context
+tree`, `kb summary`, ...) -- every such command prints "context: NAME" so the ambient scope is
+never silently invisible. If CurrentContext has never been set, it resolves to the fixed
+`inbox` Context rather than "show everything" -- a fresh session should see a small, known,
+filtered view, not the entire tree. `add` commands never use this ambient value at all: with
+no explicit --context they pin the new row to `inbox` directly (see creation_context() in
+context.py), so a fresh session can never create a record under an unrelated leftover current
+context. Relocate out of inbox with `kb <noun> update ID --context NAME` once you know where
+it belongs.
 
 --as-of runs the command as if the current time were WHEN, via time_machine, for
 previewing/debugging time-dependent output without waiting for real time to pass. Read-only use

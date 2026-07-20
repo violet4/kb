@@ -6,7 +6,7 @@ from typing import Any, Optional
 
 from sqlalchemy import func, select
 
-from context import KB_CONTEXT_ENV_VAR, switch_current
+from context import switch_current
 from models import (
     Context,
     CurrentContext,
@@ -66,20 +66,12 @@ def cmd_set_parent(args: argparse.Namespace) -> None:
 
 
 def cmd_switch(args: argparse.Namespace) -> None:
-    if args.local:
-        # Print an export line rather than touching the DB, ssh-agent style --
-        # eval "$(kb context switch NAME --local)" scopes the switch to this shell only.
-        print(f"export {KB_CONTEXT_ENV_VAR}={args.name}")
-        return
     context = switch_current(args.session, args.name)
     args.session.commit()
     print(f"Current context: {context.name!r}")
 
 
 def cmd_clear(args: argparse.Namespace) -> None:
-    if args.local:
-        print(f"unset {KB_CONTEXT_ENV_VAR}")
-        return
     CurrentContext.set(args.session, None)
     args.session.commit()
     print("Current context cleared.")
@@ -217,10 +209,12 @@ def render_tree(
         render(node, "", True)
         return
 
-    if scope_to_current and scope_root:
-        render(scope_root, "", True)
-        print("(scoped to current context -- pass --all to see the full tree)")
-        return
+    if scope_to_current:
+        print(f"context: {scope_root.name}" if scope_root else "context: none", file=sys.stderr)
+        if scope_root:
+            render(scope_root, "", True)
+            print("(scoped to current context -- pass --all to see the full tree)")
+            return
 
     roots = children.get(None, [])
     for i, root in enumerate(roots):
@@ -293,21 +287,11 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_set_parent.add_argument("parent", nargs="?", help="Omit to clear the parent")
     p_set_parent.set_defaults(func=cmd_set_parent)
 
-    p_switch = sub.add_parser("switch", help="Change the active context")
+    p_switch = sub.add_parser("switch", help="Change the active context (persists, affects every shell)")
     p_switch.add_argument("name")
-    p_switch.add_argument(
-        "--local",
-        action="store_true",
-        help=f'Print `export {KB_CONTEXT_ENV_VAR}=NAME` instead of persisting -- eval "$(kb context switch NAME --local)" to scope the switch to this shell only',
-    )
     p_switch.set_defaults(func=cmd_switch)
 
-    p_clear = sub.add_parser("clear", help="Clear the active context")
-    p_clear.add_argument(
-        "--local",
-        action="store_true",
-        help=f'Print `unset {KB_CONTEXT_ENV_VAR}` instead -- eval "$(kb context clear --local)" to clear this shell\'s override only',
-    )
+    p_clear = sub.add_parser("clear", help="Clear the active context (persists, affects every shell)")
     p_clear.set_defaults(func=cmd_clear)
 
     p_list = sub.add_parser("list", help="List all known contexts (flat)")

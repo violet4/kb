@@ -170,4 +170,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
 
     p_search = sub.add_parser("search", help="Search Goals by text")
     p_search.add_argument("query")
+    p_search.add_argument(
+        "--all", action="store_true", help="Also include completed/abandoned Goals (excluded by default)"
+    )
     p_search.set_defaults(func=cmd_search, model=Goal)

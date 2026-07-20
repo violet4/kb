@@ -101,4 +101,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
 
     p_search = sub.add_parser("search", help="Search wishlist items by text")
     p_search.add_argument("query")
+    p_search.add_argument(
+        "--all", action="store_true", help="Also include acquired/dropped items (excluded by default)"
+    )
     p_search.set_defaults(func=cmd_search, model=Wishlist)

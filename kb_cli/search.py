@@ -12,21 +12,38 @@ from typing import Any, Sequence
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from models import Collection, Goal, Instruction, Note, Todo, Wishlist
+from models import Collection, Goal, GoalStatus, Instruction, Note, Todo, TodoStatus, Wishlist, WishlistStatus
 
 # Models searchable from the top-level `kb search`, in display order.
 ALL_SEARCHABLE: tuple[Any, ...] = (Goal, Todo, Wishlist, Instruction)
 
 _TEXT_COLUMNS = ("title", "description", "notes", "body")
 
+# Statuses that mean "no longer open" -- excluded by default from search results,
+# matching the `list --all` convention (todo list --all, goal list --all).
+TERMINAL_STATUSES: dict[Any, set[Any]] = {
+    Goal: {GoalStatus.COMPLETED, GoalStatus.ABANDONED},
+    Todo: {TodoStatus.DONE, TodoStatus.DROPPED},
+    Wishlist: {WishlistStatus.ACQUIRED, WishlistStatus.DROPPED},
+}
 
-def search_entities(session: Session, models: Sequence[Any], query: str) -> list[Any]:
-    """Case-insensitive substring search over each model's title/description/notes columns."""
+
+def search_entities(session: Session, models: Sequence[Any], query: str, include_done: bool = False) -> list[Any]:
+    """Case-insensitive substring search over each model's title/description/notes columns.
+
+    Excludes terminal-status rows (done/abandoned/dropped/acquired) by default;
+    pass include_done=True to opt back in.
+    """
     pattern = f"%{query}%"
     results: list[Any] = []
     for model in models:
         columns = [getattr(model, col) for col in _TEXT_COLUMNS if hasattr(model, col)]
-        results.extend(session.scalars(select(model).where(or_(*(c.ilike(pattern) for c in columns)))).all())
+        rows = session.scalars(select(model).where(or_(*(c.ilike(pattern) for c in columns)))).all()
+        if not include_done:
+            terminal = TERMINAL_STATUSES.get(model)
+            if terminal is not None:
+                rows = [r for r in rows if r.status not in terminal]
+        results.extend(rows)
     return results
 
 
@@ -40,11 +57,12 @@ def _print_results(items: list[Any]) -> None:
 
 def cmd_search(args: argparse.Namespace) -> None:
     """Generic handler for a single-model `search` subcommand; set args.model beforehand."""
-    _print_results(search_entities(args.session, (args.model,), args.query))
+    _print_results(search_entities(args.session, (args.model,), args.query, include_done=args.all))
 
 
 def cmd_search_all(args: argparse.Namespace) -> None:
-    _print_results(search_entities(args.session, ALL_SEARCHABLE, args.query))
+    include_done = args.all
+    _print_results(search_entities(args.session, ALL_SEARCHABLE, args.query, include_done=include_done))
 
     notes = Note.search(args.session, args.query)
     if notes:
@@ -54,12 +72,16 @@ def cmd_search_all(args: argparse.Namespace) -> None:
             print(f"#{note.id} {note.title!r} [{note.collection.value}]{tags} (dist={dist:.3f})")
 
     todos = Todo.search(args.session, args.query)
+    if not include_done:
+        todos = [(t, d) for t, d in todos if t.status not in TERMINAL_STATUSES[Todo]]
     if todos:
         print("=== Todos (semantic) ===")
         for todo, dist in todos:
             print(f"#{todo.id} {todo.title!r} [{todo.status.value}] (dist={dist:.3f})")
 
     goals = Goal.search(args.session, args.query)
+    if not include_done:
+        goals = [(g, d) for g, d in goals if g.status not in TERMINAL_STATUSES[Goal]]
     if goals:
         print("=== Goals (semantic) ===")
         for goal, dist in goals:
@@ -71,4 +93,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         "search", help="Search Goals, Todos, and Wishlist items by text, plus Notes by semantic similarity"
     )
     parser.add_argument("query")
+    parser.add_argument(
+        "--all", action="store_true", help="Also include done/abandoned/dropped/acquired items (excluded by default)"
+    )
     parser.set_defaults(func=cmd_search_all)

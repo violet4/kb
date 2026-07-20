@@ -52,7 +52,7 @@ def _handle(session: Session, request: dict[str, Any]) -> dict[str, Any]:
             return {"ok": False, "error": f"Unknown collection: {col_str!r}. Valid: {[c.value for c in Collection]}"}
         if collection is None:
             return {"ok": False, "error": "collection is required"}
-        results = Note.search(session, query, collection)
+        results = Note.search(session, query, collection=collection)
         return {
             "ok": True,
             "result": [

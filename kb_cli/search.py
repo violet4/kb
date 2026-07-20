@@ -46,12 +46,24 @@ def cmd_search(args: argparse.Namespace) -> None:
 def cmd_search_all(args: argparse.Namespace) -> None:
     _print_results(search_entities(args.session, ALL_SEARCHABLE, args.query))
 
-    notes = Note.search(args.session, args.query, Collection.ALL)
+    notes = Note.search(args.session, args.query)
     if notes:
         print("=== Notes (semantic) ===")
         for note, dist in notes:
             tags = f" #{note.tags}" if note.tags else ""
             print(f"#{note.id} {note.title!r} [{note.collection.value}]{tags} (dist={dist:.3f})")
+
+    todos = Todo.search(args.session, args.query)
+    if todos:
+        print("=== Todos (semantic) ===")
+        for todo, dist in todos:
+            print(f"#{todo.id} {todo.title!r} [{todo.status.value}] (dist={dist:.3f})")
+
+    goals = Goal.search(args.session, args.query)
+    if goals:
+        print("=== Goals (semantic) ===")
+        for goal, dist in goals:
+            print(f"#{goal.id} {goal.title!r} [{goal.status.value}] (dist={dist:.3f})")
 
 
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:

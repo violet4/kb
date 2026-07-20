@@ -513,11 +513,86 @@ class Person(Base):
 
 
 # ---------------------------------------------------------------------------
+# HasEmbedding (RAG)
+# ---------------------------------------------------------------------------
+
+
+class HasEmbedding:
+    """Semantic-search support for any model. Subclasses implement `_embed_source_text()`
+    (which fields feed the embedding) and get `.reembed()` plus a `.search(session, query,
+    **filters)` classmethod for free. A `before_flush` listener below auto-reembeds any
+    dirty instance whose source fields changed, so callers never need to call reembed()
+    themselves after a plain attribute assignment -- only each model's own create() calls
+    it directly, for the initial embed before the first flush. embedding_model is stored
+    per-row so a model upgrade doesn't silently mix incomparable vectors -- search always
+    filters to the current model_name()."""
+
+    embedding_model: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    embedding: Mapped[Optional[bytes]] = mapped_column(Text, nullable=True)
+
+    # Declared here type-only (no mapped_column) so mypy knows every subclass provides
+    # them -- __tablename__/id come from the subclass's own Base/mapped_column, same
+    # pattern as HasContextOrTag's context_id/context/tag above.
+    __tablename__: str
+    id: Mapped[int]
+
+    @staticmethod
+    def _embed_fields() -> set[str]:
+        raise NotImplementedError
+
+    def _embed_source_text(self) -> str:
+        raise NotImplementedError
+
+    def reembed(self) -> None:
+        from embed import embed, model_name
+
+        vec = embed(self._embed_source_text())
+        self.embedding = struct.pack(f"{len(vec)}f", *vec)
+        self.embedding_model = model_name()
+
+    @classmethod
+    def search(cls, session: Session, query: str, limit: int = 10, **filters: Any) -> list[tuple[Any, float]]:
+        """`filters` are extra `column=value` equality clauses, e.g. collection=Collection.ENGINEERING."""
+        from embed import embed, model_name
+
+        raw = embed(query)
+        vec = struct.pack(f"{len(raw)}f", *raw)
+        mn = model_name()
+        table = cls.__tablename__
+        where_clauses = ["embedding_model = ?"]
+        params: list[Any] = [vec, mn]
+        for col, value in filters.items():
+            where_clauses.append(f"{col} = ?")
+            params.append(value.name if isinstance(value, enum.Enum) else value)
+        sql = (
+            f"SELECT id, vec_distance_cosine(embedding, ?) AS dist FROM {table} "
+            f"WHERE {' AND '.join(where_clauses)} ORDER BY dist ASC LIMIT {int(limit)}"
+        )
+        with _engine.connect() as conn:
+            rows = conn.connection.execute(sql, params).fetchall()
+        objs = {o.id: o for o in session.scalars(select(cls).where(cls.id.in_([r[0] for r in rows]))).all()}
+        return [(objs[r[0]], r[1]) for r in rows if r[0] in objs]
+
+
+@event.listens_for(Session, "before_flush")
+def _reembed_dirty_has_embedding(
+    session: Session, flush_context: UOWTransaction, instances: Optional[Sequence[Any]]
+) -> None:
+    for obj in session.dirty:
+        if isinstance(obj, HasEmbedding):
+            state = inspect(obj)
+            assert state is not None
+            changed = {attr.key for attr in state.attrs if attr.history.has_changes()}
+            if changed & obj._embed_fields():
+                obj.reembed()
+
+
+# ---------------------------------------------------------------------------
 # Goal
 # ---------------------------------------------------------------------------
 
 
-class Goal(Base, HasContextOrTag):
+class Goal(Base, HasContextOrTag, HasEmbedding):
     __tablename__ = "goal"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -532,6 +607,13 @@ class Goal(Base, HasContextOrTag):
     context: Mapped[Optional[Context]] = relationship("Context")
     tag: Mapped[Optional[Tag]] = relationship("Tag")
     todos: Mapped[list[Todo]] = relationship("Todo", back_populates="goal")
+
+    @staticmethod
+    def _embed_fields() -> set[str]:
+        return {"title", "description", "notes"}
+
+    def _embed_source_text(self) -> str:
+        return f"{self.title}\n\n{self.description or ''}\n\n{self.notes or ''}"
 
     @classmethod
     def active(
@@ -569,6 +651,7 @@ class Goal(Base, HasContextOrTag):
         notes: Optional[str] = None,
     ) -> Goal:
         goal = cls(title=title, description=description, context_id=context.id if context else None, notes=notes)
+        goal.reembed()
         session.add(goal)
         session.flush()
         return goal
@@ -583,7 +666,7 @@ class Goal(Base, HasContextOrTag):
 # ---------------------------------------------------------------------------
 
 
-class Todo(Base, HasContextOrTag):
+class Todo(Base, HasContextOrTag, HasEmbedding):
     __tablename__ = "todo"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -604,6 +687,13 @@ class Todo(Base, HasContextOrTag):
     context: Mapped[Optional[Context]] = relationship("Context")
     tag: Mapped[Optional[Tag]] = relationship("Tag")
     blocked_by: Mapped[Optional[Todo]] = relationship("Todo", remote_side=[id])
+
+    @staticmethod
+    def _embed_fields() -> set[str]:
+        return {"title", "notes"}
+
+    def _embed_source_text(self) -> str:
+        return f"{self.title}\n\n{self.notes or ''}"
 
     @classmethod
     def active(
@@ -662,6 +752,7 @@ class Todo(Base, HasContextOrTag):
             effort=effort,
             defer_until=defer_until,
         )
+        todo.reembed()
         session.add(todo)
         session.flush()
         return todo
@@ -1230,21 +1321,10 @@ class InboxItem(Base):
         return f"<InboxItem #{self.id} [{state}]{' ' + tags if tags else ''}: {body!r}>"
 
 
-# ---------------------------------------------------------------------------
-# Note (RAG)
-# ---------------------------------------------------------------------------
-
 _STORAGE_COLLECTIONS = {c for c in Collection if c != Collection.ALL}
 
 
-def _embed_text(title: str, body: str) -> bytes:
-    from embed import embed
-
-    vec = embed(f"{title}\n\n{body}")
-    return struct.pack(f"{len(vec)}f", *vec)
-
-
-class Note(Base):
+class Note(Base, HasEmbedding):
     """A personal knowledge base / lab notebook entry -- durable facts worth keeping because
     they were useful or interesting to this user, with no claim of being fact-checked, curated,
     or written for an audience. Deliberately NOT designed for shareable/git-tracked export the
@@ -1261,8 +1341,13 @@ class Note(Base):
         Enum(Collection, create_constraint=True, validate_strings=True), nullable=False
     )
     tags: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # comma-separated
-    embedding_model: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    embedding: Mapped[Optional[bytes]] = mapped_column(Text, nullable=True)
+
+    @staticmethod
+    def _embed_fields() -> set[str]:
+        return {"title", "body"}
+
+    def _embed_source_text(self) -> str:
+        return f"{self.title}\n\n{self.body}"
 
     @classmethod
     def create(
@@ -1270,11 +1355,8 @@ class Note(Base):
     ) -> Note:
         if collection == Collection.ALL:
             raise ValueError("Collection.ALL is a search sentinel and cannot be used for storage.")
-        from embed import model_name
-
         note = cls(title=title, body=body, collection=collection, tags=tags)
-        note.embedding = _embed_text(title, body)
-        note.embedding_model = model_name()
+        note.reembed()
         session.add(note)
         session.flush()
         return note
@@ -1294,46 +1376,10 @@ class Note(Base):
             self.body = body
         if tags is not None:
             self.tags = tags
-        if title is not None or body is not None:
-            self.reembed()
-
-    @classmethod
-    def search(cls, session: Session, query: str, collection: Collection) -> list[tuple[Note, float]]:
-        from embed import embed, model_name
-
-        raw = embed(query)
-        vec = struct.pack(f"{len(raw)}f", *raw)
-        mn = model_name()
-        params: tuple[bytes | str, ...]
-        if collection == Collection.ALL:
-            sql = "SELECT id, vec_distance_cosine(embedding, ?) AS dist FROM note WHERE embedding_model = ? ORDER BY dist ASC LIMIT 10"
-            params = (vec, mn)
-        else:
-            sql = "SELECT id, vec_distance_cosine(embedding, ?) AS dist FROM note WHERE embedding_model = ? AND collection = ? ORDER BY dist ASC LIMIT 10"
-            params = (vec, mn, collection.name)
-        with _engine.connect() as conn:
-            rows = conn.connection.execute(sql, params).fetchall()
-        notes = {n.id: n for n in session.scalars(select(cls).where(cls.id.in_([r[0] for r in rows]))).all()}
-        return [(notes[r[0]], r[1]) for r in rows if r[0] in notes]
-
-    def reembed(self) -> None:
-        from embed import model_name
-
-        self.embedding = _embed_text(self.title, self.body)
-        self.embedding_model = model_name()
 
     def __repr__(self) -> str:
         tags_str = f" #{self.tags}" if self.tags else ""
         return f"<Note {self.collection.value}/{self.title!r}{tags_str}>"
-
-
-@event.listens_for(Session, "before_flush")
-def _reembed_dirty_notes(session: Session, flush_context: UOWTransaction, instances: Optional[Sequence[Any]]) -> None:
-    for obj in session.dirty:
-        if isinstance(obj, Note):
-            changed = {attr.key for attr in inspect(obj).attrs if attr.history.has_changes()}
-            if "title" in changed or "body" in changed:
-                obj.reembed()
 
 
 # ---------------------------------------------------------------------------

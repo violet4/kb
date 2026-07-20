@@ -40,7 +40,11 @@ def cmd_update(args: argparse.Namespace) -> None:
 
 def cmd_search(args: argparse.Namespace) -> None:
     collection = Collection(args.collection)
-    results = Note.search(args.session, args.query, collection)
+    results = (
+        Note.search(args.session, args.query)
+        if collection == Collection.ALL
+        else Note.search(args.session, args.query, collection=collection)
+    )
     if not results:
         print("No results.")
     for note, dist in results:

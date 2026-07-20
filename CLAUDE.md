@@ -27,13 +27,15 @@ kb summary [goals|todos|people|wishlist|inbox ...]   # active/pending overview; 
 ## Search
 
 ```bash
-kb search QUERY              # everything at once: Goal/Todo/Wishlist by substring, Notes by semantic similarity
-kb goal search QUERY         # Goal only
-kb todo search QUERY         # Todo only
-kb wishlist search QUERY     # Wishlist only
+kb search QUERY              # everything at once: Goal/Todo/Wishlist by substring, Note/Goal/Todo by semantic similarity
+kb goal search QUERY         # Goal only (substring)
+kb todo search QUERY         # Todo only (substring)
+kb wishlist search QUERY     # Wishlist only (substring)
 ```
 
-Check here before writing an ad hoc `kb.py` query — "is X in the wishlist/goals/todos" is exactly what `kb search` is for. `kb_cli/search.py`'s `search_entities` is the one substring-search engine (title/description/notes, `ilike`) shared by all four commands above; `kb search` additionally calls `Note.search(..., Collection.ALL)` for the RAG side, since notes need their own embedding-based mechanism, not a text substring match.
+Check here before writing an ad hoc `kb.py` query — "is X in the wishlist/goals/todos" is exactly what `kb search` is for. `kb_cli/search.py`'s `search_entities` is the one substring-search engine (title/description/notes, `ilike`) shared by the three per-entity commands above; `kb search` additionally calls `Note.search`/`Todo.search`/`Goal.search` for the RAG side (each backed by `HasEmbedding`, see below), since a substring match alone misses phrasing that's topically related but doesn't share exact words — e.g. a Todo titled "build another oil rig" only turns up for a query like "oil rig mushroom base" through the semantic pass, not the substring one.
+
+`HasEmbedding` (`models.py`, applied to `Note`/`Goal`/`Todo`) is the one mixin providing semantic search: two nullable columns (`embedding`, `embedding_model`), a `.search(session, query, **filters)` classmethod (raw `vec_distance_cosine` SQL, filtered to the row's own `embedding_model` so a model upgrade never compares incomparable vectors), and a shared `before_flush` listener that auto-reembeds any dirty instance whose `_embed_fields()` changed — callers never call `.reembed()` themselves after a plain attribute assignment, only each model's own `create()` calls it once for the initial embed before first flush. Adding semantic search to a new model is: inherit `HasEmbedding`, implement `_embed_fields()`/`_embed_source_text()`, call `.reembed()` in `create()`, backfill existing rows once via a one-off `kb.py` script (`for row in sess.scalars(select(TheModel)).all(): row.reembed()`). Measured cost: ~9ms per embed call against the warm server (`kb.service`), so sync-inline embedding on create/update is not a noticeable delay — no background queue needed.
 
 ## Inbox
 

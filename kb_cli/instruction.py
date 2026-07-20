@@ -20,38 +20,16 @@ from models import Instruction
 from kb_cli._util import apply_text_edit
 from kb_cli.search import search_entities
 
-_SESSION_START_HOOK_CHAR_LIMIT = 10_000  # Claude Code truncates hook stdout past this -- see root's own body
-# `kb instructions root` (what the SessionStart hook actually runs) emits body length plus
-# real formatting overhead -- the title/trigger line, blank-line separators, and the children
-# list -- which isn't visible from body length alone. A body-only check gave false confidence
-# right up to a near-miss (9,309 body chars looked safe; the true hook payload was 9,985, only
-# 15 under the cap). Warn well before the real limit instead of trying to predict the exact
-# overhead for every possible node.
-_SAFETY_MARGIN = 1_500
-
 
 def _size_line(node: Instruction) -> str:
     """Body size in chars, always shown after a write -- catches a duplicate-content
     mistake (an --append/--replace chain that didn't do what was intended) immediately,
-    instead of only being noticed later via `kb instructions root | wc -c`. Warns well
-    before the SessionStart hook's 10,000-char cap (with margin for the root command's
-    own formatting overhead, not just the raw body), since root silently exceeding it is
-    a real, previously-hit failure mode (content truncates to a file-path preview instead
-    of loading), not just a cosmetic size concern. If this is root, the true check is the
-    full `kb instructions root | wc -c` output, not body length alone -- this line is an
-    early warning, not a substitute for that."""
-    n = len(node.body)
-    effective_limit = _SESSION_START_HOOK_CHAR_LIMIT - _SAFETY_MARGIN
-    if n > effective_limit:
-        return (
-            f"body: {n} chars -- OVER the {effective_limit}-char safety threshold "
-            f"({_SESSION_START_HOOK_CHAR_LIMIT} margin {_SAFETY_MARGIN}) if this is root; "
-            "if this is root, confirm with `kb instructions root | wc -c` (this counts body only, not the "
-            "command's full output) -- may already be truncating to a file-path preview"
-        )
-    if n > effective_limit - 1_000:
-        return f"body: {n} chars -- approaching the {effective_limit}-char safety threshold if this is root"
-    return f"body: {n} chars"
+    instead of only being noticed later via `kb instructions root | wc -c`. Plain size
+    report, no threshold -- there was previously a warning tied to Claude Code's
+    SessionStart hook's 10,000-char stdout cap, but that hook has since been removed
+    (see kb Goal #23: the bootstrap now runs `kb instructions root` as an ordinary tool
+    call, not hook-injected stdout), so no such limit currently applies."""
+    return f"body: {len(node.body)} chars"
 
 
 def _print_node(session: Session, node: Instruction, show_body: bool) -> None:

@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Show exactly what a fresh Claude Code session sees during bootstrap, in sequence:
+# ~/.claude/CLAUDE.md, then `kb instructions root`, then bare `kb` -- no judgment layered
+# on top, just the real content in the real order. Doesn't (and can't) predict whether a
+# model will actually act on it -- that's only knowable by testing a real fresh session.
+# Usage: bootstrap-trace
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/../.."
+
+echo "=== Step 0: ~/.claude/CLAUDE.md (the unconditional trigger) ==="
+cat ~/.claude/CLAUDE.md
+echo
+echo "=== Step 1: kb instructions root ==="
+./kb instructions root
+echo
+echo "=== Step 2: bare kb ==="
+./kb

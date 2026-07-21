@@ -34,7 +34,7 @@ def cmd_triage(args: argparse.Namespace) -> None:
 
 
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
-    parser = subparsers.add_parser("inbox", aliases=["i"], help="Inbox operations")
+    parser = subparsers.add_parser("inbox", help="Inbox operations")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_add = sub.add_parser("add", help="Add a raw, untriaged item")

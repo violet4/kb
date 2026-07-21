@@ -204,7 +204,7 @@ def cmd_tree(args: argparse.Namespace) -> None:
 
 
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
-    parser = subparsers.add_parser("instructions", help="Instruction tree operations")
+    parser = subparsers.add_parser("instructions", aliases=["i"], help="Instruction tree operations")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_root = sub.add_parser("root", help="Show the root node(s) -- entry point into the tree")

@@ -3,10 +3,11 @@ for the full design. Five commands, mirroring real usage: `root`/`show` for walk
 tree (cheap, read-heavy, the common case), `add`/`set-parent`/`edit` for growing and
 restructuring it, `tree` for a full dump.
 
-Every node reference (a positional target, or --parent) accepts a title, not a bare id --
-ids exist for disambiguation and machine bookkeeping, not as the primary way a human
-composes a command. Prefix with '#' to reference by id instead (e.g. when two nodes
-share a title and the ref is ambiguous).
+Every node reference (a positional target, or --parent) accepts either a title or a bare
+id -- both are checked, and a '#' prefix is accepted but optional. Titles can never be
+purely numeric (enforced at add/edit time), so an id and a title can never collide in
+practice; if a lookup somehow matches both anyway (e.g. old data), it's reported as
+ambiguous rather than silently guessed.
 """
 
 import argparse
@@ -48,28 +49,53 @@ def _print_node(session: Session, node: Instruction, show_body: bool) -> None:
             print(f"  {c.title} #{c.id}{marker}")
 
 
-def _resolve(session: Session, ref: str) -> Instruction:
-    """Resolve a node reference: '#ID' for an exact id, otherwise a title lookup.
-    Errors (rather than guessing) on no match or an ambiguous title, since a silent
-    wrong pick when restructuring the tree is worse than a rejected command."""
-    if ref.startswith("#"):
-        node = session.get(Instruction, int(ref[1:]))
-        if node is None:
-            print(f"Instruction {ref}: not found", file=sys.stderr)
-            sys.exit(1)
-        return node
-
-    matches = session.scalars(select(Instruction).where(Instruction.title == ref)).all()
-    if not matches:
-        print(f"Instruction {ref!r}: not found", file=sys.stderr)
+def _check_title_not_numeric(title: str) -> None:
+    """Reject a pure-digit title outright, so a title can never collide with an id in
+    _resolve's dual lookup. This is the only real fix -- an id collision (new node's
+    auto-generated id happening to match an existing numeric title) can't be blocked at
+    creation time, since the id isn't known until insert, so the only lever left is
+    preventing numeric titles from existing at all."""
+    if title.isdigit():
+        print(f"Instruction title {title!r}: titles can't be purely numeric (ambiguous with an id)", file=sys.stderr)
         sys.exit(1)
-    if len(matches) > 1:
-        options = ", ".join(f"#{m.id}" for m in matches)
+
+
+def _resolve(session: Session, ref: str) -> Instruction:
+    """Resolve a node reference by id or by title, whichever matches -- '#' prefix is
+    accepted but no longer required. Checks both mechanisms simultaneously and errors
+    (rather than guessing) if both an id and a title match, or if a title matches more
+    than once, since a silent wrong pick when restructuring the tree is worse than a
+    rejected command. In practice _check_title_not_numeric makes the id/title collision
+    case unreachable for new data, but old data or a kb.py-created title could still hit
+    it, so it stays as a safety net."""
+    bare = ref[1:] if ref.startswith("#") else ref
+
+    by_id = None
+    if bare.isdigit():
+        by_id = session.get(Instruction, int(bare))
+
+    by_title = session.scalars(select(Instruction).where(Instruction.title == ref)).all()
+
+    if by_id is not None and by_title:
         print(
-            f"Instruction {ref!r} is ambiguous ({len(matches)} matches: {options}) -- use #ID instead", file=sys.stderr
+            f"{ref!r} is ambiguous: matches both id #{by_id.id} and title {ref!r} -- use #{by_id.id} explicitly",
+            file=sys.stderr,
         )
         sys.exit(1)
-    return matches[0]
+
+    if by_id is not None:
+        return by_id
+
+    if not by_title:
+        print(f"Instruction {ref!r}: not found", file=sys.stderr)
+        sys.exit(1)
+    if len(by_title) > 1:
+        options = ", ".join(f"#{m.id}" for m in by_title)
+        print(
+            f"Instruction {ref!r} is ambiguous ({len(by_title)} matches: {options}) -- use #ID instead", file=sys.stderr
+        )
+        sys.exit(1)
+    return by_title[0]
 
 
 def cmd_root(args: argparse.Namespace) -> None:
@@ -92,6 +118,7 @@ def cmd_show(args: argparse.Namespace) -> None:
 
 
 def cmd_add(args: argparse.Namespace) -> None:
+    _check_title_not_numeric(args.title)
     parent = _resolve(args.session, args.parent) if args.parent is not None else None
     node = Instruction(title=args.title, body=args.body, trigger=args.trigger, parent=parent, context=args.context)
     args.session.add(node)
@@ -109,6 +136,7 @@ def cmd_set_parent(args: argparse.Namespace) -> None:
 def cmd_edit(args: argparse.Namespace) -> None:
     node = _resolve(args.session, args.ref)
     if args.title is not None:
+        _check_title_not_numeric(args.title)
         node.title = args.title
     if args.body is not None:
         node.body = args.body
@@ -183,7 +211,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_root.set_defaults(func=cmd_root)
 
     p_show = sub.add_parser("show", help="Show one node's full body plus its children")
-    p_show.add_argument("ref", metavar="TITLE|#ID", help="Node title, or #ID if the title is ambiguous")
+    p_show.add_argument("ref", metavar="TITLE|#ID", help="Node title or id ('#' prefix optional)")
     p_show.set_defaults(func=cmd_show)
 
     p_add = sub.add_parser("add", help="Add a node to the Instruction tree")

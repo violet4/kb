@@ -138,6 +138,24 @@ def test_recurrence_monthly_rolls_over_year_boundary(db_session: Session) -> Non
         assert daily.next_due_date == date(2027, 1, 15)
 
 
+def test_recurrence_yearly_lands_on_target_date_next_year(db_session: Session) -> None:
+    _set_utc_boundary(db_session, hour=4)
+    with time_machine.travel(datetime(2026, 7, 23, 12, 0, tzinfo=timezone.utc)):
+        daily = Daily.create(db_session, "gf's HRT anniversary", recurrence="yearly:07-23")
+        daily.complete(db_session)
+        db_session.commit()
+        assert daily.next_due_date == date(2027, 7, 23)
+
+
+def test_recurrence_yearly_before_target_date_lands_this_year(db_session: Session) -> None:
+    _set_utc_boundary(db_session, hour=4)
+    with time_machine.travel(datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)):
+        daily = Daily.create(db_session, "gf's HRT anniversary", recurrence="yearly:07-23")
+        daily.complete(db_session)
+        db_session.commit()
+        assert daily.next_due_date == date(2026, 7, 23)
+
+
 def test_due_filters_by_domain_and_tier(db_session: Session) -> None:
     _set_utc_boundary(db_session)
     with time_machine.travel(datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)):

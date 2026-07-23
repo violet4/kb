@@ -173,7 +173,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_add.add_argument(
         "--recurrence",
         default="daily",
-        help="'daily' (default), 'every:N', 'weekly:MON'..'SUN', or 'monthly:D' (day 1-28)",
+        help="'daily' (default), 'every:N', 'weekly:MON'..'SUN', 'monthly:D' (day 1-28), or 'yearly:MM-DD'",
     )
     p_add.add_argument(
         "--show-after-hour", type=int, dest="show_after_hour", help="Hide until this local hour (0-23), e.g. 19 for 7pm"
@@ -188,7 +188,9 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_update.add_argument("--description")
     p_update.add_argument("--domain")
     p_update.add_argument("--tier", choices=[t.value for t in DailyTier])
-    p_update.add_argument("--recurrence", help="'daily', 'every:N', 'weekly:MON'..'SUN', or 'monthly:D' (day 1-28)")
+    p_update.add_argument(
+        "--recurrence", help="'daily', 'every:N', 'weekly:MON'..'SUN', 'monthly:D' (day 1-28), or 'yearly:MM-DD'"
+    )
     p_update.add_argument(
         "--show-after-hour", type=int, dest="show_after_hour", help="Hide until this local hour (0-23), e.g. 19 for 7pm"
     )

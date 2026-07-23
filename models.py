@@ -793,6 +793,8 @@ class Daily(Base, HasContextOrTag):
       "every:N"      -- due again N days after completion (e.g. "every:2" for alternating-day items).
       "weekly:DAY"   -- due again on the next occurrence of DAY ("MON".."SUN") after completion.
       "monthly:D"    -- due again on day D of the next applicable month after completion (D 1-28).
+      "yearly:MM-DD" -- due again on month MM day DD of the next applicable year after completion
+                        (e.g. "yearly:07-23" for a July 23 birthday/anniversary).
 
     show_after_hour (0-23, local time) is applied after next_due_date decides a Daily is due "today"
     -- it further hides a Daily that's due today (but not yet overdue) from due()/summary until
@@ -950,6 +952,13 @@ class Daily(Base, HasContextOrTag):
                 month = 1
                 year += 1
             return after.replace(year=year, month=month, day=day)
+        elif kind == "yearly":
+            month_str, _, day_str = arg.partition("-")
+            month, day = int(month_str), int(day_str)
+            year = after.year
+            if (month, day) <= (after.month, after.day):
+                year += 1
+            return date(year, month, day)
         else:
             raise ValueError(f"unknown recurrence kind: {kind!r}")
 

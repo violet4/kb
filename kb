@@ -31,6 +31,7 @@ Usage: kb [--context NAME] [--as-of WHEN] <command> [subcommand ...] [args ...]
   kb games pg entity npc|mob|mob-drop|item|player|character|relation|skill|hangout ...
   kb games pg quest show|add|complete ...
   kb pager FILE [--lines N] [--reset]
+  kb sessions   # list Claude Code CLI sessions across all projects
   kb anki decks | deck-add NAME | notetype-init | search QUERY | add DECK NOTETYPE FIELD... [--tags T] | delete ID... | run [-f FILE|-i]
 """
 
@@ -64,6 +65,7 @@ from kb_cli import (
     notes,
     pager,
     search,
+    sessions,
     summary,
     tag,
     timer,
@@ -177,6 +179,7 @@ pager.add_subparser(subparsers)
 anki.add_subparser(subparsers)
 games.add_subparser(subparsers)
 search.add_subparser(subparsers)
+sessions.add_subparser(subparsers)
 
 args = parser.parse_args()
 if args.command is None:

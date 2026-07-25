@@ -2,11 +2,11 @@
 
 Personal knowledge base. SQLite + SQLAlchemy 2.0. Run `scripts/dev/gen-api` for the full model/method surface before making any queries or updates. Every script here (including `kb.py`) is directly executable from any directory — no `uv run` prefix needed, the shebang handles it.
 
-`kb <command> [subcommand ...] [args]` is the global CLI entry point (`~/bin/kb` symlinks to `~/kb/kb`), usable from any directory on the filesystem, not just from inside `~/kb`. It dispatches to `kb_cli/*.py` — real importable Python modules (not standalone executables), each exposing an `add_subparser(subparsers)` hook that the top-level `kb` script wires into one argparse tree. `kb <command> --help` (at any nesting depth, e.g. `kb games pg entity mob --help`) documents itself natively. This covers Goal/Todo/Idea/Inbox/Journal/Notes/Log/Context/Summary/Wishlist/Search and per-game commands (`kb games pg ...`) — anything meant to be reachable no matter which project you're currently working in. `scripts/db`, `scripts/dev`, `scripts/model`, `scripts/service` stay as plain `scripts/*` executables, kb-repo-local only, since migrating/checking schema/etc. only makes sense while actually developing kb itself — mirrors the split between `~/kb/CLAUDE.md` (this file, kb-repo-local) and `~/kb/CLAUDE_GLOBAL.md` (symlinked from `~/.claude/CLAUDE.md`, global).
+`kb <command> [subcommand ...] [args]` is the global CLI entry point (`~/bin/kb` symlinks to `~/kb/kb`), usable from any directory on the filesystem, not just from inside `~/kb`. It dispatches to `kb_cli/*.py` — real importable Python modules (not standalone executables), each exposing an `add_subparser(subparsers)` hook that the top-level `kb` script wires into one argparse tree. Routing (which noun for which kind of statement) lives in bare `kb`'s own output, not here; syntax/flags for a given command live in that command's own `--help` at any nesting depth (e.g. `kb games pg entity mob --help`), always current since it's generated from the actual argparse definitions — don't duplicate either into this file. `scripts/db`, `scripts/dev`, `scripts/model`, `scripts/service` stay as plain `scripts/*` executables, kb-repo-local only, since migrating/checking schema/etc. only makes sense while actually developing kb itself — mirrors the split between `~/kb/CLAUDE.md` (this file, kb-repo-local, project architecture/why) and `kb i root` / bare `kb` (global, routing/day-to-day usage).
 
 `kb --context NAME <command> ...` is a global flag on the top-level `kb` script itself (parsed before dispatch, in `kb`, not in any `kb_cli/*.py` subparser) — it resolves once via `resolve_context()` into `args.context`, already a `Context` object, and every subcommand that accepts a context (e.g. `goal add`, `todo add`) just forwards `args.context` straight through without declaring its own `--context` argument. Don't add a per-subcommand `--context` flag to a `kb_cli/*.py` module expecting it to work like this global one; only `todo update` has its own `--context NAME` (a string, resolved inside that command) for changing an existing record's context after the fact, which is a different, per-command flag from this global one.
 
-If asked "what were we working on" (or similar) at the start of a session, answer from the database before git history: `kb summary` for active Goals/Todos/wishlist/inbox, `kb goal show ID --history`/`kb journal show ENTITY_TYPE ID` for a specific Goal or Todo's full design history, `kb inbox pending` for unfiled ideas. `git log` shows what code changed; it doesn't show what's still open or why — kb's own tables are the actual answer to "what were we working on."
+If asked "what were we working on" (or similar) at the start of a session, answer from the database before git history: kb's own tables (Goal/Todo/Journal/Inbox — see `kb -h`/`kb summary --help`) are the actual answer, not `git log`, which shows what code changed but not what's still open or why.
 
 "kb" alone is ambiguous between the CLI/repo and the `Context` tree's own top-level "kb" node (`irl/projects/kb`, visible in `kb context tree`). When a request says "add X under kb" or "a new context/command alongside Y" and Y resolves to something in `kb context tree` output (a `Context` row, e.g. `timer` at `irl/projects/kb/timer`) rather than a `kb_cli/*.py` module, read it as a `Context` tree placement (`kb context add X --parent ...`), not a new CLI command module — check `kb context tree` for the named sibling before assuming which one is meant.
 
@@ -18,32 +18,13 @@ kb is not a fixed system to work around — it's meant to be continuously refine
 
 Cache stable-but-frequently-referenced facts locally (e.g. game mechanics, reference lore) rather than re-looking them up every time — that's the point of kb. Don't cache genuinely volatile info (stock prices, weather, anything that changes on its own) as if it were a stable fact; look that up fresh when it's needed instead.
 
-## Dashboard
-
-```bash
-kb summary [goals|todos|people|wishlist|inbox ...]   # active/pending overview; no args shows all sections
-```
-
 ## Search
 
-```bash
-kb search QUERY              # everything at once: Goal/Todo/Wishlist by substring, Note/Goal/Todo by semantic similarity
-kb goal search QUERY         # Goal only (substring)
-kb todo search QUERY         # Todo only (substring)
-kb wishlist search QUERY     # Wishlist only (substring)
-```
-
-Check here before writing an ad hoc `kb.py` query — "is X in the wishlist/goals/todos" is exactly what `kb search` is for. `kb_cli/search.py`'s `search_entities` is the one substring-search engine (title/description/notes, `ilike`) shared by the three per-entity commands above; `kb search` additionally calls `Note.search`/`Todo.search`/`Goal.search` for the RAG side (each backed by `HasEmbedding`, see below), since a substring match alone misses phrasing that's topically related but doesn't share exact words — e.g. a Todo titled "build another oil rig" only turns up for a query like "oil rig mushroom base" through the semantic pass, not the substring one.
+Check `kb search` (see `kb -h`) before writing an ad hoc `kb.py` query — "is X in the wishlist/goals/todos" is exactly what it's for. `kb_cli/search.py`'s `search_entities` is the one substring-search engine (title/description/notes, `ilike`) shared by the per-entity `search` subcommands; the top-level `kb search` additionally calls `Note.search`/`Todo.search`/`Goal.search` for the RAG side (each backed by `HasEmbedding`, see below), since a substring match alone misses phrasing that's topically related but doesn't share exact words — e.g. a Todo titled "build another oil rig" only turns up for a query like "oil rig mushroom base" through the semantic pass, not the substring one.
 
 `HasEmbedding` (`models.py`, applied to `Note`/`Goal`/`Todo`) is the one mixin providing semantic search: two nullable columns (`embedding`, `embedding_model`), a `.search(session, query, **filters)` classmethod (raw `vec_distance_cosine` SQL, filtered to the row's own `embedding_model` so a model upgrade never compares incomparable vectors), and a shared `before_flush` listener that auto-reembeds any dirty instance whose `_embed_fields()` changed — callers never call `.reembed()` themselves after a plain attribute assignment, only each model's own `create()` calls it once for the initial embed before first flush. Adding semantic search to a new model is: inherit `HasEmbedding`, implement `_embed_fields()`/`_embed_source_text()`, call `.reembed()` in `create()`, backfill existing rows once via a one-off `kb.py` script (`for row in sess.scalars(select(TheModel)).all(): row.reembed()`). Measured cost: ~9ms per embed call against the warm server (`kb.service`), so sync-inline embedding on create/update is not a noticeable delay — no background queue needed.
 
 ## Inbox
-
-```bash
-kb inbox add BODY [--source S] [--category C]   # raw, untriaged capture
-kb inbox pending [--category C]                 # list untriaged items, optionally filtered
-kb inbox triage ID [ID ...]                     # mark triaged, after creating whatever real record it became
-```
 
 `InboxItem` is for anything whose eventual home isn't known yet — unlike every other kb table, you don't decide up front whether it's a `Todo`, a `Purchase`, a `LogEntry`, or nothing at all. Triage means: create the real record it turns out to be, then `inbox triage` the item. Don't let ideas-in-passing get lost while mid-task — `inbox add` them and keep moving.
 
@@ -51,14 +32,7 @@ kb inbox triage ID [ID ...]                     # mark triaged, after creating w
 
 ## Running commands
 
-`kb <command> <verb> [args]` — every command group is a `kb_cli/*.py` module with argparse subcommands, wired into one global entry point; `kb <command> --help` lists them all. This section covers the Python-expression runner (`kb.py`), a different tool from the `kb` CLI — `kb.py` is for one-off queries/scripts against models directly, `kb` is for the day-to-day subcommands documented in the sections below.
-
-```bash
-kb.py "sess.scalars(select(Note)).all()"   # single command, auto-commits
-kb.py -f script.py                          # run a script file, auto-commits (use for multi-line bodies)
-kb.py --no-commit "..."                     # dry-run
-kb.py -i                                    # interactive REPL, explicit opt-in — does NOT auto-commit
-```
+`kb.py` (see `kb.py -h`) is the Python-expression runner, a different tool from the `kb` CLI — `kb.py` is for one-off queries/scripts against models directly, `kb` is for the day-to-day subcommands (see `kb -h`).
 
 Bare `kb.py` (no command, `-f`, or `-i`) errors instead of silently dropping into the REPL — always pass `-i` explicitly if you want manual-commit interactive mode.
 
@@ -70,18 +44,11 @@ Enum columns take the member (uppercase name, e.g. `Collection.GORGON`), not the
 
 ## Goals, Todos, and Context
 
-```bash
-kb goal show|complete|abandon|hold|reactivate ID [ID ...]   # hold = blocked externally, not abandoned
-kb goal add TITLE [--description D] [--notes N] [--context NAME]
-kb todo show ID [ID ...] | add TITLE [--effort grab|research|project] [--defer-until WHEN] [--notes N] [--context NAME] | update ID [--title T] [--effort E] [--defer-until WHEN] [--notes N] [--context NAME] [--goal ID] | complete ID [ID ...] | pending [--effort grab|research|project] [--all] | list [--effort E] [--tag T] [--all]
-kb context current | switch NAME | list
-```
-
 `goal show`/`todo show` print a one-line "N history entries" hint when Journal history exists, without dumping it — pass `--history` to expand it inline, or `--history N` for just the last N entries.
 
 `todo pending` always shows Todos from every context; `todo list` scopes to the current context (plus its descendants and no-context Todos) by default, matching `kb summary`'s scoping — pass `--all` to see every context instead.
 
-`Todo.defer_until` hides a Todo from `todo pending`/`kb summary` until that time passes — not a due date, a "don't show me this until it's actually relevant" filter (e.g. "vacuum" deferred to 19:00 today doesn't clutter the view until evening planning time). `--defer-until` accepts `HH:MM` (today, or tomorrow if that time already passed), `YYYY-MM-DD`, or `YYYY-MM-DD HH:MM`. `todo pending --all` (or `Todo.active(include_deferred=True)`) surfaces deferred-but-not-yet-due items too, for deliberately planning ahead.
+`Todo.defer_until` hides a Todo from `todo pending`/`kb summary` until that time passes — not a due date, a "don't show me this until it's actually relevant" filter (e.g. "vacuum" deferred to 19:00 today doesn't clutter the view until evening planning time). `todo pending --all` (or `Todo.active(include_deferred=True)`) surfaces deferred-but-not-yet-due items too, for deliberately planning ahead.
 
 ### Tags: a Todo (or Goal/Daily/Idea/Timer) that floats to every matching Context
 
@@ -89,26 +56,15 @@ kb context current | switch NAME | list
 
 `HasContextOrTag.matches_contexts(contexts)` (a classmethod on the mixin, inherited by every model above) is the one expression for "does this row belong to any of these Contexts, directly or via a shared Tag" — every entity's own `.active(session, contexts=...)` classmethod calls it, so `Goal.active`/`Todo.active`/`Daily.active`/`Idea.active`/`Timer.active` all share one tag-fan-out implementation instead of five hand-rolled copies. If a new context/tag-addressable entity is ever added, give it the same `.active(session, context=None, contexts=None, include_no_context=False, ...)` shape (extra kwargs like `Todo.active`'s `effort`/`include_deferred` are fine) so it slots into this pattern rather than becoming a sixth special case.
 
-`kb_cli/context_cmd.py`'s `render_tree` is the one tree-rendering engine behind `kb context tree [--goals|--todos|--dailies|--items|--entities|--ideas]`, `kb todo tree`, and any future `kb goal tree`/`kb daily tree` — each of those commands is a thin call into `render_tree(session, entity_models=(TheModel,), active_kwargs={TheModel: {...}}, scope_to_current=...)`, not a reimplementation. `render_tree`'s `_content_items` always delegates the "is this active/visible right now" decision to each model's own `.active()` (via `matches_contexts`), never to a hand-rolled status/defer_until check in `context_cmd.py` itself — that filtering has exactly one owner per entity, the same way `Daily`'s overdue logic has one owner (see `CLAUDE_GLOBAL.md`'s Code Quality section). Like `kb context tree`/`kb todo list`, `kb todo tree` scopes to the current context by default; `--all` shows the full tree and also includes not-yet-due deferred Todos (both meanings bundled into one flag, matching `todo list --all`'s "show everything" convention). `kb_cli/timer.py`'s `cmd_tree` is the one exception, still using the older standalone `context_tree.py:render_context_tree` helper, because `Timer`'s tree view needs a custom per-row line (live countdown seconds) that plain `__repr__` doesn't carry — a real display-only need, not filter-logic drift.
+`kb_cli/context_cmd.py`'s `render_tree` is the one tree-rendering engine behind `kb context tree [--goals|--todos|--dailies|--items|--entities|--ideas]`, `kb todo tree`, and any future `kb goal tree`/`kb daily tree` — each of those commands is a thin call into `render_tree(session, entity_models=(TheModel,), active_kwargs={TheModel: {...}}, scope_to_current=...)`, not a reimplementation. `render_tree`'s `_content_items` always delegates the "is this active/visible right now" decision to each model's own `.active()` (via `matches_contexts`), never to a hand-rolled status/defer_until check in `context_cmd.py` itself — that filtering has exactly one owner per entity, the same way `Daily`'s overdue logic has one owner (see `kb i` engineering node, single-ownership principle). Like `kb context tree`/`kb todo list`, `kb todo tree` scopes to the current context by default; `--all` shows the full tree and also includes not-yet-due deferred Todos (both meanings bundled into one flag, matching `todo list --all`'s "show everything" convention). `kb_cli/timer.py`'s `cmd_tree` is the one exception, still using the older standalone `context_tree.py:render_context_tree` helper, because `Timer`'s tree view needs a custom per-row line (live countdown seconds) that plain `__repr__` doesn't carry — a real display-only need, not filter-logic drift.
 
 SQLite silently drops timezone info on `DateTime(timezone=True)` columns on read-back (the column stores it, but the Python value comes back naive). Every such column is written exclusively through `_now()` (`base.py`), which is always UTC — so a naive value read back from one of these columns is safely known to be UTC, and `.replace(tzinfo=timezone.utc)` should be applied before using it for anything: comparing it, displaying it, or reasoning about it, rather than reading the raw attribute at face value. If a new writer for one of these columns is ever added that doesn't go through `_now()` (e.g. a hand-built local timestamp), fix that writer to store UTC too, rather than adding a special case to how the value is read. SQL-level comparisons (inside a `select(...).where(...)`) aren't affected, only Python-level use after the ORM has already loaded the value.
 
 ## Daily
 
-```bash
-kb daily show ID | list [--domain D] [--tier critical|optional] | add DESCRIPTION [--domain D] [--tier critical|optional] [--recurrence R] [--show-after-hour H] [--location L] [--reward R] [--notes N] | update ID [...same flags] | complete ID [ID ...] | catch-up ID [ID ...] | activate ID [ID ...] | deactivate ID [ID ...]
-```
-
-`--recurrence` is `daily` (default), `every:N`, `weekly:MON..SUN`, or `monthly:D` (day 1-28) — `kb daily add --help` prints this grammar natively, no need to read `Daily`'s docstring in `models.py` for it. A recurring item has a CLI, same as Goal/Todo/Wishlist; only reach for `kb.py`/`Daily.create(...)` for something the CLI doesn't expose.
+`--recurrence`'s grammar (`daily`, `every:N`, `weekly:MON..SUN`, `monthly:D`) is documented natively via `kb daily add --help`, no need to read `Daily`'s docstring in `models.py` for it. A recurring item has a CLI, same as Goal/Todo/Wishlist; only reach for `kb.py`/`Daily.create(...)` for something the CLI doesn't expose.
 
 ## Log and Journal
-
-```bash
-kb log add BODY [--domain D] [--context NAME] [--date YYYY-MM-DD]   # timestamped observation; --date backdates (default: now)
-kb log recent [--domain D] [--context NAME] [--limit N]
-kb journal add ENTITY_TYPE ENTITY_ID NOTE   # record a free-text journal note for an entity
-kb journal show ENTITY_TYPE ENTITY_ID
-```
 
 `LogEntry` is a fact about the world at a point in time (health, events, work log) — not durable reference knowledge (`Note`) and not work with a status (`Goal`/`Todo`). See `LogEntry`'s docstring in `models.py` for the full distinction, and the `Journal` note in the Price/purchase history section below for how `Journal` (structured per-entity history) differs from both.
 
@@ -120,11 +76,7 @@ kb journal show ENTITY_TYPE ENTITY_ID
 
 ## Before creating or updating notes
 
-```bash
-kb notes get ID | search COLLECTION QUERY | add COLLECTION TITLE BODY [--tags t1,t2] | update (--id ID|--find TITLE) [--title T] [--body B] [--tags t1,t2] | reembed
-```
-
-Check for existing related notes first with `notes search` — semantic search surfaces related notes even when you don't know the exact title. Use `notes get ID` once you have an id (e.g. from a `kb-<collection>-<id>` pointer), and `Note.find(title)` only once you already know/suspect an exact title (e.g. confirming before an update).
+Check for existing related notes first with `notes search` (see `kb notes --help`) — semantic search surfaces related notes even when you don't know the exact title. Use `notes get ID` once you have an id (e.g. from a `kb-<collection>-<id>` pointer), and `Note.find(title)` only once you already know/suspect an exact title (e.g. confirming before an update).
 
 ## Server
 
@@ -165,29 +117,13 @@ Read the newest engineering note on `batch_alter_table` column renames before re
 
 ## Idea
 
-```bash
-kb idea add TITLE [--description D] [--notes N]
-kb idea show ID [ID ...] [--history [N]]
-kb idea list [--all]
-kb idea promote ID --to "Goal #14"   # marks promoted, records the transition via Journal
-kb idea drop ID
-```
-
 `Idea` is GTD Someday/Maybe — a project idea you like but haven't committed to acting on, distinct from `Todo` (committed next-action work) and `Wishlist` (acquire/purchase, price-bearing). It has no `defer_until`, `priority`, or score, and never appears in `kb summary` beyond a bare count — it's reviewed deliberately (`kb idea list`), not surfaced on its own. Promoting an idea to a real `Goal`/`Todo`/`Wishlist` is a manual relocation: create the new row by hand, `kb idea promote ID --to "..."` to record what it became via `Journal` and mark it resolved — not a live foreign key, so promoted ideas don't leave a permanent cross-reference trail.
 
-## Wishlist, Model
+## Model
 
-```bash
-kb wishlist add TITLE [--description D] [--price-min N] [--price-max N] [--importance N] [--urgency N] [--clarity N] [--effort grab|research|project] [--priority N] [--notes N]
-kb wishlist update ID [--title T] [--description D] [--price-min N] [--price-max N] [--importance N] [--urgency N] [--clarity N] [--effort E] [--priority N] [--status active|acquired|dropped] [--notes N]
-scripts/model/download      # explicitly download the embedding model (only script that hits the network)
-```
+`scripts/model/download` explicitly downloads the embedding model — the only script that hits the network.
 
 ## Flashcards
-
-```bash
-kb anki decks | deck-add NAME | notetype-init | search QUERY | add DECK NOTETYPE FIELD... [--tags T] | delete ID... | run [-f FILE|-i]
-```
 
 Anki must be closed first (it holds the collection file locked) — `kb anki` waits up to 60s rather than failing immediately if it's still open.
 

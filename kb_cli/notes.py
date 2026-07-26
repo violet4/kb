@@ -6,6 +6,7 @@ import sys
 from sqlalchemy import select
 
 from client import KBClient
+from kb_cli._util import apply_text_edit
 from models import Collection, Note
 
 
@@ -33,7 +34,11 @@ def cmd_update(args: argparse.Namespace) -> None:
     if note is None:
         print("Note not found.", file=sys.stderr)
         sys.exit(1)
-    note.update(title=args.title, body=args.body, tags=args.tags)
+    body = args.body
+    if args.append is not None or args.replace is not None:
+        replace = tuple(args.replace) if args.replace is not None else None
+        body = apply_text_edit(note.body, f"body of {note.title!r}", args.append, replace)
+    note.update(title=args.title, body=body, tags=args.tags)
     args.session.commit()
     print(f"Updated: {note}")
 
@@ -87,7 +92,14 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     lookup.add_argument("--id", type=int, help="Note id")
     lookup.add_argument("--find", metavar="TITLE", help="Find note by exact title")
     p_update.add_argument("--title", help="New title")
-    p_update.add_argument("--body", help="New body")
+    p_update.add_argument("--body", help="Replace the entire body -- prefer --append/--replace for a small change")
+    p_update.add_argument("--append", metavar="TEXT", help="Append a paragraph to the body without restating the rest")
+    p_update.add_argument(
+        "--replace",
+        nargs=2,
+        metavar=("OLD", "NEW"),
+        help="Replace one occurrence of OLD with NEW in the body -- errors if OLD is missing or not unique",
+    )
     p_update.add_argument("--tags", help="New tags (comma-separated)")
     p_update.set_defaults(func=cmd_update)
 

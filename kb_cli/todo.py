@@ -139,11 +139,15 @@ def cmd_pending(args: argparse.Namespace) -> None:
 def cmd_list(args: argparse.Namespace) -> None:
     effort = WishlistEffort(args.effort) if args.effort else None
     if args.all:
-        todos = Todo.active(args.session, effort=effort, include_deferred=True)
+        todos = Todo.active(args.session, effort=effort, include_deferred=args.include_deferred)
     else:
         in_scope = scope_to_context(args.session, args.context)
         todos = Todo.active(
-            args.session, contexts=in_scope, include_no_context=True, effort=effort, include_deferred=True
+            args.session,
+            contexts=in_scope,
+            include_no_context=True,
+            effort=effort,
+            include_deferred=args.include_deferred,
         )
     if not todos:
         print("No todos.")
@@ -228,6 +232,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     )
     p_list.add_argument("--effort", choices=[e.value for e in WishlistEffort])
     p_list.add_argument("--all", action="store_true", help="Ignore context scoping and show Todos from every context")
+    p_list.add_argument("--include-deferred", action="store_true", help="Also include deferred Todos not yet due")
     p_list.set_defaults(func=cmd_list)
 
     p_tree = sub.add_parser(
@@ -237,7 +242,11 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_tree.add_argument("--include-deferred", action="store_true", help="Also include deferred Todos not yet due")
     p_tree.set_defaults(func=cmd_tree)
 
-    p_search = sub.add_parser("search", help="Search Todos by text")
+    p_search = sub.add_parser(
+        "search",
+        help="Search Todos by text (unscoped by default; pass the global "
+        "`kb --context NAME todo search ...` to restrict to that context's subtree)",
+    )
     p_search.add_argument("query")
     p_search.add_argument("--all", action="store_true", help="Also include done/dropped Todos (excluded by default)")
     p_search.set_defaults(func=cmd_search, model=Todo)

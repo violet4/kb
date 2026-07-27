@@ -119,6 +119,17 @@ never just mention the place in the title. Example: "I need salt next time I'm i
 Keep" is `kb --context "serbule keep" todo add "buy salt"`, not a title that mentions the
 place in passing.
 
+A question about a place ("what do we need at X", "what's pending at X") is the read-side
+mirror of the rule above -- go straight to `kb --context X search QUERY` (substring plus
+semantic, scoped to X's subtree) or `kb --context X todo list` (everything pending under X,
+no query needed), not `context tree`/`todo pending --all` plus manual grepping. Example:
+"what do we need at the grocery store" is `kb --context grocery search buy` or
+`kb --context grocery todo list`, not a walk through `context tree --todos`. Every read-scoped
+list/tree command prints which context it resolved to (`context: grocery`), so the scope is
+never silently wrong -- trust the one-shot scoped command first, fall back to unscoped
+`context tree`/`search` only if the scoped result comes back empty and the context itself
+might be wrong.
+
 Run `kb <command> --help` before typing a command from memory -- flags and shapes above are
 illustrative, not exhaustive. Run `kb -h` for full technical reference (what --context/--as-of
 really do, the complete subcommand list). See also: kb instructions root.

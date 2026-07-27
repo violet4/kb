@@ -551,8 +551,25 @@ class HasEmbedding:
         self.embedding_model = model_name()
 
     @classmethod
-    def search(cls, session: Session, query: str, limit: int = 10, **filters: Any) -> list[tuple[Any, float]]:
-        """`filters` are extra `column=value` equality clauses, e.g. collection=Collection.ENGINEERING."""
+    def search(
+        cls,
+        session: Session,
+        query: str,
+        limit: int = 10,
+        context: Optional[Context] = None,
+        **filters: Any,
+    ) -> list[tuple[Any, float]]:
+        """`filters` are extra `column=value` equality clauses, e.g. collection=Collection.ENGINEERING.
+
+        `context`, when given, restricts results to that context's subtree (plus no-context
+        rows) using the same matching HasContextOrTag.matches_contexts expresses at the SQL
+        layer for `list`/`tree`/substring search. This can't be expressed as an equality
+        filter (it's an OR over context_id IN (...) / tag_id IN (...) / context_id IS NULL),
+        so it's applied as a Python-side post-filter on a widened candidate set (10x limit,
+        capped) pulled by nearest-distance first, then truncated back to `limit` -- keeps the
+        common unscoped case a single exact query while still returning `limit` real matches
+        in the scoped case rather than silently returning fewer once out-of-scope neighbors
+        are dropped."""
         from embed import embed, model_name
 
         raw = embed(query)
@@ -564,14 +581,28 @@ class HasEmbedding:
         for col, value in filters.items():
             where_clauses.append(f"{col} = ?")
             params.append(value.name if isinstance(value, enum.Enum) else value)
+        fetch_limit = min(limit * 10, 200) if context is not None else limit
         sql = (
             f"SELECT id, vec_distance_cosine(embedding, ?) AS dist FROM {table} "
-            f"WHERE {' AND '.join(where_clauses)} ORDER BY dist ASC LIMIT {int(limit)}"
+            f"WHERE {' AND '.join(where_clauses)} ORDER BY dist ASC LIMIT {int(fetch_limit)}"
         )
         with _engine.connect() as conn:
             rows = conn.connection.execute(sql, params).fetchall()
         objs = {o.id: o for o in session.scalars(select(cls).where(cls.id.in_([r[0] for r in rows]))).all()}
-        return [(objs[r[0]], r[1]) for r in rows if r[0] in objs]
+        results = [(objs[r[0]], r[1]) for r in rows if r[0] in objs]
+        if context is not None:
+            in_scope = Context.self_and_descendants(session, context.name)
+            context_ids = {c.id for c in in_scope}
+            tag_ids = set(Context.active_tag_ids(in_scope))
+            results = [
+                (obj, dist)
+                for obj, dist in results
+                if not isinstance(obj, HasContextOrTag)
+                or obj.context_id in context_ids
+                or obj.tag_id in tag_ids
+                or (obj.context_id is None and obj.tag_id is None)
+            ]
+        return results[:limit]
 
 
 @event.listens_for(Session, "before_flush")

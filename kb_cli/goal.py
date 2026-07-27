@@ -75,15 +75,19 @@ def cmd_show(args: argparse.Namespace) -> None:
 
 def cmd_list(args: argparse.Namespace) -> None:
     status = GoalStatus(args.status) if args.status else None
-    if args.all:
-        # Goal.active() only returns ACTIVE Goals -- an explicit non-ACTIVE status or no
-        # status filter at all both need a plain query instead.
-        q = select(Goal)
-        if status is not None:
-            q = q.where(Goal.status == status)
+    if status is not None and status != GoalStatus.ACTIVE:
+        # Goal.active() only returns ACTIVE Goals -- an explicit non-ACTIVE status needs a
+        # plain query instead. --all still applies to this query as scoping-only, same as
+        # the ACTIVE-status branch below.
+        q = select(Goal).where(Goal.status == status)
+        if not args.all:
+            in_scope = scope_to_context(args.session, args.context)
+            if in_scope is not None:
+                match = Goal.matches_contexts(in_scope)
+                q = q.where(match | (Goal.context_id.is_(None) & Goal.tag_id.is_(None)))
         goals = args.session.scalars(q).all()
-    elif status is not None and status != GoalStatus.ACTIVE:
-        goals = args.session.scalars(select(Goal).where(Goal.status == status)).all()
+    elif args.all:
+        goals = Goal.active(args.session)
     else:
         in_scope = scope_to_context(args.session, args.context)
         goals = Goal.active(args.session, contexts=in_scope, include_no_context=True)
@@ -167,7 +171,11 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_list.add_argument("--all", action="store_true", help="Ignore context scoping and show Goals from every context")
     p_list.set_defaults(func=cmd_list)
 
-    p_search = sub.add_parser("search", help="Search Goals by text")
+    p_search = sub.add_parser(
+        "search",
+        help="Search Goals by text (unscoped by default; pass the global "
+        "`kb --context NAME goal search ...` to restrict to that context's subtree)",
+    )
     p_search.add_argument("query")
     p_search.add_argument(
         "--all", action="store_true", help="Also include completed/abandoned Goals (excluded by default)"

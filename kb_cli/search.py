@@ -2,8 +2,8 @@
 
 The one search engine behind `kb wishlist search`, `kb goal search`, `kb todo search`,
 and the top-level `kb search` -- each of those is a thin call into `search_entities`
-with a different set of models, so "what counts as a match" (ilike over title/description/
-notes) is defined once here rather than reimplemented per command.
+with a different set of models, so "what counts as a match" (ilike over title/name/
+description/notes) is defined once here rather than reimplemented per command.
 """
 
 import argparse
@@ -12,12 +12,12 @@ from typing import Any, Sequence
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from models import Collection, Goal, GoalStatus, Instruction, Note, Todo, TodoStatus, Wishlist, WishlistStatus
+from models import Collection, Context, Goal, GoalStatus, Instruction, Note, Todo, TodoStatus, Wishlist, WishlistStatus
 
 # Models searchable from the top-level `kb search`, in display order.
-ALL_SEARCHABLE: tuple[Any, ...] = (Goal, Todo, Wishlist, Instruction)
+ALL_SEARCHABLE: tuple[Any, ...] = (Goal, Todo, Wishlist, Instruction, Context)
 
-_TEXT_COLUMNS = ("title", "description", "notes", "body")
+_TEXT_COLUMNS = ("title", "name", "description", "notes", "body")
 
 # Statuses that mean "no longer open" -- excluded by default from search results,
 # matching the `list --all` convention (todo list --all, goal list --all).
@@ -90,7 +90,7 @@ def cmd_search_all(args: argparse.Namespace) -> None:
 
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     parser = subparsers.add_parser(
-        "search", help="Search Goals, Todos, and Wishlist items by text, plus Notes by semantic similarity"
+        "search", help="Search Goals, Todos, Wishlist items, and Contexts by text, plus Notes by semantic similarity"
     )
     parser.add_argument("query")
     parser.add_argument(

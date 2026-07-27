@@ -18,7 +18,10 @@ from models import (
     Goal,
     GoalStatus,
     HasContextOrTag,
+    Idea,
+    IdeaStatus,
     Instruction,
+    LogEntry,
     Note,
     Todo,
     TodoStatus,
@@ -29,7 +32,7 @@ from models import (
 from kb_cli._util import scope_to_context
 
 # Models searchable from the top-level `kb search`, in display order.
-ALL_SEARCHABLE: tuple[Any, ...] = (Goal, Todo, Wishlist, Instruction, Context)
+ALL_SEARCHABLE: tuple[Any, ...] = (Goal, Todo, Wishlist, Instruction, Idea, Context)
 
 _TEXT_COLUMNS = ("title", "name", "description", "notes", "body")
 
@@ -39,6 +42,7 @@ TERMINAL_STATUSES: dict[Any, set[Any]] = {
     Goal: {GoalStatus.COMPLETED, GoalStatus.ABANDONED},
     Todo: {TodoStatus.DONE, TodoStatus.DROPPED},
     Wishlist: {WishlistStatus.ACQUIRED, WishlistStatus.DROPPED},
+    Idea: {IdeaStatus.PROMOTED, IdeaStatus.DROPPED},
 }
 
 
@@ -89,46 +93,109 @@ def cmd_search(args: argparse.Namespace) -> None:
     _print_results(search_entities(args.session, (args.model,), args.query, include_done=args.all, context=context))
 
 
+# Substring matches are exact hits, not distance-scored -- rank them ahead of every
+# semantic result by giving them this sentinel distance rather than a real cosine distance.
+_SUBSTRING_DIST = -1.0
+
+
+def _fmt_result(item: Any, dist: float) -> str:
+    label = "substring" if dist == _SUBSTRING_DIST else f"dist={dist:.3f}"
+    if isinstance(item, Note):
+        tags = f" #{item.tags}" if item.tags else ""
+        return f"#{item.id} {item.title!r} [Note/{item.collection.value}]{tags} ({label})"
+    if isinstance(item, Todo):
+        return f"#{item.id} {item.title!r} [Todo/{item.status.value}] ({label})"
+    if isinstance(item, Goal):
+        return f"#{item.id} {item.title!r} [Goal/{item.status.value}] ({label})"
+    if isinstance(item, Instruction):
+        trigger = f" trigger={item.trigger!r}" if item.trigger else ""
+        return f"#{item.id} {item.title!r} [Instruction]{trigger} ({label})"
+    if isinstance(item, Idea):
+        return f"#{item.id} {item.title!r} [Idea/{item.status.value}] ({label})"
+    if isinstance(item, LogEntry):
+        when = item.occurred_at.strftime("%Y-%m-%d")
+        body = item.body if len(item.body) <= 60 else item.body[:60] + "…"
+        return f"#{item.id} [LogEntry {when}] {body!r} ({label})"
+    return f"{item!r} ({label})"
+
+
 def cmd_search_all(args: argparse.Namespace) -> None:
     include_done = args.all
     context = args.context if args.context_explicit else None
-    _print_results(
-        search_entities(args.session, ALL_SEARCHABLE, args.query, include_done=include_done, context=context)
+    limit = args.limit
+
+    substring_hits = search_entities(
+        args.session, ALL_SEARCHABLE, args.query, include_done=include_done, context=context
     )
+    scored: list[tuple[Any, float]] = [(item, _SUBSTRING_DIST) for item in substring_hits]
 
-    notes = Note.search(args.session, args.query)
-    if notes:
-        print("=== Notes (semantic) ===")
-        for note, dist in notes:
-            tags = f" #{note.tags}" if note.tags else ""
-            print(f"#{note.id} {note.title!r} [{note.collection.value}]{tags} (dist={dist:.3f})")
+    # Embed the query once and reuse the vector across all three semantic searches below,
+    # rather than each one calling embed() independently for identical text.
+    import struct
 
-    todos = Todo.search(args.session, args.query, context=context)
+    from embed import embed
+
+    raw = embed(args.query)
+    vec = struct.pack(f"{len(raw)}f", *raw)
+
+    notes = Note.search(args.session, args.query, limit=limit, vec=vec)
+    scored.extend(notes)
+
+    todos = Todo.search(args.session, args.query, limit=limit, context=context, vec=vec)
     if not include_done:
         todos = [(t, d) for t, d in todos if t.status not in TERMINAL_STATUSES[Todo]]
-    if todos:
-        print("=== Todos (semantic) ===")
-        for todo, dist in todos:
-            print(f"#{todo.id} {todo.title!r} [{todo.status.value}] (dist={dist:.3f})")
+    scored.extend(todos)
 
-    goals = Goal.search(args.session, args.query, context=context)
+    goals = Goal.search(args.session, args.query, limit=limit, context=context, vec=vec)
     if not include_done:
         goals = [(g, d) for g, d in goals if g.status not in TERMINAL_STATUSES[Goal]]
-    if goals:
-        print("=== Goals (semantic) ===")
-        for goal, dist in goals:
-            print(f"#{goal.id} {goal.title!r} [{goal.status.value}] (dist={dist:.3f})")
+    scored.extend(goals)
+
+    instructions = Instruction.search(args.session, args.query, limit=limit, context=context, vec=vec)
+    scored.extend(instructions)
+
+    ideas = Idea.search(args.session, args.query, limit=limit, context=context, vec=vec)
+    if not include_done:
+        ideas = [(i, d) for i, d in ideas if i.status not in TERMINAL_STATUSES[Idea]]
+    scored.extend(ideas)
+
+    log_entries = LogEntry.search(args.session, args.query, limit=limit, context=context, vec=vec)
+    scored.extend(log_entries)
+
+    # De-dupe: the same row can surface via both the substring pass and a semantic pass --
+    # keep the best (lowest-distance, i.e. substring) scoring of the two.
+    best: dict[tuple[type, int], tuple[Any, float]] = {}
+    for item, dist in scored:
+        key = (type(item), item.id)
+        if key not in best or dist < best[key][1]:
+            best[key] = (item, dist)
+
+    ranked = sorted(best.values(), key=lambda pair: pair[1])[:limit]
+
+    if not ranked:
+        print("No matches.")
+        return
+    for item, dist in ranked:
+        print(_fmt_result(item, dist))
 
 
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     parser = subparsers.add_parser(
         "search",
-        help="Search Goals, Todos, Wishlist items, and Contexts by text, plus Notes by semantic similarity "
-        "(unscoped by default; pass the global `kb --context NAME search ...` to restrict "
-        "context/tag-addressable results to that context's subtree)",
+        help="Search Goals, Todos, Wishlist items, Instructions, Ideas, and Contexts by substring, plus "
+        "Notes, Todos, Goals, Instructions, Ideas, and LogEntries by semantic similarity -- all ranked "
+        "together by score (unscoped by default; pass the global `kb --context NAME search ...` to "
+        "restrict context/tag-addressable results to that context's subtree)",
     )
     parser.add_argument("query")
     parser.add_argument(
         "--all", action="store_true", help="Also include done/abandoned/dropped/acquired items (excluded by default)"
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=10,
+        help="Max results across all entities combined, ranked by score (substring matches rank first, "
+        "then semantic matches by ascending distance)",
     )
     parser.set_defaults(func=cmd_search_all)

@@ -121,6 +121,7 @@ def cmd_add(args: argparse.Namespace) -> None:
     _check_title_not_numeric(args.title)
     parent = _resolve(args.session, args.parent) if args.parent is not None else None
     node = Instruction(title=args.title, body=args.body, trigger=args.trigger, parent=parent, context=args.context)
+    node.reembed()
     args.session.add(node)
     args.session.commit()
     _print_node(args.session, node, show_body=False)
@@ -170,10 +171,17 @@ def cmd_delete(args: argparse.Namespace) -> None:
 def cmd_search(args: argparse.Namespace) -> None:
     results = search_entities(args.session, (Instruction,), args.query)
     if not results:
-        print("No matches.")
-        return
-    for node in results:
-        print(repr(node))
+        print("No substring matches.")
+    else:
+        for node in results:
+            print(repr(node))
+
+    semantic = Instruction.search(args.session, args.query)
+    if semantic:
+        print("=== Semantic ===")
+        for node, dist in semantic:
+            marker = f" trigger={node.trigger!r}" if node.trigger else ""
+            print(f"#{node.id} {node.title!r}{marker} (dist={dist:.3f})")
 
 
 def cmd_tree(args: argparse.Namespace) -> None:
@@ -251,7 +259,8 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
 
     p_search = sub.add_parser(
         "search",
-        help="Substring search over node titles/bodies -- the fallback when tree navigation doesn't surface something",
+        help="Substring plus semantic search over node titles/bodies -- the fallback when tree navigation "
+        "doesn't surface something",
     )
     p_search.add_argument("query")
     p_search.set_defaults(func=cmd_search)

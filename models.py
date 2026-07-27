@@ -287,6 +287,108 @@ class ContextTag(Base):
     tag_id: Mapped[int] = mapped_column(Integer, ForeignKey("tag.id"), nullable=False)
 
 
+class HasEmbedding:
+    """Semantic-search support for any model. Subclasses implement `_embed_source_text()`
+    (which fields feed the embedding) and get `.reembed()` plus a `.search(session, query,
+    **filters)` classmethod for free. A `before_flush` listener below auto-reembeds any
+    dirty instance whose source fields changed, so callers never need to call reembed()
+    themselves after a plain attribute assignment -- only each model's own create() calls
+    it directly, for the initial embed before the first flush. embedding_model is stored
+    per-row so a model upgrade doesn't silently mix incomparable vectors -- search always
+    filters to the current model_name()."""
+
+    embedding_model: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    embedding: Mapped[Optional[bytes]] = mapped_column(Text, nullable=True)
+
+    # Declared here type-only (no mapped_column) so mypy knows every subclass provides
+    # them -- __tablename__/id come from the subclass's own Base/mapped_column, same
+    # pattern as HasContextOrTag's context_id/context/tag above.
+    __tablename__: str
+    id: Mapped[int]
+
+    @staticmethod
+    def _embed_fields() -> set[str]:
+        raise NotImplementedError
+
+    def _embed_source_text(self) -> str:
+        raise NotImplementedError
+
+    def reembed(self) -> None:
+        from embed import embed, model_name
+
+        vec = embed(self._embed_source_text())
+        self.embedding = struct.pack(f"{len(vec)}f", *vec)
+        self.embedding_model = model_name()
+
+    @classmethod
+    def search(
+        cls,
+        session: Session,
+        query: str,
+        limit: int = 10,
+        context: Optional[Context] = None,
+        vec: Optional[bytes] = None,
+        **filters: Any,
+    ) -> list[tuple[Any, float]]:
+        """`filters` are extra `column=value` equality clauses, e.g. collection=Collection.ENGINEERING.
+
+        `context`, when given, restricts results to that context's subtree (plus no-context
+        rows) using the same matching HasContextOrTag.matches_contexts expresses at the SQL
+        layer for `list`/`tree`/substring search. This can't be expressed as an equality
+        filter (it's an OR over context_id IN (...) / tag_id IN (...) / context_id IS NULL),
+        so it's applied as a Python-side post-filter on a widened candidate set (10x limit,
+        capped) pulled by nearest-distance first, then truncated back to `limit` -- keeps the
+        common unscoped case a single exact query while still returning `limit` real matches
+        in the scoped case rather than silently returning fewer once out-of-scope neighbors
+        are dropped.
+
+        `vec`, when given (the packed output of `embed_query()` below), is used instead of
+        re-embedding `query` -- lets a caller that searches multiple models for the same query
+        text (e.g. the top-level `kb search`) embed once and reuse the vector, rather than
+        paying one embed() round-trip per model searched."""
+        from embed import embed, model_name
+
+        if vec is None:
+            raw = embed(query)
+            vec = struct.pack(f"{len(raw)}f", *raw)
+        mn = model_name()
+        table = cls.__tablename__
+        where_clauses = ["embedding_model = ?"]
+        params: list[Any] = [vec, mn]
+        for col, value in filters.items():
+            where_clauses.append(f"{col} = ?")
+            params.append(value.name if isinstance(value, enum.Enum) else value)
+        fetch_limit = min(limit * 10, 200) if context is not None else limit
+        sql = (
+            f"SELECT id, vec_distance_cosine(embedding, ?) AS dist FROM {table} "
+            f"WHERE {' AND '.join(where_clauses)} ORDER BY dist ASC LIMIT {int(fetch_limit)}"
+        )
+        with _engine.connect() as conn:
+            rows = conn.connection.execute(sql, params).fetchall()
+        objs = {o.id: o for o in session.scalars(select(cls).where(cls.id.in_([r[0] for r in rows]))).all()}
+        results = [(objs[r[0]], r[1]) for r in rows if r[0] in objs]
+        if context is not None:
+            in_scope = Context.self_and_descendants(session, context.name)
+            context_ids = {c.id for c in in_scope}
+            tag_ids = set(Context.active_tag_ids(in_scope))
+
+            def _in_scope(obj: Any) -> bool:
+                if isinstance(obj, HasContextOrTag):
+                    return (
+                        obj.context_id in context_ids
+                        or obj.tag_id in tag_ids
+                        or (obj.context_id is None and obj.tag_id is None)
+                    )
+                if hasattr(obj, "context_id"):
+                    # A plain context_id (e.g. LogEntry), no tag support -- same
+                    # "in scope or unset" rule as the HasContextOrTag case above.
+                    return obj.context_id in context_ids or obj.context_id is None
+                return True
+
+            results = [(obj, dist) for obj, dist in results if _in_scope(obj)]
+        return results[:limit]
+
+
 class HasContextOrTag:
     """A single tag_id, mutually exclusive with the entity's own context_id: a Goal/Todo/Daily/
     Idea is either pinned to one place (context_id) or floats to anywhere carrying a matching
@@ -356,7 +458,7 @@ class CurrentContext(Base):
         return f"<CurrentContext {self.context.name if self.context else None!r}>"
 
 
-class Instruction(Base, HasContextOrTag):
+class Instruction(Base, HasContextOrTag, HasEmbedding):
     """A node in the topic tree of durable guidance -- unifies what would otherwise be scattered
     across CLAUDE.md files, Claude Code skills, and Claude Code memory into one structure. Single-
     parent tree via parent_id (adjacency list), same shape as Context but a SEPARATE tree: Context
@@ -394,6 +496,13 @@ class Instruction(Base, HasContextOrTag):
     parent: Mapped[Optional[Instruction]] = relationship("Instruction", remote_side=[id])
     context: Mapped[Optional[Context]] = relationship("Context")
     tag: Mapped[Optional["Tag"]] = relationship("Tag")
+
+    @staticmethod
+    def _embed_fields() -> set[str]:
+        return {"title", "body"}
+
+    def _embed_source_text(self) -> str:
+        return f"{self.title}\n\n{self.body}"
 
     @classmethod
     def roots(cls, session: Session) -> Sequence[Instruction]:
@@ -515,94 +624,6 @@ class Person(Base):
 # ---------------------------------------------------------------------------
 # HasEmbedding (RAG)
 # ---------------------------------------------------------------------------
-
-
-class HasEmbedding:
-    """Semantic-search support for any model. Subclasses implement `_embed_source_text()`
-    (which fields feed the embedding) and get `.reembed()` plus a `.search(session, query,
-    **filters)` classmethod for free. A `before_flush` listener below auto-reembeds any
-    dirty instance whose source fields changed, so callers never need to call reembed()
-    themselves after a plain attribute assignment -- only each model's own create() calls
-    it directly, for the initial embed before the first flush. embedding_model is stored
-    per-row so a model upgrade doesn't silently mix incomparable vectors -- search always
-    filters to the current model_name()."""
-
-    embedding_model: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    embedding: Mapped[Optional[bytes]] = mapped_column(Text, nullable=True)
-
-    # Declared here type-only (no mapped_column) so mypy knows every subclass provides
-    # them -- __tablename__/id come from the subclass's own Base/mapped_column, same
-    # pattern as HasContextOrTag's context_id/context/tag above.
-    __tablename__: str
-    id: Mapped[int]
-
-    @staticmethod
-    def _embed_fields() -> set[str]:
-        raise NotImplementedError
-
-    def _embed_source_text(self) -> str:
-        raise NotImplementedError
-
-    def reembed(self) -> None:
-        from embed import embed, model_name
-
-        vec = embed(self._embed_source_text())
-        self.embedding = struct.pack(f"{len(vec)}f", *vec)
-        self.embedding_model = model_name()
-
-    @classmethod
-    def search(
-        cls,
-        session: Session,
-        query: str,
-        limit: int = 10,
-        context: Optional[Context] = None,
-        **filters: Any,
-    ) -> list[tuple[Any, float]]:
-        """`filters` are extra `column=value` equality clauses, e.g. collection=Collection.ENGINEERING.
-
-        `context`, when given, restricts results to that context's subtree (plus no-context
-        rows) using the same matching HasContextOrTag.matches_contexts expresses at the SQL
-        layer for `list`/`tree`/substring search. This can't be expressed as an equality
-        filter (it's an OR over context_id IN (...) / tag_id IN (...) / context_id IS NULL),
-        so it's applied as a Python-side post-filter on a widened candidate set (10x limit,
-        capped) pulled by nearest-distance first, then truncated back to `limit` -- keeps the
-        common unscoped case a single exact query while still returning `limit` real matches
-        in the scoped case rather than silently returning fewer once out-of-scope neighbors
-        are dropped."""
-        from embed import embed, model_name
-
-        raw = embed(query)
-        vec = struct.pack(f"{len(raw)}f", *raw)
-        mn = model_name()
-        table = cls.__tablename__
-        where_clauses = ["embedding_model = ?"]
-        params: list[Any] = [vec, mn]
-        for col, value in filters.items():
-            where_clauses.append(f"{col} = ?")
-            params.append(value.name if isinstance(value, enum.Enum) else value)
-        fetch_limit = min(limit * 10, 200) if context is not None else limit
-        sql = (
-            f"SELECT id, vec_distance_cosine(embedding, ?) AS dist FROM {table} "
-            f"WHERE {' AND '.join(where_clauses)} ORDER BY dist ASC LIMIT {int(fetch_limit)}"
-        )
-        with _engine.connect() as conn:
-            rows = conn.connection.execute(sql, params).fetchall()
-        objs = {o.id: o for o in session.scalars(select(cls).where(cls.id.in_([r[0] for r in rows]))).all()}
-        results = [(objs[r[0]], r[1]) for r in rows if r[0] in objs]
-        if context is not None:
-            in_scope = Context.self_and_descendants(session, context.name)
-            context_ids = {c.id for c in in_scope}
-            tag_ids = set(Context.active_tag_ids(in_scope))
-            results = [
-                (obj, dist)
-                for obj, dist in results
-                if not isinstance(obj, HasContextOrTag)
-                or obj.context_id in context_ids
-                or obj.tag_id in tag_ids
-                or (obj.context_id is None and obj.tag_id is None)
-            ]
-        return results[:limit]
 
 
 @event.listens_for(Session, "before_flush")
@@ -1262,7 +1283,7 @@ class WorkingMemory(Base):
 # ---------------------------------------------------------------------------
 
 
-class LogEntry(Base):
+class LogEntry(Base, HasEmbedding):
     """A timestamped observation — a fact or set of facts about a moment, not durable reference
     knowledge and not work with a status. Append-only; the point is to build a queryable history
     (health, events, commits referenced by free text) that reveals patterns over time. domain is
@@ -1279,6 +1300,13 @@ class LogEntry(Base):
 
     context: Mapped[Optional[Context]] = relationship("Context")
 
+    @staticmethod
+    def _embed_fields() -> set[str]:
+        return {"body"}
+
+    def _embed_source_text(self) -> str:
+        return self.body
+
     @classmethod
     def create(
         cls,
@@ -1291,6 +1319,7 @@ class LogEntry(Base):
         entry = cls(
             body=body, domain=domain, context_id=context.id if context else None, occurred_at=occurred_at or _now()
         )
+        entry.reembed()
         session.add(entry)
         session.flush()
         return entry
@@ -1485,7 +1514,7 @@ class Wishlist(Base):
         return f"<Wishlist #{self.id} {self.title!r}{price} effort={self.effort.value}{priority_str}{pin}>"
 
 
-class Idea(Base, HasContextOrTag):
+class Idea(Base, HasContextOrTag, HasEmbedding):
     """GTD Someday/Maybe: a project idea you like but haven't committed to acting
     on, distinct from Todo (committed next-action work) and Wishlist (acquire/
     purchase, price-bearing). Deliberately has no defer_until, priority, or score --
@@ -1509,6 +1538,13 @@ class Idea(Base, HasContextOrTag):
 
     context: Mapped[Optional[Context]] = relationship("Context")
     tag: Mapped[Optional[Tag]] = relationship("Tag")
+
+    @staticmethod
+    def _embed_fields() -> set[str]:
+        return {"title", "description", "notes"}
+
+    def _embed_source_text(self) -> str:
+        return f"{self.title}\n\n{self.description or ''}\n\n{self.notes or ''}"
 
     @classmethod
     def active(
@@ -1550,6 +1586,7 @@ class Idea(Base, HasContextOrTag):
             tag_id=tag.id if tag else None,
             notes=notes,
         )
+        idea.reembed()
         session.add(idea)
         session.flush()
         return idea

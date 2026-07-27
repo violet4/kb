@@ -18,6 +18,18 @@ def cmd_add(args: argparse.Namespace) -> None:
     print(entry)
 
 
+def cmd_search(args: argparse.Namespace) -> None:
+    context = args.context if args.context_explicit else None
+    results = LogEntry.search(args.session, args.query, limit=args.limit, context=context)
+    if not results:
+        print("No matches.")
+        return
+    for entry, dist in results:
+        when = entry.occurred_at.strftime("%Y-%m-%d %H:%M")
+        domain = f" [{entry.domain}]" if entry.domain else ""
+        print(f"#{entry.id} {when}{domain}: {entry.body} (dist={dist:.3f})")
+
+
 def cmd_recent(args: argparse.Namespace) -> None:
     context = Context.get_existing(args.session, args.context_name) if args.context_name else None
     entries = LogEntry.recent(args.session, domain=args.domain, context=context, limit=args.limit)
@@ -45,3 +57,10 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_recent.add_argument("--context", dest="context_name", help="Only show this context (default: all contexts)")
     p_recent.add_argument("--limit", type=int, default=20)
     p_recent.set_defaults(func=cmd_recent)
+
+    p_search = sub.add_parser(
+        "search", help="Semantic search over log entry bodies (no substring pass -- see kb Todo #62)"
+    )
+    p_search.add_argument("query")
+    p_search.add_argument("--limit", type=int, default=10)
+    p_search.set_defaults(func=cmd_search)

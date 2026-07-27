@@ -15,6 +15,7 @@ from kb_cli._util import (
     print_journal_history,
     scope_to_context,
 )
+from kb_cli.search import TERMINAL_STATUSES, search_entities
 
 
 def cmd_add(args: argparse.Namespace) -> None:
@@ -95,6 +96,25 @@ def cmd_promote(args: argparse.Namespace) -> None:
     print(f"Idea #{idea.id}: {idea.title!r} -> promoted ({args.to})")
 
 
+def cmd_search(args: argparse.Namespace) -> None:
+    context = args.context if args.context_explicit else None
+    results = search_entities(args.session, (Idea,), args.query, include_done=args.all, context=context)
+    if not results:
+        print("No substring matches.")
+    else:
+        for idea in results:
+            print(repr(idea))
+
+    semantic = Idea.search(args.session, args.query, context=context)
+    if not args.all:
+        semantic = [(i, d) for i, d in semantic if i.status not in TERMINAL_STATUSES[Idea]]
+    if semantic:
+        print("=== Semantic ===")
+        for idea, dist in semantic:
+            ctx = f" [{idea.context.name}]" if idea.context else ""
+            print(f"#{idea.id} {idea.title!r}{ctx} (dist={dist:.3f})")
+
+
 def cmd_drop(args: argparse.Namespace) -> None:
     idea = args.session.get(Idea, args.id)
     if idea is None:
@@ -135,6 +155,13 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_list = sub.add_parser("list", help="List active ideas, scoped to the current context by default")
     p_list.add_argument("--all", action="store_true", help="Ignore context scoping and show ideas from every context")
     p_list.set_defaults(func=cmd_list)
+
+    p_search = sub.add_parser("search", help="Substring plus semantic search over idea titles/descriptions/notes")
+    p_search.add_argument("query")
+    p_search.add_argument(
+        "--all", action="store_true", help="Also include promoted/dropped ideas (excluded by default)"
+    )
+    p_search.set_defaults(func=cmd_search)
 
     p_promote = sub.add_parser("promote", help="Mark an idea promoted -- record what it became in its Journal")
     p_promote.add_argument("id", type=int)

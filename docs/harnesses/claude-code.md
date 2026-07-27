@@ -60,6 +60,30 @@ Detects a failed mypy run in a Bash command's output and reminds to check `kb in
 
 Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/violet/kb/kb`).
 
+## tree-reminder (harness-agnostic detector, unconditional)
+
+Injects a short, constant one-line reminder before every user prompt: re-check the Instruction tree for a child relevant to what's about to happen, not just once at session start. Deterministic backstop for kb Goal #23's finding that per-node triggers (e.g. type-safety firing on a real mypy error) don't reliably re-fire mid-conversation from root's own wording alone -- root is read once, at the first tool call of a session, with no built-in re-entry point later. Unlike `mypy-check`, this one takes no stdin and always prints (no detection condition) -- `UserPromptSubmit` has no matcher and fires on every single prompt, so the reminder itself has to be cheap enough to justify appearing every time; kept to one line by design (a longer per-topic checklist was considered and rejected in Goal #23's Journal as too costly per-message).
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hint=$(/path/to/kb hooks tree-reminder 2>/dev/null); jq -n --arg h \"$hint\" '{hookSpecificOutput: {hookEventName: \"UserPromptSubmit\", additionalContext: $h}}'",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/violet/kb/kb`).
+
 ## Adding a new one
 
 Harness-agnostic detector (default — prefer this unless the check genuinely needs Claude Code's own event data):
@@ -85,4 +109,5 @@ Pipe-test a specific hook's exact command before relying on it — synthesize th
 ```bash
 echo '{"tool_response":{"stdout":"Found 1 error in 1 file","stderr":""}}' | jq -r '(.tool_response.stdout // "") + "\n" + (.tool_response.stderr // "")' | /path/to/kb hooks mypy-check
 echo '{"cwd":"/home/violet/kb","session_id":"abcd1234","message":"hello"}' | /path/to/kb-repo/harnesses/claude-code/notify-claude waiting
+hint=$(/path/to/kb hooks tree-reminder); jq -n --arg h "$hint" '{hookSpecificOutput: {hookEventName: "UserPromptSubmit", additionalContext: $h}}'
 ```

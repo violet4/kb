@@ -20,7 +20,7 @@ title="Claude Code — ${project:-unknown} — ${event_label}"
 body="${message:-No further detail.}"
 [ -n "$session_id" ] && body="$body (session ${session_id:0:8})"
 
-#beep 2>/dev/null || true
+beep 2>/dev/null || true
 notify-send "$title" "$body" 2>/dev/null || true
 
 ntfy_url="${NTFY_URL:-http://localhost:7182/claude-code}"

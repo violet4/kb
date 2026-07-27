@@ -528,6 +528,8 @@ class Settings(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     day_boundary_hour: Mapped[int] = mapped_column(Integer, nullable=False, default=4)
     timezone: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    notifications_muted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    notifications_volume: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
 
     @classmethod
     def get(cls, session: Session) -> Settings:

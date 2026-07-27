@@ -11,7 +11,16 @@ After editing, run `/hooks` inside Claude Code (or restart the session) to reloa
 
 ## notify-claude (harness-specific adapter)
 
-`harnesses/claude-code/notify-claude <event-label>` sends a desktop notification (`notify-send`) and, if `~/.config/ntfy-token` exists, an `ntfy` push — tagged with the triggering session/directory, read from the hook's own JSON payload on stdin. One script backs both events below; the label distinguishes them.
+`harnesses/claude-code/notify-claude <event-label>` reads Claude Code's own hook JSON payload on stdin (`.cwd`, `.session_id`, `.message`) and builds a plain title/body, tagged with the triggering session/directory — then hands delivery off to `kb notifications send TITLE BODY --priority ...` (`kb_cli/notifications.py`), which owns the actual desktop notification, sound, and `ntfy` push, plus whether any of that fires at all (`kb notifications mute`/`unmute`/`volume N`, persisted in the `Settings` table so it applies across every harness and every future invocation, not just this session). One script backs both events below; the label distinguishes them.
+
+Mute/unmute/volume, independent of any harness:
+
+```bash
+kb notifications status            # current mute state + volume
+kb notifications mute              # suppress desktop popup + sound (ntfy still fires)
+kb notifications unmute
+kb notifications volume 50         # 0-100, persisted
+```
 
 ```json
 {
@@ -34,7 +43,7 @@ After editing, run `/hooks` inside Claude Code (or restart the session) to reloa
 }
 ```
 
-Replace `/path/to/kb-repo` with this repo's absolute path (e.g. `/home/violet/kb`). Optional env vars: `NTFY_URL` (default `http://localhost:7182/claude-code`), `NTFY_TOKEN_FILE` (default `~/.config/ntfy-token`).
+Replace `/path/to/kb-repo` with this repo's absolute path (e.g. `/home/violet/kb`). Optional env vars: `NTFY_URL` (default `http://localhost:7182/claude-code`), `NTFY_TOKEN_FILE` (default `~/.config/ntfy-token`) — read by the adapter script itself and passed through to `kb notifications send` as `--ntfy-url`/`--ntfy-token-file` so a per-invocation override still works without touching the persisted default.
 
 ## mypy-check (harness-agnostic detector)
 
@@ -109,5 +118,6 @@ Pipe-test a specific hook's exact command before relying on it — synthesize th
 ```bash
 echo '{"tool_response":{"stdout":"Found 1 error in 1 file","stderr":""}}' | jq -r '(.tool_response.stdout // "") + "\n" + (.tool_response.stderr // "")' | /path/to/kb hooks mypy-check
 echo '{"cwd":"/home/violet/kb","session_id":"abcd1234","message":"hello"}' | /path/to/kb-repo/harnesses/claude-code/notify-claude waiting
+/path/to/kb notifications send "Test" "hello" --priority high   # exercise delivery directly, bypassing the JSON envelope
 hint=$(/path/to/kb hooks tree-reminder); jq -n --arg h "$hint" '{hookSpecificOutput: {hookEventName: "UserPromptSubmit", additionalContext: $h}}'
 ```

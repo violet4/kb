@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from models import Instruction
 
 from kb_cli._util import apply_text_edit
-from kb_cli.search import search_entities
+from kb_cli.search import cmd_search_one
 
 
 def _size_line(node: Instruction) -> str:
@@ -168,22 +168,6 @@ def cmd_delete(args: argparse.Namespace) -> None:
     print(f"Deleted Instruction #{node.id} {node.title!r}")
 
 
-def cmd_search(args: argparse.Namespace) -> None:
-    results = search_entities(args.session, (Instruction,), args.query)
-    if not results:
-        print("No substring matches.")
-    else:
-        for node in results:
-            print(repr(node))
-
-    semantic = Instruction.search(args.session, args.query)
-    if semantic:
-        print("=== Semantic ===")
-        for node, dist in semantic:
-            marker = f" trigger={node.trigger!r}" if node.trigger else ""
-            print(f"#{node.id} {node.title!r}{marker} (dist={dist:.3f})")
-
-
 def cmd_tree(args: argparse.Namespace) -> None:
     all_nodes = args.session.scalars(select(Instruction)).all()
     if not all_nodes:
@@ -263,7 +247,8 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         "doesn't surface something",
     )
     p_search.add_argument("query")
-    p_search.set_defaults(func=cmd_search)
+    p_search.add_argument("--limit", type=int, default=10)
+    p_search.set_defaults(func=cmd_search_one, model=Instruction)
 
     p_tree = sub.add_parser("tree", help="Full tree dump, titles only by default")
     p_tree.add_argument("--bodies", action="store_true", help="Also print each node's full body inline")

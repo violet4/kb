@@ -5,7 +5,7 @@ import sys
 
 from sqlalchemy import select
 
-from context import creation_context, resolve_context
+from context import creation_context
 from models import Idea, IdeaStatus, Journal
 
 from kb_cli._util import (
@@ -74,8 +74,7 @@ def cmd_list(args: argparse.Namespace) -> None:
     if args.all:
         ideas = args.session.scalars(select(Idea).where(Idea.status == IdeaStatus.ACTIVE)).all()
     else:
-        current = resolve_context(args.session)
-        in_scope = scope_to_context(args.session, current)
+        in_scope = scope_to_context(args.session, args.context)
         ideas = Idea.active(args.session, contexts=in_scope, include_no_context=True)
     if not ideas:
         print("No ideas.")

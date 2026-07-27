@@ -7,7 +7,7 @@ from typing import Iterable
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from context import creation_context, resolve_context
+from context import creation_context
 from models import Goal, GoalStatus, Journal
 
 from kb_cli._util import (
@@ -85,8 +85,7 @@ def cmd_list(args: argparse.Namespace) -> None:
     elif status is not None and status != GoalStatus.ACTIVE:
         goals = args.session.scalars(select(Goal).where(Goal.status == status)).all()
     else:
-        current = resolve_context(args.session)
-        in_scope = scope_to_context(args.session, current)
+        in_scope = scope_to_context(args.session, args.context)
         goals = Goal.active(args.session, contexts=in_scope, include_no_context=True)
     if not goals:
         print("No goals.")

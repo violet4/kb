@@ -4,7 +4,7 @@ import argparse
 import sys
 from datetime import datetime, timedelta, timezone
 
-from context import creation_context, resolve_context
+from context import creation_context
 from kb_cli.context_cmd import render_tree
 from models import Journal, Tag, Todo, TodoStatus, WishlistEffort
 
@@ -141,8 +141,7 @@ def cmd_list(args: argparse.Namespace) -> None:
     if args.all:
         todos = Todo.active(args.session, effort=effort, include_deferred=True)
     else:
-        current = resolve_context(args.session)
-        in_scope = scope_to_context(args.session, current)
+        in_scope = scope_to_context(args.session, args.context)
         todos = Todo.active(
             args.session, contexts=in_scope, include_no_context=True, effort=effort, include_deferred=True
         )
@@ -161,11 +160,13 @@ def cmd_tree(args: argparse.Namespace) -> None:
     actually actionable without having to check another location's list.
 
     Scoped to the current context by default, matching `kb context tree`/`kb todo list` --
-    `--all` shows the full tree and includes not-yet-due deferred Todos too."""
+    `--all` shows the full tree; `--include-deferred` additionally shows not-yet-due
+    deferred Todos (the two are independent, pass both together for the old combined
+    behavior)."""
     render_tree(
         args.session,
         entity_models=(Todo,),
-        active_kwargs={Todo: {"include_deferred": args.all}},
+        active_kwargs={Todo: {"include_deferred": args.include_deferred}},
         scope_to_current=not args.all,
         context=args.context,
     )
@@ -232,9 +233,8 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_tree = sub.add_parser(
         "tree", help="Render pending Todos nested under the Context tree (tag-addressed Todos repeat per match)"
     )
-    p_tree.add_argument(
-        "--all", action="store_true", help="Show the full tree (not just current context) and include deferred Todos"
-    )
+    p_tree.add_argument("--all", action="store_true", help="Show the full tree, not just the current context")
+    p_tree.add_argument("--include-deferred", action="store_true", help="Also include deferred Todos not yet due")
     p_tree.set_defaults(func=cmd_tree)
 
     p_search = sub.add_parser("search", help="Search Todos by text")

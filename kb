@@ -57,6 +57,7 @@ from kb_cli import (
     context_cmd,
     daily,
     goal,
+    hooks,
     idea,
     inbox,
     instruction,
@@ -177,6 +178,7 @@ idea.add_subparser(subparsers)
 todo.add_subparser(subparsers)
 tag.add_subparser(subparsers)
 daily.add_subparser(subparsers)
+hooks.add_subparser(subparsers)
 inbox.add_subparser(subparsers)
 instruction.add_subparser(subparsers)
 journal.add_subparser(subparsers)

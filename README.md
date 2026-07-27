@@ -1,40 +1,24 @@
 # kb — Personal Knowledge Base
 
-A persistent, queryable store for notes, goals, people, references, and working memory. Vector search makes notes discoverable by meaning, not exact wording.
+A persistent, queryable store for notes, goals, todos, and reference knowledge — SQLite + SQLAlchemy, with vector search over notes/goals/todos so they're discoverable by meaning, not just exact wording. Usage is interactive and self-discovering: run bare `kb` for a task-oriented routing guide, `kb -h` for the full technical reference, or `kb <noun> --help` for one command's flags — the live entity/method surface is `scripts/dev/gen-api`, not a table in this file, so it never goes stale.
 
-## What's tracked
+This README covers only what setup requires or what isn't easily discovered by running `kb` itself. See `CLAUDE.md` for architecture and the reasoning behind kb's conventions, and `docs/` for anything too long to keep in either.
 
-| Entity | What it holds |
-|---|---|
-| **Note** | Atomic knowledge notes, searchable by meaning via vector embeddings |
-| **Person** | People: closeness, last contacted, reach-out cadence |
-| **Goal** | Life goals with status |
-| **Todo** | Tasks linked to goals |
-| **Wishlist** | Things to acquire: price, importance, urgency, effort, clarity, priority |
-| **Reference** | URLs and resources with tags |
-| **WorkingMemory** | Transient context: current task state, active threads |
-| **Context** | Scoping label (personal, work, etc.) |
-
-## Note collections
-
-Notes are partitioned by collection — searches never cross collections accidentally.
-
-`engineering` · `personal` · `gorgon` · `work`
-
-## Scripts
+## Setup (first clone, or a new machine)
 
 ```bash
-uv run scripts/summary                          # daily overview
-uv run scripts/notes add COLLECTION TITLE BODY [--tags x,y]
-uv run scripts/notes search COLLECTION QUERY
-uv run scripts/notes update (--id ID | --find TITLE) [--title T] [--body B] [--tags t1,t2]
-uv run scripts/notes reembed                     # recompute embeddings after model upgrade
-uv run scripts/model/download                    # fetch/update embedding model from HuggingFace; run once on setup or when upgrading models — after this, all embedding runs offline/local
-uv run scripts/wishlist/add                      # interactively add a wishlist item
-uv run scripts/todo show ID [ID ...]
-uv run scripts/todo complete ID [ID ...]
-uv run scripts/dev/gen-api [ClassName ...]       # print the API surface, live from models.py
+uv sync                        # install dependencies
+scripts/model/download         # fetch the embedding model from HuggingFace once; after this, embedding runs offline/local
+scripts/db/upgrade             # apply migrations
+scripts/dev/setup-hooks        # install git pre-commit/post-commit hooks (idempotent, safe to re-run)
+scripts/service/restart        # start the embedding server (kb.service, systemd user unit)
 ```
+
+`~/bin/kb` should symlink to this repo's `kb` script so `kb <command>` works from any directory. Every script here (including `kb`/`kb.py`) is directly executable — the shebang handles `uv run`, no prefix needed.
+
+## Connecting a harness (Claude Code, or another agent tool)
+
+kb's own content (the Instruction tree, `kb hooks` detectors, Goals/Todos/Notes) works from any harness driving it — a harness supplies only the trigger mechanism, never a second copy of kb's own logic (see `CLAUDE.md`'s harness paragraph). See `docs/harnesses/` for per-harness wiring instructions, one file per harness, covering every hook set up for it.
 
 ## Server
 

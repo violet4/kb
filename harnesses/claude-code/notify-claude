@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Claude Code hook handler: desktop notify-send + ntfy push, tagged with which
+# session/directory triggered it. Reads the hook's JSON payload on stdin.
+#
+# Usage: notify-claude <event-label>
+#   event-label: free text distinguishing which hook fired (e.g. "waiting",
+#   "done") since one script backs multiple hook events.
+
+set -euo pipefail
+
+event_label="${1:-Claude Code}"
+payload="$(cat)"
+
+cwd=$(jq -r '.cwd // empty' <<<"$payload")
+session_id=$(jq -r '.session_id // empty' <<<"$payload")
+message=$(jq -r '.message // empty' <<<"$payload")
+
+project="${cwd:+$(basename "$cwd")}"
+title="Claude Code — ${project:-unknown} — ${event_label}"
+body="${message:-No further detail.}"
+[ -n "$session_id" ] && body="$body (session ${session_id:0:8})"
+
+#beep 2>/dev/null || true
+notify-send "$title" "$body" 2>/dev/null || true
+
+ntfy_url="${NTFY_URL:-http://localhost:7182/claude-code}"
+ntfy_token_file="${NTFY_TOKEN_FILE:-$HOME/.config/ntfy-token}"
+
+if [ -r "$ntfy_token_file" ]; then
+    ntfy_token=$(<"$ntfy_token_file")
+    priority="default"
+    [ "$event_label" = "waiting" ] && priority="high"
+    curl -fsS -m 5 \
+        -H "Authorization: Bearer $ntfy_token" \
+        -H "Title: $title" \
+        -H "Priority: $priority" \
+        -d "$body" \
+        "$ntfy_url" >/dev/null 2>&1 || true
+fi

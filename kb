@@ -144,6 +144,13 @@ pricing) -- not for plain how-to documentation consulted to fix something in the
 the doc page that explained one env var). The test is whether future-you would want to know
 what it said *today*, not just how to do the thing it's currently describing.
 
+`kb ab add` prints the new row's id as ABn (e.g. "AB23") -- embed that exact token in whatever
+Note/Todo/Journal body cites the URL (e.g. "Sources: AB23, AB24"), not just the bare URL or a
+kb ab id left implicit. This is what makes the citation travel with the prose instead of only
+existing in the ab table, and what will let ABn tokens be swapped for real ArchiveBox ids in
+one pass once kb ab is wired to a live instance. `kb ab list` (or `kb ab show ID` once added)
+resolves an ABn token back to its URL.
+
 Run `kb <command> --help` before typing a command from memory -- flags and shapes above are
 illustrative, not exhaustive. Run `kb -h` for full technical reference (what --context/--as-of
 really do, the complete subcommand list). See also: kb instructions root.

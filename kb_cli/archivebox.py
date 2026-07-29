@@ -2,6 +2,7 @@
 in models.py and kb Todo #70 for the eventual real-ArchiveBox integration."""
 
 import argparse
+import sys
 
 from models import ArchivedLink
 
@@ -10,6 +11,7 @@ def cmd_add(args: argparse.Namespace) -> None:
     link = ArchivedLink.create(args.session, args.url, note=args.note)
     args.session.commit()
     print(link)
+    print(f"AB{link.id} -- embed this ID in whatever note/todo/journal entry cites {link.url}")
 
 
 def cmd_list(args: argparse.Namespace) -> None:
@@ -19,7 +21,17 @@ def cmd_list(args: argparse.Namespace) -> None:
         return
     for link in links:
         note = f" -- {link.note}" if link.note else ""
-        print(f"#{link.id} {link.created_at:%Y-%m-%d %H:%M} {link.url}{note}")
+        print(f"AB{link.id} {link.created_at:%Y-%m-%d %H:%M} {link.url}{note}")
+
+
+def cmd_show(args: argparse.Namespace) -> None:
+    link = args.session.get(ArchivedLink, args.id)
+    if link is None:
+        print(f"AB{args.id}: not found", file=sys.stderr)
+        sys.exit(1)
+    print(link)
+    if link.note:
+        print(f"note: {link.note}")
 
 
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
@@ -33,3 +45,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
 
     p_list = sub.add_parser("list", help="List URLs not yet migrated to a live ArchiveBox instance")
     p_list.set_defaults(func=cmd_list)
+
+    p_show = sub.add_parser("show", help="Resolve an ABn id back to its URL/note")
+    p_show.add_argument("id", type=int)
+    p_show.set_defaults(func=cmd_show)

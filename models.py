@@ -1405,7 +1405,12 @@ class ArchivedLink(Base):
     """A URL queued for archival -- interim capture ahead of a live ArchiveBox instance
     (kb Goal/Todo #70). Today this is just url+timestamp+note; migrated_at marks the row
     as already pushed into a real ArchiveBox once that integration exists, so the same
-    table can be replayed against it without re-deciding what's already been sent."""
+    table can be replayed against it without re-deciding what's already been sent.
+    Each row's id is cited elsewhere in kb as ABn (e.g. "AB23") -- embed that token in any
+    Note/Todo/Journal body that references the URL, so the pointer travels with the prose
+    instead of living only in this table. ABn today means this table's own id; once a live
+    ArchiveBox instance exists, migrated ids get remapped to the real AB snapshot id and
+    every ABn citation in kb text is updated to match."""
 
     __tablename__ = "archived_link"
 

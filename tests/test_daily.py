@@ -324,3 +324,100 @@ def test_catch_up_no_op_when_not_overdue(db_session: Session) -> None:
         before = daily.next_due_date
         daily.catch_up(db_session)
         assert daily.next_due_date == before
+
+
+def test_remind_days_before_surfaces_ahead_of_next_due_date(db_session: Session) -> None:
+    """A yearly Daily (e.g. a birthday) with remind_days_before=7 should become
+    due 7 days ahead of next_due_date, not only on the day itself -- so it's
+    actionable (buy a gift, plan a call) with real lead time."""
+    _set_utc_boundary(db_session, hour=4)
+    with time_machine.travel(datetime(2026, 9, 16, 12, 0, tzinfo=timezone.utc)) as traveller:
+        # Created on the anniversary date itself, matching how create() seeds
+        # next_due_date as today (see test_recurrence_yearly_* for the same pattern).
+        daily = Daily.create(db_session, "Deb's birthday", recurrence="yearly:09-16", remind_days_before=7)
+        db_session.commit()
+        assert daily.next_due_date == date(2026, 9, 16)
+
+        # 8 days before: not yet due.
+        traveller.move_to(datetime(2026, 9, 8, 12, 0, tzinfo=timezone.utc))
+        assert not daily.is_due_now(db_session)
+
+        # Exactly 7 days before (the lead-in boundary itself): due.
+        traveller.move_to(datetime(2026, 9, 9, 4, 1, tzinfo=timezone.utc))
+        assert daily.is_due_now(db_session)
+
+        # On the day itself: still due.
+        traveller.move_to(datetime(2026, 9, 16, 12, 0, tzinfo=timezone.utc))
+        assert daily.is_due_now(db_session)
+
+
+def test_remind_days_before_default_matches_exact_day_only_behavior(db_session: Session) -> None:
+    """remind_days_before defaults to 0 -- a plain Daily with no lead-in configured
+    must behave exactly as before this feature existed: due only from next_due_date
+    onward, not a day earlier."""
+    _set_utc_boundary(db_session, hour=4)
+    with time_machine.travel(datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)) as traveller:
+        daily = Daily.create(db_session, "water plants")
+        db_session.commit()
+        assert daily.remind_days_before == 0
+
+        traveller.move_to(datetime(2025, 12, 31, 12, 0, tzinfo=timezone.utc))
+        assert not daily.is_due_now(db_session)
+
+        traveller.move_to(datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc))
+        assert daily.is_due_now(db_session)
+
+
+def test_remind_days_before_does_not_affect_is_overdue(db_session: Session) -> None:
+    """The lead-in window only widens when a Daily first becomes visible -- it must
+    not change when a Daily flips to overdue, which stays anchored on next_due_date
+    exactly as before."""
+    _set_utc_boundary(db_session, hour=4)
+    with time_machine.travel(datetime(2025, 9, 16, 12, 0, tzinfo=timezone.utc)) as traveller:
+        daily = Daily.create(db_session, "Deb's birthday", recurrence="yearly:09-16", remind_days_before=7)
+        daily.complete(db_session)
+        db_session.commit()
+        assert daily.next_due_date == date(2026, 9, 16)
+
+        # Within the lead-in window, due but not overdue.
+        traveller.move_to(datetime(2026, 9, 10, 12, 0, tzinfo=timezone.utc))
+        assert daily.is_due_now(db_session)
+        assert not daily.is_overdue(db_session)
+
+        # On next_due_date itself: still not overdue (same rule as any other Daily).
+        traveller.move_to(datetime(2026, 9, 16, 12, 0, tzinfo=timezone.utc))
+        assert not daily.is_overdue(db_session)
+
+        # Day after next_due_date's boundary passes uncompleted: overdue, same
+        # timing as a Daily with no lead-in at all.
+        traveller.move_to(datetime(2026, 9, 17, 4, 1, tzinfo=timezone.utc))
+        assert daily.is_overdue(db_session)
+
+
+def test_remind_days_before_ignores_show_after_hour(db_session: Session) -> None:
+    """show_after_hour only gates same-day visibility on the exact due date --
+    it must not apply inside a multi-day remind_days_before lead-in window, since
+    an hour-of-day gate doesn't compose meaningfully across multiple days."""
+    _set_utc_boundary(db_session, hour=4)
+    with time_machine.travel(datetime(2026, 9, 16, 12, 0, tzinfo=timezone.utc)) as traveller:
+        daily = Daily.create(
+            db_session,
+            "Deb's birthday",
+            recurrence="yearly:09-16",
+            remind_days_before=7,
+            show_after_hour=19,
+        )
+        db_session.commit()
+
+        # Within the lead-in window, before show_after_hour local-time: still due,
+        # since show_after_hour doesn't apply here.
+        traveller.move_to(datetime(2026, 9, 10, 10, 0, tzinfo=timezone.utc))
+        assert daily.is_due_now(db_session)
+
+        # On the due day itself, before show_after_hour: show_after_hour applies
+        # exactly as it does for any other Daily on its due day.
+        traveller.move_to(datetime(2026, 9, 16, 10, 0, tzinfo=timezone.utc))
+        assert not daily.is_due_now(db_session)
+
+        traveller.move_to(datetime(2026, 9, 16, 19, 0, tzinfo=timezone.utc))
+        assert daily.is_due_now(db_session)

@@ -854,6 +854,13 @@ class Daily(Base, HasContextOrTag):
     -- it further hides a Daily that's due today (but not yet overdue) from due()/summary until
     that local hour, so evening-only items (e.g. "shower before bed") don't clutter the morning
     view. Once overdue (next_due_date has fully passed), show_after_hour no longer applies.
+
+    remind_days_before (default 0) widens visibility to start that many days ahead of
+    next_due_date -- for a yearly reminder (e.g. a birthday) that needs advance notice to be
+    actionable (buy a gift, plan a call), not just same-day visibility. It only affects when a
+    Daily first becomes visible; is_overdue/complete/catch_up stay anchored on next_due_date,
+    unaffected. show_after_hour does not apply inside the lead-in window (an hour-of-day gate
+    doesn't compose meaningfully across multiple days) -- it only gates on the due day itself.
     """
 
     __tablename__ = "daily"
@@ -869,7 +876,7 @@ class Daily(Base, HasContextOrTag):
     show_after_hour: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     next_due_date: Mapped[date] = mapped_column(Date, nullable=False)
     location: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    reward: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    remind_days_before: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
@@ -924,14 +931,16 @@ class Daily(Base, HasContextOrTag):
         return today > self.next_due_date
 
     def is_due_now(self, session: Session) -> bool:
-        """True once today's day-cycle has reached next_due_date, gated by
+        """True once today's day-cycle has reached next_due_date minus
+        remind_days_before (0 by default, i.e. exactly next_due_date), gated by
         show_after_hour (0-23 local) so evening-only items don't surface in the
-        morning -- but only on the day it first became due. Once is_overdue() is
-        true the item has already missed its day entirely, so show_after_hour no
-        longer applies: an overdue "shower before bed" must stay visible all day,
-        not just evenings."""
+        morning -- but only on the day it first became due, never inside a
+        remind_days_before lead-in window. Once is_overdue() is true the item has
+        already missed its day entirely, so show_after_hour no longer applies: an
+        overdue "shower before bed" must stay visible all day, not just evenings."""
         today = self._current_day(session, _now())
-        if today < self.next_due_date:
+        window_start = self.next_due_date - timedelta(days=self.remind_days_before)
+        if today < window_start:
             return False
         if self.show_after_hour is not None and today == self.next_due_date:
             settings = Settings.get(session)
@@ -963,7 +972,7 @@ class Daily(Base, HasContextOrTag):
         recurrence: str = "daily",
         show_after_hour: Optional[int] = None,
         location: Optional[str] = None,
-        reward: Optional[str] = None,
+        remind_days_before: int = 0,
         notes: Optional[str] = None,
     ) -> Daily:
         daily = cls(
@@ -975,7 +984,7 @@ class Daily(Base, HasContextOrTag):
             recurrence=recurrence,
             show_after_hour=show_after_hour,
             location=location,
-            reward=reward,
+            remind_days_before=remind_days_before,
             notes=notes,
         )
         # Seed as due today, not one recurrence step back through _compute_next_due

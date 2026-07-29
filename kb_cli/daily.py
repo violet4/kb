@@ -26,10 +26,10 @@ def cmd_show(args: argparse.Namespace) -> None:
             ("tier", daily.tier.value),
             ("recurrence", daily.recurrence),
             ("show_after_hour", daily.show_after_hour),
+            ("remind_days_before", daily.remind_days_before),
             ("next_due_date", daily.next_due_date.isoformat()),
             ("context", daily.context.name if daily.context else None),
             ("location", daily.location),
-            ("reward", daily.reward),
             ("notes", daily.notes),
         ]
     )
@@ -101,7 +101,7 @@ def cmd_add(args: argparse.Namespace) -> None:
         recurrence=args.recurrence,
         show_after_hour=args.show_after_hour,
         location=args.location,
-        reward=args.reward,
+        remind_days_before=args.remind_days_before,
         notes=args.notes,
     )
     args.session.commit()
@@ -121,7 +121,7 @@ def cmd_update(args: argparse.Namespace) -> None:
             "recurrence": args.recurrence,
             "show_after_hour": args.show_after_hour,
             "location": args.location,
-            "reward": args.reward,
+            "remind_days_before": args.remind_days_before,
             "notes": args.notes,
         },
     )
@@ -179,7 +179,13 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         "--show-after-hour", type=int, dest="show_after_hour", help="Hide until this local hour (0-23), e.g. 19 for 7pm"
     )
     p_add.add_argument("--location")
-    p_add.add_argument("--reward")
+    p_add.add_argument(
+        "--remind-days-before",
+        type=int,
+        dest="remind_days_before",
+        default=0,
+        help="Become due this many days ahead of next_due_date, e.g. 7 for a week's advance notice on a birthday",
+    )
     p_add.add_argument("--notes")
     p_add.set_defaults(func=cmd_add)
 
@@ -195,7 +201,12 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         "--show-after-hour", type=int, dest="show_after_hour", help="Hide until this local hour (0-23), e.g. 19 for 7pm"
     )
     p_update.add_argument("--location")
-    p_update.add_argument("--reward")
+    p_update.add_argument(
+        "--remind-days-before",
+        type=int,
+        dest="remind_days_before",
+        help="Become due this many days ahead of next_due_date, e.g. 7 for a week's advance notice on a birthday",
+    )
     p_update.add_argument("--notes")
     p_update.add_argument("--context", dest="new_context", metavar="NAME")
     p_update.add_argument("--tag", dest="new_tag", metavar="NAME", help="Address by Tag instead of context")

@@ -198,14 +198,12 @@ def cmd_search_one(args: argparse.Namespace) -> None:
     _rank_and_print(scored, args.limit, truncate=False)
 
 
-def cmd_search_all(args: argparse.Namespace) -> None:
+def _run_one_search(args: argparse.Namespace, query: str) -> None:
     include_done = args.all
     context = args.context if args.context_explicit else None
     limit = args.limit
 
-    substring_hits = search_entities(
-        args.session, ALL_SEARCHABLE, args.query, include_done=include_done, context=context
-    )
+    substring_hits = search_entities(args.session, ALL_SEARCHABLE, query, include_done=include_done, context=context)
     scored: list[tuple[Any, float]] = [(item, _SUBSTRING_DIST) for item in substring_hits]
 
     # Embed the query once and reuse the vector across every semantic search below,
@@ -214,13 +212,23 @@ def cmd_search_all(args: argparse.Namespace) -> None:
 
     from embed import embed
 
-    raw = embed(args.query)
+    raw = embed(query)
     vec = struct.pack(f"{len(raw)}f", *raw)
 
     for model in SEMANTIC_SEARCHABLE:
-        scored.extend(_semantic_hits(model, args.session, args.query, limit, context, vec, include_done))
+        scored.extend(_semantic_hits(model, args.session, query, limit, context, vec, include_done))
 
     _rank_and_print(scored, limit)
+
+
+def cmd_search_all(args: argparse.Namespace) -> None:
+    queries: list[str] = args.query
+    for i, query in enumerate(queries):
+        if len(queries) > 1:
+            if i:
+                print()
+            print(f"-- {query} --")
+        _run_one_search(args, query)
 
 
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
@@ -231,7 +239,12 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         "together by score (unscoped by default; pass the global `kb --context NAME search ...` to "
         "restrict context/tag-addressable results to that context's subtree)",
     )
-    parser.add_argument("query")
+    parser.add_argument(
+        "query",
+        nargs="+",
+        help="One or more search queries (quote each one separately, e.g. `kb search 'first topic' 'second topic'`) -- "
+        "results for each are printed under their own header",
+    )
     parser.add_argument(
         "--all", action="store_true", help="Also include done/abandoned/dropped/acquired items (excluded by default)"
     )

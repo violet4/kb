@@ -55,6 +55,7 @@ if (
 from context import resolve_context
 from kb_cli import (
     anki,
+    archivebox,
     context_cmd,
     daily,
     goal,
@@ -196,6 +197,7 @@ anki.add_subparser(subparsers)
 games.add_subparser(subparsers)
 search.add_subparser(subparsers)
 sessions.add_subparser(subparsers)
+archivebox.add_subparser(subparsers)
 
 args = parser.parse_args()
 if args.command is None:

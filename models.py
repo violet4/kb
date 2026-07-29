@@ -1401,6 +1401,35 @@ class InboxItem(Base):
         return f"<InboxItem #{self.id} [{state}]{' ' + tags if tags else ''}: {body!r}>"
 
 
+class ArchivedLink(Base):
+    """A URL queued for archival -- interim capture ahead of a live ArchiveBox instance
+    (kb Goal/Todo #70). Today this is just url+timestamp+note; migrated_at marks the row
+    as already pushed into a real ArchiveBox once that integration exists, so the same
+    table can be replayed against it without re-deciding what's already been sent."""
+
+    __tablename__ = "archived_link"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    url: Mapped[str] = mapped_column(String, nullable=False)
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    migrated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    @classmethod
+    def create(cls, session: Session, url: str, note: Optional[str] = None) -> ArchivedLink:
+        link = cls(url=url, note=note)
+        session.add(link)
+        session.flush()
+        return link
+
+    @classmethod
+    def pending(cls, session: Session) -> Sequence[ArchivedLink]:
+        return session.scalars(select(cls).where(cls.migrated_at.is_(None)).order_by(cls.created_at)).all()
+
+    def __repr__(self) -> str:
+        state = "migrated" if self.migrated_at else "pending"
+        return f"<ArchivedLink #{self.id} [{state}] {self.url}>"
+
+
 _STORAGE_COLLECTIONS = {c for c in Collection if c != Collection.ALL}
 
 

@@ -1403,9 +1403,18 @@ class InboxItem(Base):
 
 class ArchivedLink(Base):
     """A URL queued for archival -- interim capture ahead of a live ArchiveBox instance
-    (kb Goal/Todo #70). Today this is just url+timestamp+note; migrated_at marks the row
-    as already pushed into a real ArchiveBox once that integration exists, so the same
-    table can be replayed against it without re-deciding what's already been sent.
+    (kb Goal/Todo #70). Today this is just url+title+reason+timestamp; migrated_at marks
+    the row as already pushed into a real ArchiveBox once that integration exists, so the
+    same table can be replayed against it without re-deciding what's already been sent.
+    title and reason are two different axes, both required: title is a neutral description
+    of what the page/content actually is (what a fetch against a live ArchiveBox would want
+    to auto-fill from the page's own <title>, when a page's own title is generic or missing
+    context, override it by hand rather than saving the bare auto-title); reason is why it
+    was worth keeping -- what made it pass the filter, what task/question led to finding it.
+    Neither is optional -- the point is to never save a bare URL with no record of what it is
+    or why it mattered, the same way a link shared with a person should come with why the
+    sender thought it mattered rather than dumping the burden of figuring that out on the
+    reader later.
     Each row's id is cited elsewhere in kb as ABn (e.g. "AB23") -- embed that token in any
     Note/Todo/Journal body that references the URL, so the pointer travels with the prose
     instead of living only in this table. ABn today means this table's own id; once a live
@@ -1416,12 +1425,13 @@ class ArchivedLink(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     url: Mapped[str] = mapped_column(String, nullable=False)
-    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
     migrated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     @classmethod
-    def create(cls, session: Session, url: str, note: Optional[str] = None) -> ArchivedLink:
-        link = cls(url=url, note=note)
+    def create(cls, session: Session, url: str, title: str, reason: str) -> ArchivedLink:
+        link = cls(url=url, title=title, reason=reason)
         session.add(link)
         session.flush()
         return link
@@ -1432,7 +1442,7 @@ class ArchivedLink(Base):
 
     def __repr__(self) -> str:
         state = "migrated" if self.migrated_at else "pending"
-        return f"<ArchivedLink #{self.id} [{state}] {self.url}>"
+        return f"<ArchivedLink #{self.id} [{state}] {self.title!r} {self.url}>"
 
 
 _STORAGE_COLLECTIONS = {c for c in Collection if c != Collection.ALL}

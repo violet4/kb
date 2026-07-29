@@ -12,6 +12,15 @@ def cmd_add(args: argparse.Namespace) -> None:
     args.session.commit()
     print(link)
     print(f"AB{link.id} -- embed this ID in whatever note/todo/journal entry cites {link.url}")
+    title_bytes = len(link.title.encode())
+    reason_bytes = len(link.reason.encode())
+    print(f"title: {link.title!r}")
+    print(f"reason ({reason_bytes} bytes): {link.reason!r}")
+    if title_bytes > reason_bytes:
+        print(
+            f"warning: title ({title_bytes} bytes) is longer than reason ({reason_bytes} bytes) "
+            "-- reason is meant to carry the why, double check it isn't just a restated title"
+        )
 
 
 def cmd_list(args: argparse.Namespace) -> None:

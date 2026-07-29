@@ -36,6 +36,25 @@ def cmd_mypy_check(args: argparse.Namespace) -> None:
         print(_MYPY_HINT)
 
 
+_FIND_ROOT_RE = re.compile(r"(?<![\w./])find\s+/(?:\s|$)")
+
+_FIND_ROOT_HINT = (
+    "Blocked: `find /` (or `find / ...`) searches the entire filesystem from root -- "
+    "almost never intended and can exhaust system resources on large trees. Scope the "
+    "search to a specific directory instead, e.g. `find . -name ...` or `find /home/user/project -name ...`."
+)
+
+
+def cmd_find_root_check(args: argparse.Namespace) -> None:
+    """Read a Bash command string on stdin; if it's a `find` invocation rooted at
+    literal `/` (not a subdirectory like `/home/...`), print a block reason to stdout.
+    Prints nothing (exit 0) otherwise, so a harness adapter can pipe any Bash command
+    through unconditionally and only block on non-empty output."""
+    command = sys.stdin.read()
+    if _FIND_ROOT_RE.search(command):
+        print(_FIND_ROOT_HINT)
+
+
 _TREE_REMINDER = (
     "Re-check the Instruction tree for a child relevant to what you're about to do now, not just at session start."
 )
@@ -61,6 +80,12 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         "mypy-check", help="Detect a failed mypy run on stdin; print a type-safety reminder if it matches"
     )
     p_mypy.set_defaults(func=cmd_mypy_check)
+
+    p_find_root = sub.add_parser(
+        "find-root-check",
+        help="Detect a `find /` (root-scoped) command on stdin; print a block reason if it matches",
+    )
+    p_find_root.set_defaults(func=cmd_find_root_check)
 
     p_tree = sub.add_parser(
         "tree-reminder",

@@ -69,6 +69,30 @@ Detects a failed mypy run in a Bash command's output and reminds to check `kb in
 
 Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/violet/kb/kb`).
 
+## find-root-check (harness-agnostic detector, blocking)
+
+Detects a `find` invocation rooted at literal `/` (e.g. `find /` or `find / -name ...`) in a Bash command and blocks it before execution — almost never intended, can exhaust system resources on large trees. Scoped searches (`find .`, `find ./x`, `find /home/user/...`) are unaffected. Unlike `mypy-check`/`tree-reminder`, which only ever add context, this is the first detector that actually denies the tool call: the adapter emits `permissionDecision: "deny"` when the detector's stdout is non-empty, instead of always emitting `additionalContext`/`{}`.
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "reason=$(jq -r '.tool_input.command' | /path/to/kb hooks find-root-check 2>/dev/null); if [ -n \"$reason\" ]; then jq -n --arg r \"$reason\" '{hookSpecificOutput: {hookEventName: \"PreToolUse\", permissionDecision: \"deny\", permissionDecisionReason: $r}}'; else printf '{}'; fi"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/violet/kb/kb`).
+
 ## tree-reminder (harness-agnostic detector, unconditional)
 
 Injects a short, constant one-line reminder before every user prompt: re-check the Instruction tree for a child relevant to what's about to happen, not just once at session start. Deterministic backstop for kb Goal #23's finding that per-node triggers (e.g. type-safety firing on a real mypy error) don't reliably re-fire mid-conversation from root's own wording alone -- root is read once, at the first tool call of a session, with no built-in re-entry point later. Unlike `mypy-check`, this one takes no stdin and always prints (no detection condition) -- `UserPromptSubmit` has no matcher and fires on every single prompt, so the reminder itself has to be cheap enough to justify appearing every time; kept to one line by design (a longer per-topic checklist was considered and rejected in Goal #23's Journal as too costly per-message).

@@ -107,6 +107,7 @@ Routing a plain statement to the right subcommand (the noun -- which table):
   Durable reference knowledge (not tied to a task) -> notes COLLECTION TITLE BODY
   Something to buy/acquire, price-bearing -> wishlist
   An idea you like but haven't committed to -> idea
+  A URL worth keeping a snapshot of -> ab add URL (interim capture, see below)
   Unsure where it goes -> inbox, triage later
 
 Once you have the right noun, most subcommands share the same small set of verbs -- this is
@@ -133,6 +134,15 @@ list/tree command prints which context it resolved to (`context: grocery`), so t
 never silently wrong -- trust the one-shot scoped command first, fall back to unscoped
 `context tree`/`search` only if the scoped result comes back empty and the context itself
 might be wrong.
+
+`kb ab add URL [--note]` snapshots a URL (just url+note+timestamp for now, no fetch yet --
+will be backed by a live ArchiveBox instance later, see kb Todo #70). Use it freely as an
+extension of internal knowledge into external, changeable sources: reach for it when the page
+reflects a belief/policy/state of the world at this moment that could later change or
+disappear (e.g. a vendor's current privacy-policy or telemetry-opt-out page, an API's current
+pricing) -- not for plain how-to documentation consulted to fix something in the moment (e.g.
+the doc page that explained one env var). The test is whether future-you would want to know
+what it said *today*, not just how to do the thing it's currently describing.
 
 Run `kb <command> --help` before typing a command from memory -- flags and shapes above are
 illustrative, not exhaustive. Run `kb -h` for full technical reference (what --context/--as-of

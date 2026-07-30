@@ -110,6 +110,16 @@ Routing a plain statement to the right subcommand (the noun -- which table):
   A URL worth keeping a snapshot of -> ab add URL TITLE REASON (title+reason required, see below)
   Unsure where it goes -> inbox, triage later
 
+Global flags (--context, --as-of) are parsed by `kb` itself, before it even looks at the
+subcommand -- they must come immediately after `kb`, never after the subcommand or its own
+args. `kb --context "serbule keep" todo add "buy salt"` works; `kb todo add "buy salt"
+--context "serbule keep"` fails with "unrecognized arguments: --context must come before
+subcommand", because by that point argparse is inside todo's own parser, which has no
+--context of its own. (`todo update ID --context NAME` is the one unrelated exception -- a
+per-command flag for reassigning an existing row, not this global one.) `search` also has its
+own `--since DATE` (a subcommand-local flag, not global -- goes after `search`, e.g.
+`kb search --since 2026-07-28 "query"`) -- not yet available on other subcommands.
+
 Once you have the right noun, most subcommands share the same small set of verbs -- this is
 the shape, not per-command trivia, so it isn't repeated per row above: `add` creates a new
 record; `show ID` reads one; `update ID` edits one in place; `complete ID` (or a closer verb

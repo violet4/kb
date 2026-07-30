@@ -7,6 +7,7 @@ description/notes) is defined once here rather than reimplemented per command.
 """
 
 import argparse
+from datetime import datetime, timezone
 from typing import Any, Optional, Sequence
 
 from sqlalchemy import or_, select
@@ -47,12 +48,43 @@ TERMINAL_STATUSES: dict[Any, set[Any]] = {
 }
 
 
+def parse_since(value: str) -> datetime:
+    """Parse a `--since` CLI value into a UTC-aware datetime. Accepts a bare date
+    (`2026-07-28`, midnight UTC) or a full ISO timestamp (`2026-07-28T18:00:00`).
+    A naive result is assumed UTC, matching every timestamp column in this project
+    (see `_now()` in base.py -- everything is written in UTC)."""
+    dt = datetime.fromisoformat(value)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _date_column(model: Any) -> Any:
+    """The column expression (class-level) that answers "when did this happen" for a
+    model -- `occurred_at` for LogEntry (a fact about the world at a point in time,
+    which may differ from when the row was inserted), `created_at` for everything else.
+    Used to build a SQL WHERE clause; see `_row_date` for the matching instance-level read."""
+    return getattr(model, "occurred_at", None) if hasattr(model, "occurred_at") else model.created_at
+
+
+def _row_date(obj: Any) -> datetime:
+    """Instance-level counterpart to `_date_column` -- the actual timestamp value on a
+    fetched row, read the same way (`occurred_at` if present, else `created_at`).
+    SQLite drops tzinfo from DateTime(timezone=True) columns on readback even though
+    every writer (`_now()`, see base.py) always stores UTC -- reattach it here before
+    comparing against `since` (which is itself tz-aware, from parse_since)."""
+    raw = obj.occurred_at if hasattr(obj, "occurred_at") else obj.created_at
+    assert isinstance(raw, datetime)
+    return raw.replace(tzinfo=timezone.utc) if raw.tzinfo is None else raw
+
+
 def search_entities(
     session: Session,
     models: Sequence[Any],
     query: str,
     include_done: bool = False,
     context: Optional[Context] = None,
+    since: Optional[datetime] = None,
 ) -> list[Any]:
     """Case-insensitive substring search over each model's title/description/notes columns.
 
@@ -61,7 +93,11 @@ def search_entities(
     finding things regardless of location) -- pass context to additionally restrict
     HasContextOrTag models (Goal/Todo/Idea/Instruction/...) to that context's subtree
     (plus no-context rows), matching `list`/`tree`'s scoping. Models without a context/tag
-    (Wishlist, Context itself) are unaffected by this filter."""
+    (Wishlist, Context itself) are unaffected by this filter.
+
+    `since`, when given, additionally restricts to rows at or after that timestamp,
+    compared against `occurred_at` for LogEntry (a fact about the world, not row-insert
+    time) or `created_at` for everything else."""
     pattern = f"%{query}%"
     in_scope = scope_to_context(session, context) if context is not None else None
     results: list[Any] = []
@@ -71,6 +107,8 @@ def search_entities(
         if in_scope is not None and issubclass(model, HasContextOrTag):
             match = model.matches_contexts(in_scope)
             q = q.where(match | (model.context_id.is_(None) & model.tag_id.is_(None)))
+        if since is not None:
+            q = q.where(_date_column(model) >= since)
         rows = session.scalars(q).all()
         if not include_done:
             terminal = TERMINAL_STATUSES.get(model)
@@ -133,16 +171,22 @@ def _semantic_hits(
     context: Optional[Context],
     vec: bytes,
     include_done: bool,
+    since: Optional[datetime] = None,
 ) -> list[tuple[Any, float]]:
     """One model's semantic pass: fetch, then drop terminal-status rows (done/dropped/
     promoted/...) unless include_done -- the same filter TERMINAL_STATUSES.get(model)
     already expresses for the substring side, applied here too so both passes agree on
-    what counts as "no longer open" for models that track status."""
+    what counts as "no longer open" for models that track status. `since` is likewise a
+    post-fetch filter (model.search's SQL only supports equality filters), dropping rows
+    older than the cutoff -- fine at this scale since semantic fetch_limit is already
+    capped at 200."""
     hits = model.search(session, query, limit=limit, context=context, vec=vec)
     if not include_done:
         terminal = TERMINAL_STATUSES.get(model)
         if terminal is not None:
             hits = [(obj, dist) for obj, dist in hits if obj.status not in terminal]
+    if since is not None:
+        hits = [(obj, dist) for obj, dist in hits if _row_date(obj) >= since]
     return hits
 
 
@@ -180,10 +224,13 @@ def cmd_search_one(args: argparse.Namespace) -> None:
     model = args.model
     include_done = getattr(args, "all", False)
     context = args.context if args.context_explicit else None
+    since = parse_since(args.since) if getattr(args, "since", None) else None
 
     scored: list[tuple[Any, float]] = []
     if getattr(args, "has_substring", True):
-        substring_hits = search_entities(args.session, (model,), args.query, include_done=include_done, context=context)
+        substring_hits = search_entities(
+            args.session, (model,), args.query, include_done=include_done, context=context, since=since
+        )
         scored.extend((item, _SUBSTRING_DIST) for item in substring_hits)
 
     from embed import embed
@@ -191,7 +238,7 @@ def cmd_search_one(args: argparse.Namespace) -> None:
 
     raw = embed(args.query)
     vec = struct.pack(f"{len(raw)}f", *raw)
-    scored.extend(_semantic_hits(model, args.session, args.query, args.limit, context, vec, include_done))
+    scored.extend(_semantic_hits(model, args.session, args.query, args.limit, context, vec, include_done, since))
 
     # A single-model search view (e.g. `kb log search`) can afford to show full text --
     # only the multi-model aggregate (`kb search`) needs the 60-char LogEntry truncation.
@@ -202,8 +249,11 @@ def _run_one_search(args: argparse.Namespace, query: str) -> None:
     include_done = args.all
     context = args.context if args.context_explicit else None
     limit = args.limit
+    since = parse_since(args.since) if getattr(args, "since", None) else None
 
-    substring_hits = search_entities(args.session, ALL_SEARCHABLE, query, include_done=include_done, context=context)
+    substring_hits = search_entities(
+        args.session, ALL_SEARCHABLE, query, include_done=include_done, context=context, since=since
+    )
     scored: list[tuple[Any, float]] = [(item, _SUBSTRING_DIST) for item in substring_hits]
 
     # Embed the query once and reuse the vector across every semantic search below,
@@ -216,7 +266,7 @@ def _run_one_search(args: argparse.Namespace, query: str) -> None:
     vec = struct.pack(f"{len(raw)}f", *raw)
 
     for model in SEMANTIC_SEARCHABLE:
-        scored.extend(_semantic_hits(model, args.session, query, limit, context, vec, include_done))
+        scored.extend(_semantic_hits(model, args.session, query, limit, context, vec, include_done, since))
 
     _rank_and_print(scored, limit)
 
@@ -254,5 +304,11 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         default=10,
         help="Max results across all entities combined, ranked by score (substring matches rank first, "
         "then semantic matches by ascending distance)",
+    )
+    parser.add_argument(
+        "--since",
+        help="Only include rows at or after this date/timestamp (e.g. `2026-07-28` or "
+        "`2026-07-28T18:00:00`; a bare date means midnight UTC). Compared against `occurred_at` "
+        "for LogEntry, `created_at` for everything else.",
     )
     parser.set_defaults(func=cmd_search_all)

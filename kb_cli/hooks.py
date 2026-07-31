@@ -55,6 +55,29 @@ def cmd_find_root_check(args: argparse.Namespace) -> None:
         print(_FIND_ROOT_HINT)
 
 
+_MEMORY_MD_RE = re.compile(r"(?:^|/)\.claude/(?:memory|projects/[^/]+/memory)/.*\.md$")
+
+_MEMORY_MD_HINT = (
+    "Blocked: writing to a Claude Code memory file (~/.claude/memory/*.md or "
+    "~/.claude/projects/<project>/memory/*.md). Durable content belongs in the kb "
+    "Instruction tree instead -- run `kb instructions show 18` (legacy-claude-code-artifacts) "
+    "for the content-vs-mechanism split. The only exception is content genuinely about the "
+    "collaboration itself (a correction, a confirmed approach, a user preference) -- even "
+    "then, ask before writing rather than writing directly."
+)
+
+
+def cmd_memory_md_check(args: argparse.Namespace) -> None:
+    """Read a file path on stdin (the target of a Write/Edit call); if it's a Claude Code
+    memory file (~/.claude/memory/*.md or the per-project ~/.claude/projects/<hash>/memory/*.md
+    form), print a block reason to stdout. Prints nothing (exit 0) otherwise, so a harness
+    adapter can pipe any file-write target through unconditionally and only block on
+    non-empty output."""
+    path = sys.stdin.read().strip()
+    if _MEMORY_MD_RE.search(path):
+        print(_MEMORY_MD_HINT)
+
+
 _TREE_REMINDER = (
     "Re-check the Instruction tree for a child relevant to what you're about to do now, not just at session start."
 )
@@ -86,6 +109,12 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         help="Detect a `find /` (root-scoped) command on stdin; print a block reason if it matches",
     )
     p_find_root.set_defaults(func=cmd_find_root_check)
+
+    p_memory_md = sub.add_parser(
+        "memory-md-check",
+        help="Detect a write targeting ~/.claude/memory/*.md on stdin; print a block reason if it matches",
+    )
+    p_memory_md.set_defaults(func=cmd_memory_md_check)
 
     p_tree = sub.add_parser(
         "tree-reminder",

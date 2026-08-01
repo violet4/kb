@@ -59,6 +59,8 @@ def cmd_show(args: argparse.Namespace) -> None:
             print(f"blocked_by: #{todo.blocked_by.id} {todo.blocked_by.title} [{todo.blocked_by.status.value}]")
         if todo.notes:
             print(f"notes: {todo.notes}")
+        if todo.urgent:
+            print("urgent: yes")
 
         print_journal_history(
             args.session,
@@ -85,6 +87,7 @@ def cmd_add(args: argparse.Namespace) -> None:
         defer_until=defer_until,
         context=None if tag else creation_context(args),
         tag=tag,
+        urgent=args.urgent,
     )
     args.session.commit()
     print(todo)
@@ -105,6 +108,10 @@ def cmd_update(args: argparse.Namespace) -> None:
         },
     )
     apply_context_or_tag_update(args.session, todo, args.new_context, args.new_tag)
+    if args.urgent:
+        todo.urgent = True
+    if args.no_urgent:
+        todo.urgent = False
     args.session.commit()
     print(todo)
 
@@ -200,6 +207,11 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     )
     p_add.add_argument("--notes")
     p_add.add_argument("--tag", help="Address by Tag instead of context (mutually exclusive with the global --context)")
+    p_add.add_argument(
+        "--urgent",
+        action="store_true",
+        help="Show unconditionally in `kb summary`'s URGENT section, ignoring context scope and defer_until",
+    )
     p_add.set_defaults(func=cmd_add)
 
     p_update = sub.add_parser("update", help="Update fields on an existing Todo")
@@ -216,6 +228,9 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_update_ctx.add_argument("--context", dest="new_context", metavar="NAME")
     p_update_ctx.add_argument("--tag", dest="new_tag", metavar="NAME")
     p_update.add_argument("--goal", type=int, metavar="GOAL_ID")
+    p_update_urgent = p_update.add_mutually_exclusive_group()
+    p_update_urgent.add_argument("--urgent", action="store_true", help="Mark urgent")
+    p_update_urgent.add_argument("--no-urgent", action="store_true", help="Unmark urgent")
     p_update.set_defaults(func=cmd_update)
 
     p_complete = sub.add_parser("complete", help="Mark Todo(s) done")

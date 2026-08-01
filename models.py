@@ -736,6 +736,7 @@ class Todo(Base, HasContextOrTag, HasEmbedding):
     )
     defer_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    urgent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     goal: Mapped[Optional[Goal]] = relationship("Goal", back_populates="todos")
     context: Mapped[Optional[Context]] = relationship("Context")
@@ -784,6 +785,14 @@ class Todo(Base, HasContextOrTag, HasEmbedding):
         return session.scalars(q).all()
 
     @classmethod
+    def urgent_pending(cls, session: Session) -> Sequence[Todo]:
+        """Urgent Todos still pending, ignoring context/tag scope and defer_until --
+        the one query behind kb summary's unconditional URGENT section, so an urgent
+        item can never be filtered out by context switching or a future due date."""
+        q = select(cls).where(cls.urgent.is_(True), cls.status.in_([TodoStatus.PENDING, TodoStatus.IN_PROGRESS]))
+        return session.scalars(q).all()
+
+    @classmethod
     def create(
         cls,
         session: Session,
@@ -795,6 +804,7 @@ class Todo(Base, HasContextOrTag, HasEmbedding):
         blocked_by: Optional[Todo] = None,
         effort: Optional[WishlistEffort] = None,
         defer_until: Optional[datetime] = None,
+        urgent: bool = False,
     ) -> Todo:
         todo = cls(
             title=title,
@@ -805,6 +815,7 @@ class Todo(Base, HasContextOrTag, HasEmbedding):
             blocked_by_id=blocked_by.id if blocked_by else None,
             effort=effort,
             defer_until=defer_until,
+            urgent=urgent,
         )
         todo.reembed()
         session.add(todo)
@@ -816,7 +827,11 @@ class Todo(Base, HasContextOrTag, HasEmbedding):
         defer_str = f" defer_until={self.defer_until.strftime('%Y-%m-%d %H:%M')}" if self.defer_until else ""
         context_str = f" [{self.context.name}]" if self.context else ""
         tag_str = f" @{self.tag.name}" if self.tag else ""
-        return f"<Todo #{self.id} {self.title!r} [{self.status.value}]{effort_str}{defer_str}{context_str}{tag_str}>"
+        urgent_str = " !URGENT!" if self.urgent else ""
+        return (
+            f"<Todo #{self.id} {self.title!r} [{self.status.value}]{effort_str}{defer_str}"
+            f"{context_str}{tag_str}{urgent_str}>"
+        )
 
 
 # ---------------------------------------------------------------------------

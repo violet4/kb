@@ -69,6 +69,20 @@ def _other_contexts_hint(session: Session, in_scope_ids: set[int], all_pending_c
     return f"({len(outside)} item(s) in {other_context_count} other context(s))"
 
 
+def urgent_section(session: Session) -> str | None:
+    """Urgent pending Todos, unconditional -- ignores context scope and defer_until,
+    so a must-not-miss item (see Goal #28) can never be filtered out by whatever
+    context happens to be active or by a still-future defer date. Rendered first."""
+    todos = Todo.urgent_pending(session)
+    if not todos:
+        return None
+    lines = ["=== URGENT ==="]
+    for t in todos:
+        ctx = f" [{t.context.name}]" if t.context else ""
+        lines.append(f"- #{t.id} {t.title}{ctx}")
+    return "\n".join(lines)
+
+
 def goals_section(session: Session, context: Optional[Context]) -> str | None:
     in_scope = Context.self_and_descendants(session, context.name) if context else None
     goals = Goal.active(session, contexts=in_scope, include_no_context=True)
@@ -150,7 +164,7 @@ def idea_section(session: Session) -> str | None:
     return f"{count} idea(s) — kb idea list"
 
 
-SECTION_NAMES: tuple[str, ...] = ("anki", "dailies", "goals", "todos", "people", "wishlist", "inbox", "idea")
+SECTION_NAMES: tuple[str, ...] = ("urgent", "anki", "dailies", "goals", "todos", "people", "wishlist", "inbox", "idea")
 
 
 # Every section is Callable[[Session], str | None] except goals/todos, which also need the
@@ -158,6 +172,7 @@ SECTION_NAMES: tuple[str, ...] = ("anki", "dailies", "goals", "todos", "people",
 # than widening every section's signature just for the two that use it.
 def _sections(context: Optional[Context]) -> dict[str, Callable[[Session], str | None]]:
     return {
+        "urgent": urgent_section,
         "anki": anki_section,
         "dailies": dailies_section,
         "goals": lambda session: goals_section(session, context),

@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from models import (
     Collection,
     Context,
+    Daily,
     Goal,
     GoalStatus,
     HasContextOrTag,
@@ -34,7 +35,7 @@ from models import (
 from kb_cli._util import scope_to_context
 
 # Models searchable from the top-level `kb search`, in display order.
-ALL_SEARCHABLE: tuple[Any, ...] = (Goal, Todo, Wishlist, Instruction, Idea, Context)
+ALL_SEARCHABLE: tuple[Any, ...] = (Goal, Todo, Wishlist, Instruction, Idea, Context, Daily)
 
 _TEXT_COLUMNS = ("title", "name", "description", "notes", "body")
 
@@ -114,6 +115,8 @@ def search_entities(
             terminal = TERMINAL_STATUSES.get(model)
             if terminal is not None:
                 rows = [r for r in rows if r.status not in terminal]
+            elif model is Daily:
+                rows = [r for r in rows if r.is_active]
         results.extend(rows)
     return results
 
@@ -155,6 +158,8 @@ def _fmt_result(item: Any, dist: float, truncate: bool = True) -> str:
         return f"#{item.id} {item.title!r} [Instruction]{trigger} ({label})"
     if isinstance(item, Idea):
         return f"#{item.id} {item.title!r} [Idea/{item.status.value}] ({label})"
+    if isinstance(item, Daily):
+        return f"#{item.id} {item.description!r} [Daily] ({label})"
     if isinstance(item, LogEntry):
         when = item.occurred_at.strftime("%Y-%m-%d %H:%M")
         domain = f" [{item.domain}]" if item.domain else ""
@@ -284,7 +289,7 @@ def cmd_search_all(args: argparse.Namespace) -> None:
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     parser = subparsers.add_parser(
         "search",
-        help="Search Goals, Todos, Wishlist items, Instructions, Ideas, and Contexts by substring, plus "
+        help="Search Goals, Todos, Wishlist items, Instructions, Ideas, Contexts, and Dailies by substring, plus "
         "Notes, Todos, Goals, Instructions, Ideas, and LogEntries by semantic similarity -- all ranked "
         "together by score (unscoped by default; pass the global `kb --context NAME search ...` to "
         "restrict context/tag-addressable results to that context's subtree)",

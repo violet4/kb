@@ -12,27 +12,29 @@ from models import Daily, DailyTier
 from kb_cli._util import apply_context_or_tag_update, apply_updates, print_fields, print_table
 
 
+def _daily_fields(daily: Daily) -> list[tuple[str, object]]:
+    return [
+        ("id", daily.id),
+        ("description", daily.description),
+        ("active", daily.is_active),
+        ("domain", daily.domain),
+        ("tier", daily.tier.value),
+        ("recurrence", daily.recurrence),
+        ("show_after_hour", daily.show_after_hour),
+        ("remind_days_before", daily.remind_days_before),
+        ("next_due_date", daily.next_due_date.isoformat()),
+        ("context", daily.context.name if daily.context else None),
+        ("location", daily.location),
+        ("notes", daily.notes),
+    ]
+
+
 def cmd_show(args: argparse.Namespace) -> None:
     daily = args.session.get(Daily, args.id)
     if daily is None:
         print(f"Daily #{args.id}: not found", file=sys.stderr)
         sys.exit(1)
-    print_fields(
-        [
-            ("id", daily.id),
-            ("description", daily.description),
-            ("active", daily.is_active),
-            ("domain", daily.domain),
-            ("tier", daily.tier.value),
-            ("recurrence", daily.recurrence),
-            ("show_after_hour", daily.show_after_hour),
-            ("remind_days_before", daily.remind_days_before),
-            ("next_due_date", daily.next_due_date.isoformat()),
-            ("context", daily.context.name if daily.context else None),
-            ("location", daily.location),
-            ("notes", daily.notes),
-        ]
-    )
+    print_fields(_daily_fields(daily))
 
 
 def cmd_list(args: argparse.Namespace) -> None:
@@ -105,7 +107,21 @@ def cmd_add(args: argparse.Namespace) -> None:
         notes=args.notes,
     )
     args.session.commit()
-    print(daily)
+    print_fields(_daily_fields(daily))
+    # create() always seeds next_due_date as today (see Daily.create's docstring/
+    # tests) so a freshly added Daily shows up right away, regardless of recurrence
+    # -- correct for "daily", but surprising for weekly/monthly/yearly/every:N,
+    # where today usually isn't the target day. Surface that here so the user can
+    # decide on the spot whether to `daily complete`/`daily catch-up` it forward,
+    # rather than being confused when it shows up in today's list unexpectedly.
+    kind = args.recurrence.partition(":")[0]
+    if kind not in ("daily", ""):
+        print(
+            f"\nNote: recurrence is {args.recurrence!r}, but this Daily is due starting today "
+            f"({daily.next_due_date.isoformat()}) since that's when it was created. "
+            f"If that's not what you want, run `kb daily complete {daily.id}` or "
+            f"`kb daily catch-up {daily.id}` to push it to its next real occurrence."
+        )
 
 
 def cmd_update(args: argparse.Namespace) -> None:
@@ -153,7 +169,7 @@ def cmd_deactivate(args: argparse.Namespace) -> None:
 
 
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
-    parser = subparsers.add_parser("daily", aliases=["d"], help="Daily operations")
+    parser = subparsers.add_parser("daily", aliases=["d", "dailies"], help="Daily operations")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_show = sub.add_parser("show", help="Show Daily details")

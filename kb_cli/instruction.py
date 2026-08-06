@@ -1,7 +1,8 @@
 """Instruction tree operations -- see Instruction's docstring in models.py and kb Goal #23
-for the full design. Five commands, mirroring real usage: `root`/`show` for walking the
-tree (cheap, read-heavy, the common case), `add`/`set-parent`/`edit` for growing and
-restructuring it, `tree` for a full dump.
+for the full design. Four commands, mirroring real usage: `show` for walking the tree
+(cheap, read-heavy, the common case -- `show root` is the entry point, with no separate
+`root` subcommand, so there's exactly one verb to reach for), `add`/`set-parent`/`edit`
+for growing and restructuring it, `tree` for a full dump.
 
 Every node reference (a positional target, or --parent) accepts either a title or a bare
 id -- both are checked, and a '#' prefix is accepted but optional. Titles can never be
@@ -25,10 +26,10 @@ from kb_cli.search import cmd_search_one
 def _size_line(node: Instruction) -> str:
     """Body size in chars, always shown after a write -- catches a duplicate-content
     mistake (an --append/--replace chain that didn't do what was intended) immediately,
-    instead of only being noticed later via `kb instructions root | wc -c`. Plain size
+    instead of only being noticed later via `kb instructions show root | wc -c`. Plain size
     report, no threshold -- there was previously a warning tied to Claude Code's
     SessionStart hook's 10,000-char stdout cap, but that hook has since been removed
-    (see kb Goal #23: the bootstrap now runs `kb instructions root` as an ordinary tool
+    (see kb Goal #23: the bootstrap now runs `kb instructions show root` as an ordinary tool
     call, not hook-injected stdout), so no such limit currently applies."""
     return f"body: {len(node.body)} chars"
 
@@ -98,22 +99,14 @@ def _resolve(session: Session, ref: str) -> Instruction:
     return by_title[0]
 
 
-def cmd_root(args: argparse.Namespace) -> None:
-    if args.set is not None:
-        node = _resolve(args.session, args.set)
-        settings = Settings.get(args.session)
-        settings.instruction_root_id = node.id
-        args.session.commit()
-        print(f"Instruction root set to #{node.id} {node.title!r}")
-        return
-
+def _show_root(args: argparse.Namespace) -> None:
     settings = Settings.get(args.session)
     if settings.instruction_root_id is not None:
         node = args.session.get(Instruction, settings.instruction_root_id)
         if node is None:
             print(
                 f"Settings.instruction_root_id points at #{settings.instruction_root_id}, which no longer "
-                "exists -- clear it with `kb instructions root --set` to an existing node",
+                "exists -- clear it with `kb instructions show root --set-root` on an existing node",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -134,8 +127,24 @@ def cmd_root(args: argparse.Namespace) -> None:
 
 
 def cmd_show(args: argparse.Namespace) -> None:
-    node = _resolve(args.session, args.ref)
-    _print_node(args.session, node, show_body=True)
+    if args.set_root:
+        if len(args.refs) != 1:
+            print("--set-root takes exactly one node", file=sys.stderr)
+            sys.exit(1)
+        node = _resolve(args.session, args.refs[0])
+        settings = Settings.get(args.session)
+        settings.instruction_root_id = node.id
+        args.session.commit()
+        print(f"Instruction root set to #{node.id} {node.title!r}")
+        return
+
+    for i, ref in enumerate(args.refs):
+        if i > 0:
+            print()
+        if ref == "root":
+            _show_root(args)
+        else:
+            _print_node(args.session, _resolve(args.session, ref), show_body=True)
 
 
 def cmd_add(args: argparse.Namespace) -> None:
@@ -220,16 +229,18 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     parser = subparsers.add_parser("instructions", aliases=["i"], help="Instruction tree operations")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    p_root = sub.add_parser("root", help="Show the root node -- entry point into the tree")
-    p_root.add_argument(
-        "--set",
-        metavar="TITLE|#ID",
-        help="Designate this node as the root shown by `kb i root` from now on (stored in Settings)",
+    p_show = sub.add_parser("show", help="Show one or more nodes' full body plus their children")
+    p_show.add_argument(
+        "refs",
+        metavar="TITLE|#ID|root",
+        nargs="+",
+        help="One or more node titles or ids ('#' prefix optional); 'root' shows the entry point",
     )
-    p_root.set_defaults(func=cmd_root)
-
-    p_show = sub.add_parser("show", help="Show one node's full body plus its children")
-    p_show.add_argument("ref", metavar="TITLE|#ID", help="Node title or id ('#' prefix optional)")
+    p_show.add_argument(
+        "--set-root",
+        action="store_true",
+        help="Designate this node as the one shown by `kb i show root` from now on (stored in Settings)",
+    )
     p_show.set_defaults(func=cmd_show)
 
     p_add = sub.add_parser("add", help="Add a node to the Instruction tree")

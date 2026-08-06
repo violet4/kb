@@ -49,7 +49,8 @@ def dailies_section(session: Session) -> str | None:
         return None
 
     lines = ["=== DAILIES ==="]
-    for d in critical:
+    critical_sorted = sorted(critical, key=lambda d: not d.is_overdue(session))
+    for d in critical_sorted:
         marker = " ⚠ overdue" if d.is_overdue(session) else ""
         lines.append(f"- #{d.id} {d.description}{marker}")
     if hints:

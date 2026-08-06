@@ -61,6 +61,10 @@ def cmd_show(args: argparse.Namespace) -> None:
             print(f"notes: {todo.notes}")
         if todo.urgent:
             print("urgent: yes")
+        if todo.defer_until:
+            print(f"defer_until: {todo.defer_until.replace(tzinfo=timezone.utc)}")
+        print(f"created_at: {todo.created_at.replace(tzinfo=timezone.utc)}")
+        print(f"updated_at: {todo.updated_at.replace(tzinfo=timezone.utc)}")
 
         print_journal_history(
             args.session,

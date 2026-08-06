@@ -78,7 +78,7 @@ SQLite silently drops timezone info on `DateTime(timezone=True)` columns on read
 
 ## Before creating or updating notes
 
-Check for existing related notes first with `notes search` (see `kb notes --help`) — semantic search surfaces related notes even when you don't know the exact title. Use `notes get ID` once you have an id (e.g. from a `kb-<collection>-<id>` pointer), and `Note.find(title)` only once you already know/suspect an exact title (e.g. confirming before an update).
+Check for existing related notes first with `notes search` (see `kb notes --help`) — semantic search surfaces related notes even when you don't know the exact title. Use `notes show ID` once you have an id (e.g. from a `kb-<collection>-<id>` pointer), and `Note.find(title)` only once you already know/suspect an exact title (e.g. confirming before an update).
 
 ## Server
 

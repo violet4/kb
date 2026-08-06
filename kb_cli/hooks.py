@@ -15,6 +15,8 @@ that principle applied to hook wiring instead of memory content.
 import argparse
 import re
 import sys
+import time
+from pathlib import Path
 
 _MYPY_FAILURE_RE = re.compile(r"Found \d+ error")
 
@@ -83,14 +85,69 @@ _TREE_REMINDER = (
 )
 
 
+_LAST_ACTIVITY_FILE = Path("/dev/shm/kb-last-activity")
+
+
 def cmd_tree_reminder(args: argparse.Namespace) -> None:
     """Unconditional -- always prints the same short reminder, no stdin/detection needed.
     Deterministic backstop for kb Goal #23's finding that per-node triggers don't reliably
     fire mid-task from root's own wording alone (root is read once, at the first tool call
     of a session, with no built-in re-entry point when a new sub-situation arises later).
     Kept to one line by design: Goal #23's Journal explicitly rejected a longer per-topic
-    checklist as too costly to inject before every single response."""
+    checklist as too costly to inject before every single response.
+
+    Also stamps _LAST_ACTIVITY_FILE with the current time on every call -- since this fires
+    on every UserPromptSubmit across every session (not just one), it's the natural shared
+    heartbeat for cmd_daily_check's sleep-detection, without needing a dedicated hook of its
+    own."""
+    _LAST_ACTIVITY_FILE.write_text(str(time.time()))
     print(_TREE_REMINDER)
+
+
+_DAILY_CHECK_LOCK = Path("/dev/shm/kb-daily-check.lock")
+_DAILY_CHECK_SLEEP_SECONDS = 8 * 60 * 60  # no activity in ANY session for this long implies the user slept
+
+_DAILY_CHECK_PRIME = (
+    "This is today's first new Claude Code session (the daily-check lock was free) -- "
+    "start with the daily kb routine: run `kb summary` and `todo pending`, and work "
+    "through anything urgent/due before moving to other work this session. Once the "
+    "daily routine is handled, no need to keep coming back to it -- the lock stays held "
+    "for every other session opened today. To hand the daily-check slot to a different "
+    "session instead (e.g. this one turned out to be the wrong one to prime), run "
+    "`kb hooks daily-check-release`."
+)
+
+
+def cmd_daily_check(args: argparse.Namespace) -> None:
+    """Read a Claude Code session ID on stdin. If a lockfile already claims today's
+    daily-check slot for a different session, print nothing (business as usual) --
+    UNLESS _LAST_ACTIVITY_FILE (stamped by cmd_tree_reminder on every UserPromptSubmit,
+    across every session) shows no activity anywhere for _DAILY_CHECK_SLEEP_SECONDS,
+    which is treated as "the user slept" and frees the lock regardless of which session
+    holds it. This deliberately doesn't hard-code a midnight boundary -- a genuine
+    multi-hour gap in activity is the actual signal, not a calendar-day rollover, so a
+    late-night-into-early-morning session correctly keeps the same lock instead of being
+    treated as a new day. Reboot also clears the lock (tmpfs), matching that sessions
+    here never span a reboot (always /kb-persist + a fresh session next time)."""
+    session_id = sys.stdin.read().strip()
+    if not session_id:
+        return
+    if _DAILY_CHECK_LOCK.exists():
+        holder = _DAILY_CHECK_LOCK.read_text().strip()
+        idle: float = _DAILY_CHECK_SLEEP_SECONDS
+        if _LAST_ACTIVITY_FILE.exists():
+            idle = time.time() - float(_LAST_ACTIVITY_FILE.read_text().strip())
+        if holder != session_id and idle < _DAILY_CHECK_SLEEP_SECONDS:
+            return
+    _DAILY_CHECK_LOCK.write_text(session_id)
+    print(_DAILY_CHECK_PRIME)
+
+
+def cmd_daily_check_release(args: argparse.Namespace) -> None:
+    """Drop today's daily-check lock, if held, so the next new session claims it
+    instead of waiting for a reboot to free it up."""
+    _DAILY_CHECK_LOCK.unlink(missing_ok=True)
+    print("Daily-check lock released.")
 
 
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
@@ -121,3 +178,15 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         help="Unconditional one-line reminder to re-check the Instruction tree for mid-task relevance",
     )
     p_tree.set_defaults(func=cmd_tree_reminder)
+
+    p_daily = sub.add_parser(
+        "daily-check",
+        help="Claim today's daily-check slot for this session ID (read on stdin); print the priming reminder on a fresh claim, nothing if another session already holds it",
+    )
+    p_daily.set_defaults(func=cmd_daily_check)
+
+    p_daily_release = sub.add_parser(
+        "daily-check-release",
+        help="Release today's daily-check lock so the next new session claims it",
+    )
+    p_daily_release.set_defaults(func=cmd_daily_check_release)

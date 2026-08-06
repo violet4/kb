@@ -9,6 +9,8 @@ Every entry is merged into the `hooks` object in `~/.claude/settings.json` (user
 
 After editing, run `/hooks` inside Claude Code (or restart the session) to reload — settings.json changes aren't picked up automatically mid-session.
 
+Each harness-agnostic detector's section below covers wiring only — which Claude Code event fires it, what gets piped in on stdin, what the adapter does with non-empty stdout (context vs. deny). What the detector actually checks for and why is content owned by `kb_cli/hooks.py`'s own docstrings (`kb hooks --help`) or, for anything denser, a standalone doc under `../` (see `daily-check` below) — link to those rather than restating them here. A harness-specific adapter (e.g. `notify-claude`) is the one exception: since the script itself only exists for this harness, describing what it does *is* Claude-Code-specific wiring, not a restatement of content that lives elsewhere.
+
 ## notify-claude (harness-specific adapter)
 
 `harnesses/claude-code/notify-claude <event-label>` reads Claude Code's own hook JSON payload on stdin (`.cwd`, `.session_id`, `.message`) and builds a plain title/body, tagged with the triggering session/directory — then hands delivery off to `kb notifications send TITLE BODY --priority ...` (`kb_cli/notifications.py`), which owns the actual desktop notification, sound, and `ntfy` push, plus whether any of that fires at all (`kb notifications mute`/`unmute`/`volume N`, persisted in the `Settings` table so it applies across every harness and every future invocation, not just this session). One script backs both events below; the label distinguishes them.
@@ -47,7 +49,7 @@ Replace `/path/to/kb-repo` with this repo's absolute path (e.g. `/home/violet/kb
 
 ## mypy-check (harness-agnostic detector)
 
-Detects a failed mypy run in a Bash command's output and reminds to check `kb instructions show 20` (type-safety) — the correct fix for a type-checker error is a real narrowing construct (isinstance, TypeGuard, runtime assert), never `cast()`.
+See `kb hooks --help` / `kb_cli/hooks.py` for what this detects and what it says (points at `kb instructions show 20`, type-safety) — this section is only the Claude Code wiring: pipes a Bash command's combined stdout+stderr through on `PostToolUse`.
 
 ```json
 {
@@ -71,7 +73,7 @@ Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/
 
 ## find-root-check (harness-agnostic detector, blocking)
 
-Detects a `find` invocation rooted at literal `/` (e.g. `find /` or `find / -name ...`) in a Bash command and blocks it before execution — almost never intended, can exhaust system resources on large trees. Scoped searches (`find .`, `find ./x`, `find /home/user/...`) are unaffected. Unlike `mypy-check`/`tree-reminder`, which only ever add context, this is the first detector that actually denies the tool call: the adapter emits `permissionDecision: "deny"` when the detector's stdout is non-empty, instead of always emitting `additionalContext`/`{}`.
+See `kb hooks --help` / `kb_cli/hooks.py` for what this detects and why (a root-scoped `find`). This section is only the Claude Code wiring: pipes a `Bash` command's `.tool_input.command` through on `PreToolUse`, and — unlike `mypy-check`/`tree-reminder`, which only ever add context — the adapter emits `permissionDecision: "deny"` when the detector's stdout is non-empty, instead of always emitting `additionalContext`/`{}`.
 
 ```json
 {
@@ -95,7 +97,7 @@ Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/
 
 ## memory-md-check (harness-agnostic detector, blocking)
 
-Detects a Write/Edit call targeting `~/.claude/memory/*.md` and blocks it before execution, pointing back at `kb instructions show 18` (legacy-claude-code-artifacts). Migration from `~/.claude/memory/` into the kb Instruction tree is DONE (see #18's Journal) -- new durable content belongs in the tree, not a fresh memory file, and in practice the redirect took a manual mention to actually happen rather than being followed on its own. This hook makes that mistake structurally impossible instead of relying on it being remembered. Same shape as `find-root-check`: the adapter emits `permissionDecision: "deny"` when the detector's stdout is non-empty.
+See `kb hooks --help` / `kb_cli/hooks.py` for what this detects and why (points at `kb instructions show 18`, legacy-claude-code-artifacts). This section is only the Claude Code wiring: pipes a `Write`/`Edit` call's `.tool_input.file_path` through on `PreToolUse`. Same blocking shape as `find-root-check`.
 
 ```json
 {
@@ -117,9 +119,33 @@ Detects a Write/Edit call targeting `~/.claude/memory/*.md` and blocks it before
 
 Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/violet/kb/kb`).
 
+## daily-check (harness-agnostic detector, session-scoped lock)
+
+See [`../daily-check.md`](../daily-check.md) for what this does and why (session-priming lock, sleep detection via the shared heartbeat in `tree-reminder` below) — this section is only the Claude Code wiring. Fires once per new session on `SessionStart`/`source: "startup"` (not `resume` or `compact` — those aren't a new session starting), piping `.session_id` in.
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hint=$(jq -r '.session_id' | /path/to/kb hooks daily-check 2>/dev/null); jq -n --arg h \"$hint\" '{hookSpecificOutput: {hookEventName: \"SessionStart\", additionalContext: $h}}'"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/violet/kb/kb`).
+
 ## tree-reminder (harness-agnostic detector, unconditional)
 
-Injects a short, constant one-line reminder before every user prompt: re-check the Instruction tree for a child relevant to what's about to happen, not just once at session start. Deterministic backstop for kb Goal #23's finding that per-node triggers (e.g. type-safety firing on a real mypy error) don't reliably re-fire mid-conversation from root's own wording alone -- root is read once, at the first tool call of a session, with no built-in re-entry point later. Unlike `mypy-check`, this one takes no stdin and always prints (no detection condition) -- `UserPromptSubmit` has no matcher and fires on every single prompt, so the reminder itself has to be cheap enough to justify appearing every time; kept to one line by design (a longer per-topic checklist was considered and rejected in Goal #23's Journal as too costly per-message).
+See `kb hooks --help` / `kb_cli/hooks.py` for what this does and why (Instruction-tree re-check reminder, kb Goal #23) and [`../daily-check.md`](../daily-check.md) for its second role as the shared cross-session activity heartbeat used by `daily-check`'s sleep detection. This section is only the Claude Code wiring: takes no stdin, always prints (no detection condition), fires on every `UserPromptSubmit` (no matcher — every single prompt).
 
 ```json
 {
@@ -168,4 +194,6 @@ echo '{"tool_response":{"stdout":"Found 1 error in 1 file","stderr":""}}' | jq -
 echo '{"cwd":"/home/violet/kb","session_id":"abcd1234","message":"hello"}' | /path/to/kb-repo/harnesses/claude-code/notify-claude waiting
 /path/to/kb notifications send "Test" "hello" --priority high   # exercise delivery directly, bypassing the JSON envelope
 hint=$(/path/to/kb hooks tree-reminder); jq -n --arg h "$hint" '{hookSpecificOutput: {hookEventName: "UserPromptSubmit", additionalContext: $h}}'
+echo '{"session_id":"abcd1234","source":"startup"}' | jq -r '.session_id' | /path/to/kb hooks daily-check   # first session today: prints the priming reminder
+/path/to/kb hooks daily-check-release   # clear the lock early, e.g. after testing
 ```

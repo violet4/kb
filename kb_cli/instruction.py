@@ -5,14 +5,16 @@ for the full design. Four commands, mirroring real usage: `show` for walking the
 for growing and restructuring it, `tree` for a full dump.
 
 Every node reference (a positional target, or --parent) accepts either a title or a bare
-id -- both are checked, and a '#' prefix is accepted but optional. Titles can never be
-purely numeric (enforced at add/edit time), so an id and a title can never collide in
-practice; if a lookup somehow matches both anyway (e.g. old data), it's reported as
-ambiguous rather than silently guessed.
+id -- both are checked, '#' prefix accepted but optional, and "root" resolves to the
+tree's entry point instead of a literal title lookup (see _resolve_ref). Instruction.title
+is unique at the DB level and can never be purely numeric or literally "root" (enforced at
+add/edit time), so a ref can only ever match at most one node -- resolving is a plain
+found-or-not-found lookup, never an ambiguous-match situation.
 """
 
 import argparse
 import sys
+from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -53,66 +55,62 @@ def _print_node(session: Session, node: Instruction, show_body: bool) -> None:
             print(f"  {c.title} #{c.id}{_trigger_marker(c)}")
 
 
-def _check_title_not_numeric(title: str) -> None:
-    """Reject a pure-digit title outright, so a title can never collide with an id in
-    _resolve's dual lookup. This is the only real fix -- an id collision (new node's
-    auto-generated id happening to match an existing numeric title) can't be blocked at
-    creation time, since the id isn't known until insert, so the only lever left is
-    preventing numeric titles from existing at all."""
+def _check_title_valid(title: str) -> None:
+    """Reject a pure-digit title, so a title can never collide with an id in _resolve's
+    dual lookup, and reject the literal title "root", the one reserved keyword _resolve_ref
+    treats specially (see its docstring) -- a node titled "root" would be permanently
+    unreachable by name, shadowed by that special case. TODO: root-handling should be
+    centralized further (kb todo); this guard only prevents the specific title collision,
+    it doesn't own "root" semantics."""
     if title.isdigit():
         print(f"Instruction title {title!r}: titles can't be purely numeric (ambiguous with an id)", file=sys.stderr)
         sys.exit(1)
-
-
-def _resolve(session: Session, ref: str) -> Instruction:
-    """Resolve a node reference by id or by title, whichever matches -- '#' prefix is
-    accepted but no longer required. Checks both mechanisms simultaneously and errors
-    (rather than guessing) if both an id and a title match, or if a title matches more
-    than once, since a silent wrong pick when restructuring the tree is worse than a
-    rejected command. In practice _check_title_not_numeric makes the id/title collision
-    case unreachable for new data, but old data or a kb.py-created title could still hit
-    it, so it stays as a safety net."""
-    bare = ref[1:] if ref.startswith("#") else ref
-
-    by_id = None
-    if bare.isdigit():
-        by_id = session.get(Instruction, int(bare))
-
-    by_title = session.scalars(select(Instruction).where(Instruction.title == ref)).all()
-
-    if by_id is not None and by_title:
+    if title == "root":
         print(
-            f"{ref!r} is ambiguous: matches both id #{by_id.id} and title {ref!r} -- use #{by_id.id} explicitly",
+            "Instruction title 'root': reserved -- refers to the tree's entry point in `kb i show root`",
             file=sys.stderr,
         )
         sys.exit(1)
 
-    if by_id is not None:
-        return by_id
 
-    if not by_title:
+def _resolve(session: Session, ref: str) -> Optional[Instruction]:
+    """Resolve a node reference by id or by title, whichever matches -- '#' prefix is
+    accepted but no longer required. Instruction.title is unique at the DB level, so at
+    most one of id/title lookup can ever match; returns None, not an exception or exit,
+    when nothing matches -- a user-supplied ref not being found is a normal outcome, not
+    a program error, so the caller decides what to do with it (print a message, exit,
+    treat as a plain boolean)."""
+    bare = ref[1:] if ref.startswith("#") else ref
+    if bare.isdigit():
+        by_id = session.get(Instruction, int(bare))
+        if by_id is not None:
+            return by_id
+    return session.scalars(select(Instruction).where(Instruction.title == ref)).first()
+
+
+def _resolve_ref(session: Session, ref: str) -> Optional[Instruction]:
+    """The one place that knows "root" is a reserved ref meaning the tree's entry point
+    (Instruction.roots()), rather than a literal title lookup -- every caller that accepts
+    a node reference goes through this, not _resolve directly, so "root" behaves the same
+    way everywhere (show, add --parent, set-parent --parent, edit). Title uniqueness means
+    there's at most one root node in the common case; falls through to None (not-found) if
+    there are zero or, from stale/pre-constraint data, more than one."""
+    if ref == "root":
+        roots = Instruction.roots(session)
+        return roots[0] if len(roots) == 1 else None
+    return _resolve(session, ref)
+
+
+def _resolve_or_exit(session: Session, ref: str) -> Instruction:
+    """The command-boundary counterpart to _resolve_ref -- every cmd_* that needs exactly
+    one existing node to proceed (not cmd_show, which handles multiple refs and partial
+    failure itself) calls this instead of _resolve_ref directly, so "not found" prints a
+    message and exits in one place rather than each command re-writing that check."""
+    node = _resolve_ref(session, ref)
+    if node is None:
         print(f"Instruction {ref!r}: not found", file=sys.stderr)
         sys.exit(1)
-    if len(by_title) > 1:
-        options = ", ".join(f"#{m.id}" for m in by_title)
-        print(
-            f"Instruction {ref!r} is ambiguous ({len(by_title)} matches: {options}) -- use #ID instead", file=sys.stderr
-        )
-        sys.exit(1)
-    return by_title[0]
-
-
-def _show_root(args: argparse.Namespace) -> None:
-    roots = Instruction.roots(args.session)
-    if not roots:
-        print("No Instruction nodes yet -- create one with: kb instructions add TITLE ...")
-        return
-    if len(roots) == 1:
-        _print_node(args.session, roots[0], show_body=True)
-        return
-    print("Multiple root nodes:")
-    for r in roots:
-        print(f"  {r.title} #{r.id}{_trigger_marker(r)}")
+    return node
 
 
 def cmd_show(args: argparse.Namespace) -> None:
@@ -120,20 +118,23 @@ def cmd_show(args: argparse.Namespace) -> None:
     for i, ref in enumerate(args.refs):
         if i > 0:
             print()
-        try:
-            if ref == "root":
-                _show_root(args)
-            else:
-                _print_node(args.session, _resolve(args.session, ref), show_body=True)
-        except SystemExit:
+        node = _resolve_ref(args.session, ref)
+        if node is None:
+            print(ref)
+            print("not found", file=sys.stderr)
             any_failed = True
+        else:
+            _print_node(args.session, node, show_body=True)
     if any_failed:
         sys.exit(1)
 
 
 def cmd_add(args: argparse.Namespace) -> None:
-    _check_title_not_numeric(args.title)
-    parent = _resolve(args.session, args.parent) if args.parent is not None else None
+    _check_title_valid(args.title)
+    if _resolve(args.session, args.title) is not None:
+        print(f"Instruction title {args.title!r}: already exists -- titles must be unique", file=sys.stderr)
+        sys.exit(1)
+    parent = _resolve_or_exit(args.session, args.parent) if args.parent is not None else None
     node = Instruction(title=args.title, body=args.body, trigger=args.trigger, parent=parent, context=args.context)
     node.reembed()
     args.session.add(node)
@@ -142,16 +143,20 @@ def cmd_add(args: argparse.Namespace) -> None:
 
 
 def cmd_set_parent(args: argparse.Namespace) -> None:
-    node = _resolve(args.session, args.ref)
-    node.parent = _resolve(args.session, args.parent) if args.parent is not None else None
+    node = _resolve_or_exit(args.session, args.ref)
+    node.parent = _resolve_or_exit(args.session, args.parent) if args.parent is not None else None
     args.session.commit()
     _print_node(args.session, node, show_body=False)
 
 
 def cmd_edit(args: argparse.Namespace) -> None:
-    node = _resolve(args.session, args.ref)
+    node = _resolve_or_exit(args.session, args.ref)
     if args.title is not None:
-        _check_title_not_numeric(args.title)
+        _check_title_valid(args.title)
+        existing = _resolve(args.session, args.title)
+        if existing is not None and existing.id != node.id:
+            print(f"Instruction title {args.title!r}: already exists -- titles must be unique", file=sys.stderr)
+            sys.exit(1)
         node.title = args.title
     if args.body is not None:
         node.body = args.body
@@ -165,7 +170,7 @@ def cmd_edit(args: argparse.Namespace) -> None:
 
 
 def cmd_delete(args: argparse.Namespace) -> None:
-    node = _resolve(args.session, args.ref)
+    node = _resolve_or_exit(args.session, args.ref)
     children = Instruction.children(args.session, node.id)
     if children and not args.reparent_children:
         titles = ", ".join(c.title for c in children)

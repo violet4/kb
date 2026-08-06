@@ -487,7 +487,7 @@ class Instruction(Base, HasContextOrTag, HasEmbedding):
     __tablename__ = "instruction"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    title: Mapped[str] = mapped_column(String, nullable=False)
+    title: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     trigger: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     parent_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("instruction.id"), nullable=True)

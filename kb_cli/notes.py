@@ -10,7 +10,7 @@ from kb_cli._util import apply_text_edit
 from models import Collection, Note
 
 
-def cmd_get(args: argparse.Namespace) -> None:
+def cmd_show(args: argparse.Namespace) -> None:
     note = Note.get(args.session, args.id)
     if note is None:
         print(f"Note #{args.id}: not found", file=sys.stderr)
@@ -30,7 +30,10 @@ def cmd_add(args: argparse.Namespace) -> None:
 
 
 def cmd_update(args: argparse.Namespace) -> None:
-    note = Note.get(args.session, args.id) if args.id else Note.find(args.session, args.find)
+    if args.id is None and args.find is None:
+        print("notes update: provide ID or --find TITLE", file=sys.stderr)
+        sys.exit(1)
+    note = Note.get(args.session, args.id) if args.id is not None else Note.find(args.session, args.find)
     if note is None:
         print("Note not found.", file=sys.stderr)
         sys.exit(1)
@@ -76,9 +79,9 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     parser = subparsers.add_parser("notes", aliases=["n", "note"], help="Note operations")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    p_get = sub.add_parser("get", help="Show a note by id")
-    p_get.add_argument("id", type=int)
-    p_get.set_defaults(func=cmd_get)
+    p_show = sub.add_parser("show", help="Show a note by id")
+    p_show.add_argument("id", type=int)
+    p_show.set_defaults(func=cmd_show)
 
     p_add = sub.add_parser("add", help="Add a note")
     p_add.add_argument("collection", choices=[c.value for c in Collection if c != Collection.ALL])
@@ -88,9 +91,8 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_add.set_defaults(func=cmd_add)
 
     p_update = sub.add_parser("update", help="Update a note by id or title")
-    lookup = p_update.add_mutually_exclusive_group(required=True)
-    lookup.add_argument("--id", type=int, help="Note id")
-    lookup.add_argument("--find", metavar="TITLE", help="Find note by exact title")
+    p_update.add_argument("id", type=int, nargs="?", help="Note id")
+    p_update.add_argument("--find", metavar="TITLE", help="Find note by exact title, instead of ID")
     p_update.add_argument("--title", help="New title")
     p_update.add_argument("--body", help="Replace the entire body -- prefer --append/--replace for a small change")
     p_update.add_argument("--append", metavar="TEXT", help="Append a paragraph to the body without restating the rest")

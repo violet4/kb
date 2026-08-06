@@ -129,6 +129,17 @@ on an EXISTING record, not a fresh `add` -- check `kb <noun> pending`/`list`/`se
 existing record first rather than creating a duplicate. Run `kb <noun> --help` to see the real
 verb set for that noun; it isn't identical everywhere.
 
+The CLI itself should be ergonomic and intuitive to someone who has never used kb before --
+optimize for that fresh-eyes experience, not for muscle memory built up over a long session.
+When a command doesn't behave the way this shape would reasonably predict (e.g. `update` taking
+a bare positional ID everywhere else, but requiring a flag in one subcommand), that mismatch is
+a signal to fix the CLI so it matches the convention, not to just document the exception here --
+a documented exception still costs every first-time caller the same surprise, it only gives them
+somewhere to look afterward. Default to changing the code rather than this text, since a code fix
+removes the surprise for everyone going forward, including a session with no memory of this
+paragraph; only fix this text instead when the CLI's current shape is genuinely the more correct
+one and this text is what's stale.
+
 If the need/fact is tied to a place ("next time I'm in X"), always pin it with --context --
 never just mention the place in the title. Example: "I need salt next time I'm in Serbule
 Keep" is `kb --context "serbule keep" todo add "buy salt"`, not a title that mentions the

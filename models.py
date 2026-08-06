@@ -530,7 +530,6 @@ class Settings(Base):
     timezone: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     notifications_muted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     notifications_volume: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
-    instruction_root_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("instruction.id"), nullable=True)
 
     @classmethod
     def get(cls, session: Session) -> Settings:

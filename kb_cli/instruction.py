@@ -17,7 +17,7 @@ import sys
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from models import Instruction, Settings
+from models import Instruction
 
 from kb_cli._util import apply_text_edit
 from kb_cli.search import cmd_search_one
@@ -34,6 +34,10 @@ def _size_line(node: Instruction) -> str:
     return f"body: {len(node.body)} chars"
 
 
+def _trigger_marker(node: Instruction) -> str:
+    return f"  (trigger: {node.trigger})" if node.trigger else ""
+
+
 def _print_node(session: Session, node: Instruction, show_body: bool) -> None:
     trigger_line = f"\ntrigger: {node.trigger}" if node.trigger else ""
     print(f"#{node.id} {node.title}{trigger_line}")
@@ -46,8 +50,7 @@ def _print_node(session: Session, node: Instruction, show_body: bool) -> None:
         print()
         print("children:")
         for c in children:
-            marker = f"  (trigger: {c.trigger})" if c.trigger else ""
-            print(f"  {c.title} #{c.id}{marker}")
+            print(f"  {c.title} #{c.id}{_trigger_marker(c)}")
 
 
 def _check_title_not_numeric(title: str) -> None:
@@ -100,19 +103,6 @@ def _resolve(session: Session, ref: str) -> Instruction:
 
 
 def _show_root(args: argparse.Namespace) -> None:
-    settings = Settings.get(args.session)
-    if settings.instruction_root_id is not None:
-        node = args.session.get(Instruction, settings.instruction_root_id)
-        if node is None:
-            print(
-                f"Settings.instruction_root_id points at #{settings.instruction_root_id}, which no longer "
-                "exists -- clear it with `kb instructions show root --set-root` on an existing node",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        _print_node(args.session, node, show_body=True)
-        return
-
     roots = Instruction.roots(args.session)
     if not roots:
         print("No Instruction nodes yet -- create one with: kb instructions add TITLE ...")
@@ -122,29 +112,23 @@ def _show_root(args: argparse.Namespace) -> None:
         return
     print("Multiple root nodes:")
     for r in roots:
-        marker = f"  (trigger: {r.trigger})" if r.trigger else ""
-        print(f"  {r.title} #{r.id}{marker}")
+        print(f"  {r.title} #{r.id}{_trigger_marker(r)}")
 
 
 def cmd_show(args: argparse.Namespace) -> None:
-    if args.set_root:
-        if len(args.refs) != 1:
-            print("--set-root takes exactly one node", file=sys.stderr)
-            sys.exit(1)
-        node = _resolve(args.session, args.refs[0])
-        settings = Settings.get(args.session)
-        settings.instruction_root_id = node.id
-        args.session.commit()
-        print(f"Instruction root set to #{node.id} {node.title!r}")
-        return
-
+    any_failed = False
     for i, ref in enumerate(args.refs):
         if i > 0:
             print()
-        if ref == "root":
-            _show_root(args)
-        else:
-            _print_node(args.session, _resolve(args.session, ref), show_body=True)
+        try:
+            if ref == "root":
+                _show_root(args)
+            else:
+                _print_node(args.session, _resolve(args.session, ref), show_body=True)
+        except SystemExit:
+            any_failed = True
+    if any_failed:
+        sys.exit(1)
 
 
 def cmd_add(args: argparse.Namespace) -> None:
@@ -212,9 +196,8 @@ def cmd_tree(args: argparse.Namespace) -> None:
 
     def render(node: Instruction, prefix: str, is_last: bool) -> None:
         branch = "└── " if is_last else "├── "
-        trigger_str = f"  (trigger: {node.trigger})" if node.trigger else ""
         body_str = f"\n{prefix}{'    ' if is_last else '│   '}{node.body}" if args.bodies else ""
-        print(f"{prefix}{branch}{node.title} #{node.id}{trigger_str}{body_str}")
+        print(f"{prefix}{branch}{node.title} #{node.id}{_trigger_marker(node)}{body_str}")
         extension = "    " if is_last else "│   "
         kids = children.get(node.id, [])
         for i, kid in enumerate(kids):
@@ -235,11 +218,6 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         metavar="TITLE|#ID|root",
         nargs="+",
         help="One or more node titles or ids ('#' prefix optional); 'root' shows the entry point",
-    )
-    p_show.add_argument(
-        "--set-root",
-        action="store_true",
-        help="Designate this node as the one shown by `kb i show root` from now on (stored in Settings)",
     )
     p_show.set_defaults(func=cmd_show)
 

@@ -16,7 +16,7 @@ import sys
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from models import Instruction
+from models import Instruction, Settings
 
 from kb_cli._util import apply_text_edit
 from kb_cli.search import cmd_search_one
@@ -99,6 +99,27 @@ def _resolve(session: Session, ref: str) -> Instruction:
 
 
 def cmd_root(args: argparse.Namespace) -> None:
+    if args.set is not None:
+        node = _resolve(args.session, args.set)
+        settings = Settings.get(args.session)
+        settings.instruction_root_id = node.id
+        args.session.commit()
+        print(f"Instruction root set to #{node.id} {node.title!r}")
+        return
+
+    settings = Settings.get(args.session)
+    if settings.instruction_root_id is not None:
+        node = args.session.get(Instruction, settings.instruction_root_id)
+        if node is None:
+            print(
+                f"Settings.instruction_root_id points at #{settings.instruction_root_id}, which no longer "
+                "exists -- clear it with `kb instructions root --set` to an existing node",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        _print_node(args.session, node, show_body=True)
+        return
+
     roots = Instruction.roots(args.session)
     if not roots:
         print("No Instruction nodes yet -- create one with: kb instructions add TITLE ...")
@@ -199,7 +220,12 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     parser = subparsers.add_parser("instructions", aliases=["i"], help="Instruction tree operations")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    p_root = sub.add_parser("root", help="Show the root node(s) -- entry point into the tree")
+    p_root = sub.add_parser("root", help="Show the root node -- entry point into the tree")
+    p_root.add_argument(
+        "--set",
+        metavar="TITLE|#ID",
+        help="Designate this node as the root shown by `kb i root` from now on (stored in Settings)",
+    )
     p_root.set_defaults(func=cmd_root)
 
     p_show = sub.add_parser("show", help="Show one node's full body plus its children")

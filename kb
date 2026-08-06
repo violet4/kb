@@ -19,8 +19,9 @@ Usage: kb [--context NAME] [--as-of WHEN] <command> [subcommand ...] [args ...]
   kb tag add NAME [--parent P] | show NAME | set-parent NAME [PARENT] | list
   kb daily add "..." | show ID | list | update ID | complete ID | activate ID | deactivate ID
   kb inbox add ... | pending | triage ID
-  kb instructions root | show TITLE | search QUERY | add TITLE BODY [--parent TITLE] [--trigger "..."] | set-parent TITLE [--parent TITLE] | edit TITLE [--title T] [--body B|--append TEXT|--replace OLD NEW] [--trigger "..."] | delete TITLE [--reparent-children] | tree [--bodies]
+  kb instructions root [--set TITLE] | show TITLE | search QUERY | add TITLE BODY [--parent TITLE] [--trigger "..."] | set-parent TITLE [--parent TITLE] | edit TITLE [--title T] [--body B|--append TEXT|--replace OLD NEW] [--trigger "..."] | delete TITLE [--reparent-children] | tree [--bodies]
     # nodes are referenced by title everywhere; prefix with # for an id (only needed if a title is ambiguous). Use global --context to link a node into the Context tree.
+  kb si root   # system instructions, shipped with kb via git -- same for every user, distinct from `kb instructions` (this user's own DB tree)
   kb journal add ENTITY_TYPE ID NOTE | show ENTITY_TYPE ID
   kb notes get ID | add ... | update ... | search ... | reembed
   kb notifications mute | unmute | volume 0-100 | status | send TITLE [BODY] [--priority high]
@@ -70,6 +71,7 @@ from kb_cli import (
     pager,
     search,
     sessions,
+    si,
     summary,
     tag,
     timer,
@@ -230,6 +232,7 @@ games.add_subparser(subparsers)
 search.add_subparser(subparsers)
 sessions.add_subparser(subparsers)
 archivebox.add_subparser(subparsers)
+si.add_subparser(subparsers)
 
 args = parser.parse_args()
 if args.command is None:

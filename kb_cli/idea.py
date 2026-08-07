@@ -133,8 +133,10 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     add_history_arg(p_show)
     p_show.set_defaults(func=cmd_show)
 
-    p_list = sub.add_parser("list", help="List active ideas, scoped to the current context by default")
-    p_list.add_argument("--all", action="store_true", help="Ignore context scoping and show ideas from every context")
+    p_list = sub.add_parser("list", help="List active ideas, everywhere by default (or scoped to --context)")
+    p_list.add_argument(
+        "--all", action="store_true", help="Ignore an active --context and show ideas from every context"
+    )
     p_list.set_defaults(func=cmd_list)
 
     p_search = sub.add_parser("search", help="Substring plus semantic search over idea titles/descriptions/notes")

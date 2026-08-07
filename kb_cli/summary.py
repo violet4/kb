@@ -7,7 +7,7 @@ from typing import Callable, Optional
 
 from sqlalchemy.orm import Session
 
-from models import Context, CurrentContext, Daily, DailyTier, Goal, Idea, InboxItem, Person, Todo, Wishlist
+from models import Context, Daily, DailyTier, Goal, Idea, InboxItem, Person, Todo, Wishlist
 
 
 def anki_section(session: Session) -> str | None:
@@ -207,15 +207,9 @@ def cmd_summary(args: argparse.Namespace) -> None:
     sections = [s for s in rendered if s is not None]
 
     now = datetime.now()
-    persisted_current = CurrentContext.get(args.session)
-    if persisted_current is None:
-        ctx_label = f"context: {args.context.name} (default, no context ever switched to)"
-    elif args.context.id != persisted_current.id:
-        ctx_label = f"context: {args.context.name} (override; persisted: {persisted_current.name})"
-    else:
-        ctx_label = f"context: {persisted_current.name}"
+    ctx_label = f"context: {args.context.name}" if args.context else "context: none"
     print(f"{now.strftime('%Y-%m-%d %H:%M')} (week {now.isocalendar().week})")
-    print(f"{ctx_label} — kb context switch NAME\n")
+    print(f"{ctx_label}\n")
 
     if not sections:
         print("Nothing tracked yet.")

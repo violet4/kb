@@ -174,16 +174,14 @@ def cmd_tree(args: argparse.Namespace) -> None:
     tree that carries that tag, not just once, so it's visible wherever it's
     actually actionable without having to check another location's list.
 
-    Scoped to the current context by default, matching `kb context tree`/`kb todo list` --
-    `--all` shows the full tree; `--include-deferred` additionally shows not-yet-due
-    deferred Todos (the two are independent, pass both together for the old combined
-    behavior)."""
+    Shows everything by default, or scoped to --context; `--all` shows the full tree
+    even under an active --context. `--include-deferred` additionally shows not-yet-due
+    deferred Todos (independent of --all/--context)."""
     render_tree(
         args.session,
         entity_models=(Todo,),
         active_kwargs={Todo: {"include_deferred": args.include_deferred}},
-        scope_to_current=not args.all,
-        context=args.context,
+        context=None if args.all else args.context,
     )
 
 
@@ -247,17 +245,19 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_pending.set_defaults(func=cmd_pending)
 
     p_list = sub.add_parser(
-        "list", help="List pending Todos scoped to the current context (plus descendants/no-context)"
+        "list", help="List pending Todos, everywhere by default (or scoped to --context, plus descendants/no-context)"
     )
     p_list.add_argument("--effort", choices=[e.value for e in WishlistEffort])
-    p_list.add_argument("--all", action="store_true", help="Ignore context scoping and show Todos from every context")
+    p_list.add_argument(
+        "--all", action="store_true", help="Ignore an active --context and show Todos from every context"
+    )
     p_list.add_argument("--include-deferred", action="store_true", help="Also include deferred Todos not yet due")
     p_list.set_defaults(func=cmd_list)
 
     p_tree = sub.add_parser(
         "tree", help="Render pending Todos nested under the Context tree (tag-addressed Todos repeat per match)"
     )
-    p_tree.add_argument("--all", action="store_true", help="Show the full tree, not just the current context")
+    p_tree.add_argument("--all", action="store_true", help="Show the full tree, ignoring an active --context")
     p_tree.add_argument("--include-deferred", action="store_true", help="Also include deferred Todos not yet due")
     p_tree.set_defaults(func=cmd_tree)
 

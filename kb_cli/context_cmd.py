@@ -6,10 +6,8 @@ from typing import Any, Optional
 
 from sqlalchemy import func, select
 
-from context import switch_current
 from models import (
     Context,
-    CurrentContext,
     Daily,
     Goal,
     Idea,
@@ -40,11 +38,6 @@ ENTITY_FLAG_MODELS: dict[str, tuple[Any, ...]] = {
 ALL_ENTITY_MODELS = tuple(m for m in CONTEXT_LINKED_MODELS if m not in (LogEntry, Idea))
 
 
-def cmd_current(args: argparse.Namespace) -> None:
-    context = CurrentContext.get(args.session)
-    print(context.name if context else "(none)")
-
-
 def cmd_add(args: argparse.Namespace) -> None:
     existing = args.session.scalars(select(Context).where(Context.name == args.name)).one_or_none()
     if existing is not None:
@@ -65,27 +58,13 @@ def cmd_set_parent(args: argparse.Namespace) -> None:
     print(context)
 
 
-def cmd_switch(args: argparse.Namespace) -> None:
-    context = switch_current(args.session, args.name)
-    args.session.commit()
-    print(f"Current context: {context.name!r}")
-
-
-def cmd_clear(args: argparse.Namespace) -> None:
-    CurrentContext.set(args.session, None)
-    args.session.commit()
-    print("Current context cleared.")
-
-
 def cmd_list(args: argparse.Namespace) -> None:
     contexts = args.session.scalars(select(Context).order_by(Context.name)).all()
     if not contexts:
         print("No contexts yet.")
         return
-    current = CurrentContext.get(args.session)
     for c in contexts:
-        marker = " (current)" if current and current.id == c.id else ""
-        print(f"#{c.id} {c.name}{marker}")
+        print(f"#{c.id} {c.name}")
 
 
 def _matches_node(model: Any, node: Context) -> Any:
@@ -153,7 +132,6 @@ def render_tree(
     entity_models: tuple[Any, ...] = (),
     show_ideas: bool = False,
     root_name: Optional[str] = None,
-    scope_to_current: bool = False,
     active_kwargs: Optional[dict[Any, dict[str, Any]]] = None,
     context: Optional[Context] = None,
 ) -> None:
@@ -165,18 +143,13 @@ def render_tree(
     different `entity_models`, so "what counts as active/visible here" is defined once (in each
     model's own .active(), via _content_items) rather than redefined per command.
 
-    `context` is the resolved scope (args.context -- honors a `--context` override, falling back
-    to the persisted current context via resolve_context) used for scope_to_current's tree root.
-    It's deliberately separate from the persisted CurrentContext used for the `(current)` marker
-    below -- an override changes what's rendered, not what's remembered as "current" for later
-    commands, so the marker still reflects the real persisted context even under an override.
+    `context` is the resolved scope (args.context -- an explicit `--context` override, or None
+    for "show everything" -- there is no ambient persisted default to fall back to).
     """
     contexts = session.scalars(select(Context)).all()
     if not contexts:
         print("No contexts yet.")
         return
-    persisted_current = CurrentContext.get(session)
-    scope_root = context if context is not None else persisted_current
     show_counts = bool(entity_models) or show_ideas
 
     children: dict[Any, list[Context]] = {}
@@ -187,10 +160,9 @@ def render_tree(
 
     def render(node: Context, prefix: str, is_last: bool) -> None:
         branch = "└── " if is_last else "├── "
-        marker = " (current)" if persisted_current and persisted_current.id == node.id else ""
         tag_str = f" [{', '.join(t.name for t in node.tags)}]" if node.tags else ""
         counts_str = _content_counts(session, node) if show_counts else ""
-        print(f"{prefix}{branch}{node.name} #{node.id}{tag_str}{marker}{counts_str}")
+        print(f"{prefix}{branch}{node.name} #{node.id}{tag_str}{counts_str}")
         extension = "    " if is_last else "│   "
         kids = children.get(node.id, [])
         items = _content_items(session, node, entity_models, active_kwargs) if entity_models else []
@@ -209,12 +181,10 @@ def render_tree(
         render(node, "", True)
         return
 
-    if scope_to_current:
-        print(f"context: {scope_root.name}" if scope_root else "context: none", file=sys.stderr)
-        if scope_root:
-            render(scope_root, "", True)
-            print("(scoped to current context -- pass --all to see the full tree)")
-            return
+    print(f"context: {context.name}" if context else "context: none", file=sys.stderr)
+    if context:
+        render(context, "", True)
+        return
 
     roots = children.get(None, [])
     for i, root in enumerate(roots):
@@ -240,8 +210,7 @@ def cmd_tree(args: argparse.Namespace) -> None:
         entity_models=entity_models,
         show_ideas=args.ideas,
         root_name=args.name,
-        scope_to_current=not args.all,
-        context=args.context,
+        context=None if args.all else args.context,
     )
 
 
@@ -273,9 +242,6 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     parser = subparsers.add_parser("context", aliases=["c"], help="Context operations")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    p_current = sub.add_parser("current", help="Show the active context")
-    p_current.set_defaults(func=cmd_current)
-
     p_add = sub.add_parser("add", help="Create a new context, optionally under a parent context")
     p_add.add_argument("name")
     p_add.add_argument("--parent", help="Parent context name (must already exist)")
@@ -287,27 +253,20 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_set_parent.add_argument("parent", nargs="?", help="Omit to clear the parent")
     p_set_parent.set_defaults(func=cmd_set_parent)
 
-    p_switch = sub.add_parser("switch", help="Change the active context (persists, affects every shell)")
-    p_switch.add_argument("name")
-    p_switch.set_defaults(func=cmd_switch)
-
-    p_clear = sub.add_parser("clear", help="Clear the active context (persists, affects every shell)")
-    p_clear.set_defaults(func=cmd_clear)
-
     p_list = sub.add_parser("list", help="List all known contexts (flat)")
     p_list.set_defaults(func=cmd_list)
 
-    p_tree = sub.add_parser("tree", help="Render the context tree, scoped to the current context by default")
+    p_tree = sub.add_parser("tree", help="Render the context tree (everywhere by default, or scoped with --context)")
     p_tree.add_argument(
         "name",
         nargs="?",
-        help="Show the subtree rooted at this named context instead of the current context",
+        help="Show the subtree rooted at this named context instead",
     )
     p_tree.add_argument(
         "--all",
         "-a",
         action="store_true",
-        help="Show the full context tree instead of scoping to the current context",
+        help="Show the full context tree, ignoring an ambient --context override",
     )
     p_tree.add_argument(
         "--counts",

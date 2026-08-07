@@ -166,9 +166,11 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_reactivate.add_argument("ids", nargs="+", type=int)
     p_reactivate.set_defaults(func=cmd_reactivate)
 
-    p_list = sub.add_parser("list", help="List Goals, scoped to the current context by default")
+    p_list = sub.add_parser("list", help="List Goals, everywhere by default (or scoped to --context)")
     p_list.add_argument("--status", choices=[s.value for s in GoalStatus])
-    p_list.add_argument("--all", action="store_true", help="Ignore context scoping and show Goals from every context")
+    p_list.add_argument(
+        "--all", action="store_true", help="Ignore an active --context and show Goals from every context"
+    )
     p_list.set_defaults(func=cmd_list)
 
     p_search = sub.add_parser(

@@ -429,35 +429,6 @@ class HasContextOrTag:
         return cls.context_id.in_(ids) | cls.tag_id.in_(tag_ids)
 
 
-class CurrentContext(Base):
-    """Single-row table: which Context is active by default. See context.py for resolution logic."""
-
-    __tablename__ = "current_context"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    context_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("context.id"), nullable=True)
-
-    context: Mapped[Optional[Context]] = relationship("Context")
-
-    @classmethod
-    def get(cls, session: Session) -> Optional[Context]:
-        row = session.scalars(select(cls).filter_by(id=1)).one_or_none()
-        return row.context if row else None
-
-    @classmethod
-    def set(cls, session: Session, context: Optional[Context]) -> None:
-        row = session.scalars(select(cls).filter_by(id=1)).one_or_none()
-        if row is None:
-            row = cls(id=1, context_id=context.id if context else None)
-            session.add(row)
-        else:
-            row.context_id = context.id if context else None
-        session.flush()
-
-    def __repr__(self) -> str:
-        return f"<CurrentContext {self.context.name if self.context else None!r}>"
-
-
 class Instruction(Base, HasContextOrTag, HasEmbedding):
     """A node in the topic tree of durable guidance -- unifies what would otherwise be scattered
     across CLAUDE.md files, Claude Code skills, and Claude Code memory into one structure. Single-

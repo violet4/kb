@@ -13,6 +13,7 @@ that principle applied to hook wiring instead of memory content.
 """
 
 import argparse
+import os
 import re
 import sys
 import time
@@ -119,19 +120,32 @@ _DAILY_CHECK_PRIME = (
 
 
 def cmd_daily_check(args: argparse.Namespace) -> None:
-    """Read a Claude Code session ID on stdin. If a lockfile already claims today's
-    daily-check slot for a different session, print nothing (business as usual) --
-    UNLESS _LAST_ACTIVITY_FILE (stamped by cmd_tree_reminder on every UserPromptSubmit,
-    across every session) shows no activity anywhere for _DAILY_CHECK_SLEEP_SECONDS,
-    which is treated as "the user slept" and frees the lock regardless of which session
-    holds it. This deliberately doesn't hard-code a midnight boundary -- a genuine
-    multi-hour gap in activity is the actual signal, not a calendar-day rollover, so a
-    late-night-into-early-morning session correctly keeps the same lock instead of being
-    treated as a new day. Reboot also clears the lock (tmpfs), matching that sessions
-    here never span a reboot (always /kb-persist + a fresh session next time)."""
+    """Read a session ID on stdin -- this is the harness-agnostic path real hook wiring
+    uses (e.g. Claude Code's settings.json piping `.session_id` from the SessionStart
+    JSON envelope), and stays correct for any harness regardless of how that harness
+    exposes its own session ID. If stdin is empty (e.g. a bare manual invocation, not
+    piped), fall back to the CLAUDE_CODE_SESSION_ID env var as a convenience -- this
+    fallback is Claude-Code-specific and only ever a manual-testing nicety, never relied
+    on by the real settings.json wiring above, which always pipes stdin explicitly.
+
+    If a lockfile already claims today's daily-check slot for a different session, print
+    nothing (business as usual) -- UNLESS _LAST_ACTIVITY_FILE (stamped by
+    cmd_tree_reminder on every UserPromptSubmit, across every session) shows no activity
+    anywhere for _DAILY_CHECK_SLEEP_SECONDS, which is treated as "the user slept" and
+    frees the lock regardless of which session holds it. This deliberately doesn't
+    hard-code a midnight boundary -- a genuine multi-hour gap in activity is the actual
+    signal, not a calendar-day rollover, so a late-night-into-early-morning session
+    correctly keeps the same lock instead of being treated as a new day. Reboot also
+    clears the lock (tmpfs), matching that sessions here never span a reboot (always
+    /kb-persist + a fresh session next time)."""
     session_id = sys.stdin.read().strip()
     if not session_id:
-        print("kb hooks daily-check: no session ID on stdin, doing nothing", file=sys.stderr)
+        session_id = os.environ.get("CLAUDE_CODE_SESSION_ID", "").strip()
+    if not session_id:
+        print(
+            "kb hooks daily-check: no session ID on stdin or in CLAUDE_CODE_SESSION_ID, doing nothing",
+            file=sys.stderr,
+        )
         return
     if _DAILY_CHECK_LOCK.exists():
         holder = _DAILY_CHECK_LOCK.read_text().strip()
@@ -182,7 +196,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
 
     p_daily = sub.add_parser(
         "daily-check",
-        help="Claim today's daily-check slot for this session ID (read on stdin); print the priming reminder on a fresh claim, nothing if another session already holds it",
+        help="Claim today's daily-check slot for this session ID (read on stdin, or CLAUDE_CODE_SESSION_ID if stdin is empty); print the priming reminder on a fresh claim, nothing if another session already holds it",
     )
     p_daily.set_defaults(func=cmd_daily_check)
 

@@ -30,3 +30,18 @@ echo '{"session_id":"abcd1234","source":"startup"}' | jq -r '.session_id' | /pat
 /path/to/kb hooks daily-check-release   # clear the lock early
 cat /dev/shm/kb-last-activity           # confirm the heartbeat is being stamped by tree-reminder
 ```
+
+To grab the lock for *this* live session (e.g. after `daily-check-release`, to reclaim it
+manually instead of waiting for the next new session), pipe in this session's own ID rather
+than a fake one above — Claude Code exposes it as the env var `CLAUDE_CODE_SESSION_ID` (both
+the npm and native installs; there is no separate native-only variable, despite that being a
+reasonable first guess when something here misbehaves right after switching install methods):
+
+```bash
+echo "$CLAUDE_CODE_SESSION_ID" | /path/to/kb hooks daily-check
+```
+
+`CLAUDE_SESSION_ID` (no `CODE`) is not a real Claude Code env var — piping a blank line from an
+unset var into `daily-check` hits its blank-stdin early return and silently does nothing, which
+looks identical to "lock already held by another session" unless the lockfile is checked
+directly (`cat /dev/shm/kb-daily-check.lock`) to tell the two apart.

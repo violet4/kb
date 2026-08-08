@@ -131,6 +131,7 @@ def cmd_daily_check(args: argparse.Namespace) -> None:
     here never span a reboot (always /kb-persist + a fresh session next time)."""
     session_id = sys.stdin.read().strip()
     if not session_id:
+        print("kb hooks daily-check: no session ID on stdin, doing nothing", file=sys.stderr)
         return
     if _DAILY_CHECK_LOCK.exists():
         holder = _DAILY_CHECK_LOCK.read_text().strip()

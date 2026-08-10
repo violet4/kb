@@ -83,7 +83,7 @@ if args.command:
                 print(repr(result))
     except Exception:
         state = "ran but NOT committed (mutations may be visible only in-session)" if exec_ran else "did not run"
-        print(f"kb.py: command raised; command {state}.", file=sys.stderr)
+        print(f"kb_repl.py: command raised; command {state}.", file=sys.stderr)
         raise
 
     if not args.no_commit:

@@ -14,7 +14,7 @@ scripts/dev/setup-hooks        # install git pre-commit/post-commit hooks (idemp
 scripts/service/restart        # start the embedding server (kb.service, systemd user unit)
 ```
 
-`~/bin/kb` should symlink to this repo's `kb` script so `kb <command>` works from any directory. Every script here (including `kb`/`kb.py`) is directly executable — the shebang handles `uv run`, no prefix needed.
+`~/bin/kb` should symlink to this repo's `kb` script so `kb <command>` works from any directory. Every script here (including `kb`/`kb_repl.py`) is directly executable — the shebang handles `uv run`, no prefix needed.
 
 ## Connecting a harness (Claude Code, or another agent tool)
 

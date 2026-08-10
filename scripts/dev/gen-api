@@ -79,7 +79,7 @@ if not args.classes:
         "# Import from models.py instead: `from models import Note, sess, ...`",
         "",
         "# Session",
-        "sess  # scoped_session — pre-loaded in kb.py and scripts",
+        "sess  # scoped_session — pre-loaded in kb_repl.py and scripts",
         "",
         "# Enums",
     ]

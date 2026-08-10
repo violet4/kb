@@ -1,6 +1,6 @@
 # KB — Claude instructions
 
-Personal knowledge base. SQLite + SQLAlchemy 2.0. Run `scripts/dev/gen-api` for the full model/method surface before making any queries or updates. Every script here (including `kb.py`) is directly executable from any directory — no `uv run` prefix needed, the shebang handles it.
+Personal knowledge base. SQLite + SQLAlchemy 2.0. Run `scripts/dev/gen-api` for the full model/method surface before making any queries or updates. Every script here (including `kb_repl.py`) is directly executable from any directory — no `uv run` prefix needed, the shebang handles it.
 
 `kb <command> [subcommand ...] [args]` is the global CLI entry point (`~/bin/kb` symlinks to `~/kb/kb`), usable from any directory on the filesystem, not just from inside `~/kb`. It dispatches to `kb_cli/*.py` — real importable Python modules (not standalone executables), each exposing an `add_subparser(subparsers)` hook that the top-level `kb` script wires into one argparse tree. Routing (which noun for which kind of statement) lives in bare `kb`'s own output, not here; syntax/flags for a given command live in that command's own `--help` at any nesting depth (e.g. `kb games pg entity mob --help`), always current since it's generated from the actual argparse definitions — don't duplicate either into this file. `scripts/db`, `scripts/dev`, `scripts/model`, `scripts/service` stay as plain `scripts/*` executables, kb-repo-local only, since migrating/checking schema/etc. only makes sense while actually developing kb itself — mirrors the split between `~/kb/CLAUDE.md` (this file, kb-repo-local, project architecture/why) and `kb i show root` / bare `kb` (global, routing/day-to-day usage).
 
@@ -22,9 +22,9 @@ Cache stable-but-frequently-referenced facts locally (e.g. game mechanics, refer
 
 ## Search
 
-Check `kb search` (see `kb -h`) before writing an ad hoc `kb.py` query — "is X in the wishlist/goals/todos" is exactly what it's for. `kb_cli/search.py`'s `search_entities` is the one substring-search engine (title/description/notes, `ilike`) shared by the per-entity `search` subcommands; the top-level `kb search` additionally calls `Note.search`/`Todo.search`/`Goal.search` for the RAG side (each backed by `HasEmbedding`, see below), since a substring match alone misses phrasing that's topically related but doesn't share exact words — e.g. a Todo titled "build another oil rig" only turns up for a query like "oil rig mushroom base" through the semantic pass, not the substring one.
+Check `kb search` (see `kb -h`) before writing an ad hoc `kb_repl.py` query — "is X in the wishlist/goals/todos" is exactly what it's for. `kb_cli/search.py`'s `search_entities` is the one substring-search engine (title/description/notes, `ilike`) shared by the per-entity `search` subcommands; the top-level `kb search` additionally calls `Note.search`/`Todo.search`/`Goal.search` for the RAG side (each backed by `HasEmbedding`, see below), since a substring match alone misses phrasing that's topically related but doesn't share exact words — e.g. a Todo titled "build another oil rig" only turns up for a query like "oil rig mushroom base" through the semantic pass, not the substring one.
 
-`HasEmbedding` (`models.py`, applied to `Note`/`Goal`/`Todo`) is the one mixin providing semantic search: two nullable columns (`embedding`, `embedding_model`), a `.search(session, query, **filters)` classmethod (raw `vec_distance_cosine` SQL, filtered to the row's own `embedding_model` so a model upgrade never compares incomparable vectors), and a shared `before_flush` listener that auto-reembeds any dirty instance whose `_embed_fields()` changed — callers never call `.reembed()` themselves after a plain attribute assignment, only each model's own `create()` calls it once for the initial embed before first flush. Adding semantic search to a new model is: inherit `HasEmbedding`, implement `_embed_fields()`/`_embed_source_text()`, call `.reembed()` in `create()`, backfill existing rows once via a one-off `kb.py` script (`for row in sess.scalars(select(TheModel)).all(): row.reembed()`). Measured cost: ~9ms per embed call against the warm server (`kb.service`), so sync-inline embedding on create/update is not a noticeable delay — no background queue needed.
+`HasEmbedding` (`models.py`, applied to `Note`/`Goal`/`Todo`) is the one mixin providing semantic search: two nullable columns (`embedding`, `embedding_model`), a `.search(session, query, **filters)` classmethod (raw `vec_distance_cosine` SQL, filtered to the row's own `embedding_model` so a model upgrade never compares incomparable vectors), and a shared `before_flush` listener that auto-reembeds any dirty instance whose `_embed_fields()` changed — callers never call `.reembed()` themselves after a plain attribute assignment, only each model's own `create()` calls it once for the initial embed before first flush. Adding semantic search to a new model is: inherit `HasEmbedding`, implement `_embed_fields()`/`_embed_source_text()`, call `.reembed()` in `create()`, backfill existing rows once via a one-off `kb_repl.py` script (`for row in sess.scalars(select(TheModel)).all(): row.reembed()`). Measured cost: ~9ms per embed call against the warm server (`kb.service`), so sync-inline embedding on create/update is not a noticeable delay — no background queue needed.
 
 ## Inbox
 
@@ -34,13 +34,13 @@ Check `kb search` (see `kb -h`) before writing an ad hoc `kb.py` query — "is X
 
 ## Running commands
 
-`kb.py` (see `kb.py -h`) is the Python-expression runner, a different tool from the `kb` CLI — `kb.py` is for one-off queries/scripts against models directly, `kb` is for the day-to-day subcommands (see `kb -h`).
+`kb_repl.py` (see `kb_repl.py -h`) is the Python-expression runner, a different tool from the `kb` CLI — `kb_repl.py` is for one-off queries/scripts against models directly, `kb` is for the day-to-day subcommands (see `kb -h`).
 
-Bare `kb.py` (no command, `-f`, or `-i`) errors instead of silently dropping into the REPL — always pass `-i` explicitly if you want manual-commit interactive mode.
+Bare `kb_repl.py` (no command, `-f`, or `-i`) errors instead of silently dropping into the REPL — always pass `-i` explicitly if you want manual-commit interactive mode.
 
 `sess` and all models are pre-loaded, including game-specific ones (`PgPlayer`, `PgNpc`, `PgQuest`, `PgItem`, ...). No imports needed. Everything shares a single database and session.
 
-`--context NAME` acts in that context for one command only (pre-loaded as `context` in the namespace) without changing the persisted current context — e.g. `./kb.py --context pg.violet "Goal.active(context)"`.
+`--context NAME` acts in that context for one command only (pre-loaded as `context` in the namespace) without changing the persisted current context — e.g. `./kb_repl.py --context pg.violet "Goal.active(context)"`.
 
 Enum columns take the member (uppercase name, e.g. `Collection.GORGON`), not the lowercase `.value` shown in old muscle memory. `scripts/dev/gen-api` lists valid members per enum.
 
@@ -64,7 +64,7 @@ SQLite silently drops timezone info on `DateTime(timezone=True)` columns on read
 
 ## Daily
 
-`--recurrence`'s grammar (`daily`, `every:N`, `weekly:MON..SUN`, `monthly:D`) is documented natively via `kb daily add --help`, no need to read `Daily`'s docstring in `models.py` for it. A recurring item has a CLI, same as Goal/Todo/Wishlist; only reach for `kb.py`/`Daily.create(...)` for something the CLI doesn't expose.
+`--recurrence`'s grammar (`daily`, `every:N`, `weekly:MON..SUN`, `monthly:D`) is documented natively via `kb daily add --help`, no need to read `Daily`'s docstring in `models.py` for it. A recurring item has a CLI, same as Goal/Todo/Wishlist; only reach for `kb_repl.py`/`Daily.create(...)` for something the CLI doesn't expose.
 
 ## Log and Journal
 
@@ -131,7 +131,7 @@ Anki must be closed first (it holds the collection file locked) — `kb anki` wa
 
 `notetype` accepts a short alias instead of the full Anki name: `reverse`, `reverse-optional`, `type-answer`, or `reverse-type` (a custom note type via `notetype-init`, combining reversed-card generation with forced typed-answer recall in both directions — default to this one for new cards; see Flashcards principle in `CLAUDE_GLOBAL.md`).
 
-`kb anki run` mirrors `kb.py`'s interface (one-shot expression, `-f` script file, `-i` interactive REPL) but pre-loads `col` (the open `Collection`) instead of `sess`+models — Anki auto-saves most mutations itself, so there's no commit step, just `col.close()` on exit.
+`kb anki run` mirrors `kb_repl.py`'s interface (one-shot expression, `-f` script file, `-i` interactive REPL) but pre-loads `col` (the open `Collection`) instead of `sess`+models — Anki auto-saves most mutations itself, so there's no commit step, just `col.close()` on exit.
 
 ## Commits
 

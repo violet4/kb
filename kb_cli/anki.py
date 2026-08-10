@@ -260,7 +260,8 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_delete.set_defaults(func=cmd_delete)
 
     p_run = sub.add_parser(
-        "run", help="Run a Python expression/script against the open collection (like kb.py, but col instead of sess)"
+        "run",
+        help="Run a Python expression/script against the open collection (like kb_repl.py, but col instead of sess)",
     )
     p_run.add_argument("command", nargs="?", help="Python expression to execute")
     p_run.add_argument(

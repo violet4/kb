@@ -1202,10 +1202,16 @@ class EntityLink(Base):
     the id up against entity_registry()[type] before the row is ever written; nothing later (traversal, deletion
     elsewhere in the codebase) re-checks it.
 
-    (type_a, id_a, type_b, id_b, relation) is stored in one canonical order regardless of the
-    order create() was called with -- lexicographically smaller (type, id) pair goes in the
-    _a columns -- so "the same real-world link" can never be inserted as two structurally
-    different rows, and the UniqueConstraint below can actually catch a duplicate.
+    a/b are stored in caller-given order, not canonicalized -- `relation` is a free-text
+    label that reads a-to-b (e.g. "tracked-by" means a is tracked by b), so an earlier version
+    that sorted (type_a, id_a, type_b, id_b) into one canonical order before insert silently
+    flipped the meaning of any asymmetric relation whenever the caller's argument order
+    differed from (type, id) sort order -- e.g. create("Note", 98, "Note", 97, "found-during")
+    got stored as "Note:97 found-during Note:98", the reverse of what was actually meant. The
+    UniqueConstraint below only catches an exact-order duplicate; create(A, B, rel) and
+    create(B, A, rel) are treated as two different (probably one of them mistaken) facts, not
+    the same fact in two spellings -- deliberately, since there's no way to know a relation is
+    symmetric from a plain string.
     """
 
     __tablename__ = "entity_link"
@@ -1246,15 +1252,13 @@ class EntityLink(Base):
         relation: str,
         note: Optional[str] = None,
     ) -> EntityLink:
-        """Validates both endpoints exist (raises ValueError naming the missing side) and
-        canonicalizes ordering before insert -- callers never need to pre-sort their own
-        arguments, and create(A, B, rel) / create(B, A, rel) always produce the same row."""
+        """Validates both endpoints exist (raises ValueError naming the missing side). Stores
+        a/b in exactly the order passed -- relation reads a-to-b, so the caller's order is
+        meaningful and is never reordered (see class docstring)."""
         if cls.resolve(session, type_a, id_a) is None:
             raise ValueError(f"{type_a}:{id_a} does not exist")
         if cls.resolve(session, type_b, id_b) is None:
             raise ValueError(f"{type_b}:{id_b} does not exist")
-        if (type_b, id_b) < (type_a, id_a):
-            type_a, id_a, type_b, id_b = type_b, id_b, type_a, id_a
         link = cls(type_a=type_a, id_a=id_a, type_b=type_b, id_b=id_b, relation=relation, note=note)
         session.add(link)
         session.flush()
@@ -1282,7 +1286,7 @@ class EntityLink(Base):
         return (self.type_a, self.id_a)
 
     def __repr__(self) -> str:
-        return f"<EntityLink {self.type_a}:{self.id_a} --{self.relation}-- {self.type_b}:{self.id_b}>"
+        return f"<EntityLink {self.type_a}:{self.id_a} --{self.relation}--> {self.type_b}:{self.id_b}>"
 
 
 # ---------------------------------------------------------------------------
@@ -1587,7 +1591,7 @@ class Note(Base, HasEmbedding):
 
     def __repr__(self) -> str:
         tags_str = f" #{self.tags}" if self.tags else ""
-        return f"<Note {self.collection.value}/{self.title!r}{tags_str}>"
+        return f"<Note #{self.id} {self.collection.value}/{self.title!r}{tags_str}>"
 
 
 # ---------------------------------------------------------------------------

@@ -86,17 +86,22 @@ def cmd_show(args: argparse.Namespace) -> None:
 
     def render(node_type: str, node_id: int, depth: int, prefix: str) -> None:
         links = EntityLink.for_entity(args.session, node_type, node_id)
-        entries = [link.other_side(node_type, node_id) for link in links]
-        entries.sort()
-        for i, (other_type, other_id) in enumerate(entries):
-            is_last = i == len(entries) - 1
+        # Sort (other_side, link) pairs together -- sorting entries and links separately
+        # desyncs their indices, pairing each other_side with the wrong link/relation.
+        pairs = sorted(((link.other_side(node_type, node_id), link) for link in links), key=lambda p: p[0])
+        for i, ((other_type, other_id), link) in enumerate(pairs):
+            is_last = i == len(pairs) - 1
             branch = "└── " if is_last else "├── "
             child_prefix = prefix + ("    " if is_last else "│   ")
-            link = links[i]
+            # relation reads a-to-b (see EntityLink docstring) -- when the current node is b,
+            # the arrow into it must point backward (<--) or the direction is misrepresented.
+            arrow = (
+                f"--{link.relation}-->" if (node_type, node_id) == (link.type_a, link.id_a) else f"<--{link.relation}--"
+            )
             if (other_type, other_id) in visited:
-                print(f"{prefix}{branch}--{link.relation}--> {other_type}:{other_id} (see above)")
+                print(f"{prefix}{branch}{arrow} {other_type}:{other_id} (see above)")
                 continue
-            print(f"{prefix}{branch}--{link.relation}--> {describe(args.session, other_type, other_id)}")
+            print(f"{prefix}{branch}{arrow} {describe(args.session, other_type, other_id)}")
             if depth < args.depth:
                 visited.add((other_type, other_id))
                 render(other_type, other_id, depth + 1, child_prefix)

@@ -1,173 +1,48 @@
 #!/usr/bin/env python3
-"""KB persistent server. Keeps embedding model warm; exposes JSON over Unix socket.
+"""KB persistent server. Keeps the embedding model warm; exposes JSON over HTTP.
 
-Protocol: newline-delimited JSON.
-  Request:  {"cmd": "ping"} | {"cmd": "embed", "text": "..."} | {"cmd": "search", "query": "...", "collection": "..."}
-  Response: {"ok": true, "result": ...} | {"ok": false, "error": "..."}
+One warm process, one port (25690), routers per feature -- same shape as
+synth's `synth serve` (see ~/synth/scripts/synth_cli/music_search/server.py).
+`core_router.py` holds the original embed/search/note endpoints (what used
+to be a hand-rolled Unix-socket protocol, now plain HTTP so callers, the
+future kbui frontend, and `curl` can all speak the same interface).
 
-Run:   uv run server.py
-Stop:  kill $(cat data/kb.pid)  or  Ctrl-C
+Run:   uv run server.py   (or via devserver.py, which restarts on .py changes)
+Stop:  Ctrl-C, or `scripts/service/restart` for the systemd unit
 """
 
-import json
 import logging
-import os
-import signal
-import socketserver
-import sys
-import time
-from pathlib import Path
-from types import FrameType
-from typing import Any
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
-from sqlalchemy.orm import Session
+import uvicorn
+from fastapi import FastAPI
 
-from models import Collection, Note, SessionFactory
+from api.core_router import router as core_router
+from api.dailies_router import router as dailies_router
 from embed import _local_embed as embed, model_name
-
-SOCKET_PATH = Path(__file__).parent / "data" / "kb.sock"
-PID_PATH = Path(__file__).parent / "data" / "kb.pid"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("kb.server")
 
-
-def _handle(session: Session, request: dict[str, Any]) -> dict[str, Any]:
-    cmd = request.get("cmd")
-
-    if cmd == "ping":
-        return {"ok": True, "result": f"pong model={model_name()}"}
-
-    if cmd == "embed":
-        text = request.get("text", "")
-        vec = embed(text)
-        return {"ok": True, "result": vec}
-
-    if cmd == "search":
-        query = request.get("query", "")
-        col_str = request.get("collection")
-        try:
-            collection = Collection(col_str) if col_str else None
-        except ValueError:
-            return {"ok": False, "error": f"Unknown collection: {col_str!r}. Valid: {[c.value for c in Collection]}"}
-        if collection is None:
-            return {"ok": False, "error": "collection is required"}
-        results = Note.search(session, query, collection=collection)
-        return {
-            "ok": True,
-            "result": [
-                {
-                    "id": n.id,
-                    "title": n.title,
-                    "body": n.body,
-                    "collection": n.collection.value,
-                    "tags": n.tags,
-                    "dist": dist,
-                }
-                for n, dist in results
-            ],
-        }
-
-    if cmd == "note.create":
-        col_str = request.get("collection")
-        try:
-            collection = Collection(col_str)
-        except (ValueError, TypeError):
-            return {"ok": False, "error": f"Unknown collection: {col_str!r}"}
-        note = Note.create(
-            session,
-            title=request["title"],
-            body=request["body"],
-            collection=collection,
-            tags=request.get("tags"),
-        )
-        session.commit()
-        return {"ok": True, "result": repr(note)}
-
-    if cmd == "note.update":
-        existing_note: Note | None
-        if "id" in request:
-            existing_note = Note.get(session, request["id"])
-        elif "find" in request:
-            existing_note = Note.find(session, request["find"])
-        else:
-            return {"ok": False, "error": "note.update requires 'id' or 'find'"}
-        if existing_note is None:
-            return {"ok": False, "error": "Note not found"}
-        existing_note.update(
-            title=request.get("title"),
-            body=request.get("body"),
-            tags=request.get("tags"),
-        )
-        session.commit()
-        return {"ok": True, "result": repr(existing_note)}
-
-    return {"ok": False, "error": f"Unknown command: {cmd!r}"}
+PORT = 25690
 
 
-class _Handler(socketserver.StreamRequestHandler):
-    def handle(self) -> None:
-        peer = self.client_address or "client"
-        log.info("connection from %s", peer)
-        session = SessionFactory()
-        try:
-            for line in self.rfile:
-                line = line.strip()
-                if not line:
-                    continue
-                start = time.monotonic()
-                try:
-                    request = json.loads(line)
-                except json.JSONDecodeError as e:
-                    response = {"ok": False, "error": f"Invalid JSON: {e}"}
-                else:
-                    cmd = request.get("cmd")
-                    log.info("cmd=%s start", cmd)
-                    try:
-                        response = _handle(session, request)
-                    except Exception as e:
-                        log.exception("cmd=%s error after %.3fs", cmd, time.monotonic() - start)
-                        response = {"ok": False, "error": str(e)}
-                    else:
-                        log.info("cmd=%s done in %.3fs", cmd, time.monotonic() - start)
-                self.wfile.write((json.dumps(response) + "\n").encode())
-                self.wfile.flush()
-        except (BrokenPipeError, ConnectionResetError):
-            pass
-        finally:
-            session.close()
-        log.info("connection closed")
-
-
-class _Server(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
-    # ThreadingMixIn: each connection opens its own Session in _Handler.handle, so
-    # concurrent connections never share a Session across threads. One slow/wedged
-    # request no longer blocks every other client indefinitely (previously a
-    # single-threaded UnixStreamServer — see kb-engineering-17).
-    allow_reuse_address = True
-    daemon_threads = True
-
-
-def _cleanup(signum: int | None = None, frame: FrameType | None = None) -> None:
-    log.info("shutting down")
-    SOCKET_PATH.unlink(missing_ok=True)
-    PID_PATH.unlink(missing_ok=True)
-    sys.exit(0)
-
-
-def main() -> None:
-    SOCKET_PATH.unlink(missing_ok=True)
-    PID_PATH.write_text(str(os.getpid()))
-    signal.signal(signal.SIGTERM, _cleanup)
-    signal.signal(signal.SIGINT, _cleanup)
-
+@asynccontextmanager
+async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     log.info("warming up embedding model...")
     embed("warmup")
     log.info("model ready: %s", model_name())
+    yield
 
-    log.info("listening on %s", SOCKET_PATH)
-    with _Server(str(SOCKET_PATH), _Handler) as server:
-        server.serve_forever()
+
+app = FastAPI(title="kb server", lifespan=_lifespan)
+app.include_router(core_router)
+app.include_router(dailies_router)
+
+
+def main() -> None:
+    uvicorn.run(app, host="127.0.0.1", port=PORT)
 
 
 if __name__ == "__main__":

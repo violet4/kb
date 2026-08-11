@@ -1,0 +1,13 @@
+[Unit]
+Description=kb frontend dev server (Vite)
+After=default.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/violet/kb/frontend
+ExecStart=/home/violet/.nvm/versions/node/v24.14.0/bin/npm run dev
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

@@ -1,11 +1,12 @@
-"""KB client. Talks to server.py over Unix socket. Falls back to direct import if server is down."""
+"""KB client. Talks to server.py over HTTP (port 25690). Falls back to direct
+import if the server is down. Same method surface as before the socket->HTTP
+migration, so embed.py/kb_cli/notes.py don't need to change."""
 
-import json
-import socket
-from pathlib import Path
 from typing import Any
 
-SOCKET_PATH = Path(__file__).parent / "data" / "kb.sock"
+import httpx
+
+BASE_URL = "http://127.0.0.1:25690"
 DEFAULT_TIMEOUT = 15  # seconds — without this, a wedged/slow server call hangs forever with
 # no error and no way to notice, let alone recover
 
@@ -18,72 +19,50 @@ class KBServerTimeout(RuntimeError):
 
 class KBClient:
     def __init__(self, timeout: float = DEFAULT_TIMEOUT) -> None:
-        self._sock: socket.socket | None = None
-        self._file: Any = None
-        self._timeout = timeout
+        self._client = httpx.Client(base_url=BASE_URL, timeout=timeout)
 
-    def _connect(self) -> None:
-        if self._sock is not None:
-            return
-        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        sock.settimeout(self._timeout)
-        sock.connect(str(SOCKET_PATH))
-        self._sock = sock
-        self._file = sock.makefile("rwb")
-
-    def _send(self, request: dict[str, Any]) -> dict[str, Any]:
-        self._connect()
+    def _request(self, method: str, path: str, **kwargs: Any) -> Any:
         try:
-            self._file.write((json.dumps(request) + "\n").encode())
-            self._file.flush()
-            line = self._file.readline()
-        except (TimeoutError, socket.timeout) as e:
+            response = self._client.request(method, path, **kwargs)
+        except httpx.TimeoutException as e:
             raise KBServerTimeout(
-                f"kb.service did not respond to {request.get('cmd')!r} within {self._timeout}s"
+                f"kb.service did not respond to {method} {path} within {self._client.timeout}s"
             ) from e
-        if not line:
-            raise KBServerTimeout(f"kb.service closed the connection without responding to {request.get('cmd')!r}")
-        response = json.loads(line)
-        if not isinstance(response, dict):
-            raise RuntimeError(f"kb.service returned a non-object response: {response!r}")
-        return response
-
-    def _result_str(self, r: dict[str, Any]) -> str:
-        if not r["ok"]:
-            raise RuntimeError(r["error"])
-        result = r["result"]
-        if not isinstance(result, str):
-            raise RuntimeError(f"kb.service returned a non-string result: {result!r}")
-        return result
+        except httpx.ConnectError as e:
+            raise KBServerTimeout(f"kb.service is not reachable at {BASE_URL}") from e
+        if response.status_code >= 400:
+            try:
+                detail = response.json().get("detail", response.text)
+            except Exception:
+                detail = response.text
+            raise RuntimeError(str(detail))
+        return response.json()
 
     def ping(self) -> str:
-        r = self._send({"cmd": "ping"})
-        result = r["result"]
+        result = self._request("GET", "/ping")["result"]
         if not isinstance(result, str):
             raise RuntimeError(f"kb.service returned a non-string result: {result!r}")
         return result
 
     def embed(self, text: str) -> list[float]:
-        r = self._send({"cmd": "embed", "text": text})
-        if not r["ok"]:
-            raise RuntimeError(r["error"])
-        result = r["result"]
+        result = self._request("POST", "/embed", json={"text": text})["result"]
         if not isinstance(result, list) or not all(isinstance(x, (int, float)) for x in result):
             raise RuntimeError(f"kb.service returned a non-vector result: {result!r}")
         return [float(x) for x in result]
 
     def search(self, query: str, collection: str) -> list[dict[str, Any]]:
-        r = self._send({"cmd": "search", "query": query, "collection": collection})
-        if not r["ok"]:
-            raise RuntimeError(r["error"])
-        result = r["result"]
+        result = self._request("GET", "/search", params={"query": query, "collection": collection})
         if not isinstance(result, list) or not all(isinstance(x, dict) for x in result):
             raise RuntimeError(f"kb.service returned a non-list-of-objects result: {result!r}")
         return result
 
     def note_create(self, title: str, body: str, collection: str, tags: str | None = None) -> str:
-        r = self._send({"cmd": "note.create", "title": title, "body": body, "collection": collection, "tags": tags})
-        return self._result_str(r)
+        result = self._request(
+            "POST", "/notes", json={"title": title, "body": body, "collection": collection, "tags": tags}
+        )
+        if not isinstance(result, str):
+            raise RuntimeError(f"kb.service returned a non-string result: {result!r}")
+        return result
 
     def note_update(
         self,
@@ -93,27 +72,21 @@ class KBClient:
         body: str | None = None,
         tags: str | None = None,
     ) -> str:
-        req: dict[str, Any] = {"cmd": "note.update"}
-        if id is not None:
-            req["id"] = id
-        elif find is not None:
-            req["find"] = find
-        else:
+        if id is None and find is None:
             raise ValueError("id or find required")
-        if title is not None:
-            req["title"] = title
-        if body is not None:
-            req["body"] = body
-        if tags is not None:
-            req["tags"] = tags
-        r = self._send(req)
-        return self._result_str(r)
+        payload: dict[str, Any] = {"id": id, "find": find, "title": title, "body": body, "tags": tags}
+        result = self._request("PATCH", "/notes", json=payload)
+        if not isinstance(result, str):
+            raise RuntimeError(f"kb.service returned a non-string result: {result!r}")
+        return result
 
     def close(self) -> None:
-        if self._sock:
-            self._sock.close()
-            self._sock = None
+        self._client.close()
 
 
 def is_server_running() -> bool:
-    return SOCKET_PATH.exists()
+    try:
+        httpx.get(f"{BASE_URL}/ping", timeout=1)
+        return True
+    except httpx.HTTPError:
+        return False

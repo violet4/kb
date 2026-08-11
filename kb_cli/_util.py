@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from context import resolve_context
 from mixins import HasUniqueName
-from models import Context, HasContextOrTag, Journal, Tag
+from models import Context, EntityLink, HasContextOrTag, Journal, Tag
 from models_pg import PgItem
 
 # SQLAlchemy declarative classes don't satisfy structural Protocol matching (their
@@ -43,6 +43,26 @@ def scope_to_context(session: Session, context: Optional[Context]) -> Optional[S
     creation_context in context.py for the equivalent, stricter rule for `add` commands."""
     print(f"context: {context.name}" if context else "context: none", file=sys.stderr)
     return Context.self_and_descendants(session, context.name) if context else None
+
+
+def check_no_links(session: Session, entity_type: str, entity_id: int, force: bool) -> None:
+    """Refuse to delete a row that EntityLinks still point at, unless force is set -- the
+    same "list blockers, require an explicit override flag" shape Instruction.cmd_delete
+    already uses for child Instructions. Call this first thing in any cmd_delete; on force,
+    it deletes the blocking links itself so the caller's own delete can proceed unguarded."""
+    links = EntityLink.for_entity(session, entity_type, entity_id)
+    if not links:
+        return
+    if not force:
+        ids = ", ".join(str(link.id) for link in links)
+        print(
+            f"{entity_type}:{entity_id} has links (EntityLink id(s): {ids}) -- pass --force-delete-links "
+            "to delete them first, or remove them yourself with `kb link rm ID`",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    for link in links:
+        session.delete(link)
 
 
 E = TypeVar("E")

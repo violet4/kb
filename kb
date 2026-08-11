@@ -65,6 +65,7 @@ from kb_cli import (
     inbox,
     instruction,
     journal,
+    link,
     log,
     notes,
     notifications,
@@ -110,6 +111,7 @@ Routing a plain statement to the right subcommand (the noun -- which table):
   Something to buy/acquire, price-bearing -> wishlist
   An idea you like but haven't committed to -> idea
   A URL worth keeping a snapshot of -> ab add URL TITLE REASON (title+reason required, see below)
+  A relationship between two existing records (any tables) -> link add TYPE:ID TYPE:ID --relation "..."
   Unsure where it goes -> inbox, triage later
 
 Global flags (--context, --as-of) are parsed by `kb` itself, before it even looks at the
@@ -157,6 +159,15 @@ list/tree command prints which context it resolved to (`context: grocery`), so t
 never silently wrong -- trust the one-shot scoped command first, fall back to unscoped
 `context tree`/`search` only if the scoped result comes back empty and the context itself
 might be wrong.
+
+`kb link add TYPE:ID TYPE:ID --relation "..."` links any two existing rows in any tables
+(e.g. `kb link add Goal:34 Todo:102 --relation "tracked-by"`) -- TYPE is the record's own model
+name (Goal, Todo, Note, ...) and ID its numeric id. `--relation` is required and must be a
+non-empty label; both endpoints are validated to actually exist before the link is written, so
+a link can never point at a nonexistent row. `kb link show TYPE:ID` renders the graph outward
+from that row, one hop deep by default (`--depth N` to go further -- start with 1, since
+link-dense areas of the graph can expand into a large subgraph fast at 2+ hops). Run
+`kb link -h` for rm and the full picture.
 
 `kb ab add URL TITLE REASON` snapshots a URL -- TITLE (neutral, what the page is) and REASON
 (why it was worth keeping) are both required, never optional, so nothing gets saved as a bare
@@ -223,6 +234,7 @@ hooks.add_subparser(subparsers)
 inbox.add_subparser(subparsers)
 instruction.add_subparser(subparsers)
 journal.add_subparser(subparsers)
+link.add_subparser(subparsers)
 notes.add_subparser(subparsers)
 notifications.add_subparser(subparsers)
 log.add_subparser(subparsers)

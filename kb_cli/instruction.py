@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from models import Instruction
 
-from kb_cli._util import apply_text_edit
+from kb_cli._util import apply_text_edit, check_no_links
 from kb_cli.search import cmd_search_one
 
 
@@ -171,6 +171,7 @@ def cmd_edit(args: argparse.Namespace) -> None:
 
 def cmd_delete(args: argparse.Namespace) -> None:
     node = _resolve_or_exit(args.session, args.ref)
+    check_no_links(args.session, "Instruction", node.id, args.force_delete_links)
     children = Instruction.children(args.session, node.id)
     if children and not args.reparent_children:
         titles = ", ".join(c.title for c in children)
@@ -258,6 +259,11 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         "--reparent-children",
         action="store_true",
         help="Move this node's children up to its own parent before deleting, instead of refusing",
+    )
+    p_delete.add_argument(
+        "--force-delete-links",
+        action="store_true",
+        help="Delete any EntityLinks pointing at this node first, instead of refusing",
     )
     p_delete.set_defaults(func=cmd_delete)
 

@@ -1,0 +1,184 @@
+#!/usr/bin/env -S uv run --project /home/violet/kb python3
+"""Pull clean text content from any source -- URL, PDF, HTML file, or plain text -- and split
+it into stable, line-addressable paragraphs. Source-agnostic: detects HTML vs PDF vs plain text
+by URL scheme / file extension / content-sniff, and always emits the same output shape so
+downstream tools (semsearch, or a plain `less`) never need to know what the source was.
+
+    extract SOURCE                # print paragraphs to stdout, one per line
+    extract SOURCE --cache        # also write to ~/.cache/kb-webscan/<sha256(source)>.txt
+    extract SOURCE --show N       # print paragraph N verbatim from the cache (no re-fetch)
+    extract -                     # read plain text from stdin, split into paragraphs
+
+SOURCE may be an http(s):// URL, a local file path (.pdf/.html/.htm/.txt or extensionless --
+sniffed by content), or - for stdin. Output is always one paragraph per line to stdout, so it
+composes with any downstream tool via a pipe, e.g.:
+
+    extract https://example.com/article | semsearch rank "query"
+    extract report.pdf --cache && extract report.pdf --show 12
+"""
+
+import argparse
+import hashlib
+import re
+import sys
+import urllib.request
+from pathlib import Path
+
+CACHE_DIR = Path.home() / ".cache" / "kb-webscan"
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+)
+
+
+def _cache_path(source: str) -> Path:
+    digest = hashlib.sha256(source.encode()).hexdigest()
+    return CACHE_DIR / f"{digest}.txt"
+
+
+def _fetch_url_bytes(url: str) -> bytes:
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return resp.read()
+
+
+def _clean_block_text(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _paragraphs_from_dom(content_html: str) -> list[str]:
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(content_html, "lxml")
+    # Block-level elements are the real paragraph boundaries -- walking the parsed DOM
+    # (not regex-splitting the markup) is what actually lines up with how the HTML is
+    # structured, including nested tags a regex split silently ignores.
+    block_tags = ("p", "div", "li", "pre", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6")
+    paragraphs = []
+    for el in soup.find_all(block_tags):
+        if el.find(block_tags):
+            continue  # skip containers whose own text is already captured by their children
+        text = _clean_block_text(el.get_text(" "))
+        if len(text) > 20:
+            paragraphs.append(text)
+    return paragraphs
+
+
+def _paragraphs_from_html(html: str) -> list[str]:
+    from bs4 import BeautifulSoup
+
+    # MediaWiki's own content container is a more reliable main-content boundary than
+    # readability's generic heuristic, which on a thin wiki page (little prose, one code
+    # block) can pick the wrong element entirely -- prefer the known-CMS selector when present.
+    soup = BeautifulSoup(html, "lxml")
+    mw_content = soup.find(id="mw-content-text")
+    if mw_content is not None:
+        return _paragraphs_from_dom(str(mw_content))
+
+    from readability import Document
+
+    doc = Document(html)
+    return _paragraphs_from_dom(doc.summary())
+
+
+def _paragraphs_from_pdf(data: bytes) -> list[str]:
+    import io
+    from pypdf import PdfReader
+
+    reader = PdfReader(io.BytesIO(data))
+    paragraphs = []
+    for page in reader.pages:
+        text = page.extract_text() or ""
+        for block in re.split(r"\n\s*\n", text):
+            cleaned = _clean_block_text(block)
+            if len(cleaned) > 20:
+                paragraphs.append(cleaned)
+    return paragraphs
+
+
+def _paragraphs_from_plain_text(text: str) -> list[str]:
+    paragraphs = []
+    for block in re.split(r"\n\s*\n", text):
+        cleaned = _clean_block_text(block)
+        if len(cleaned) > 20:
+            paragraphs.append(cleaned)
+    return paragraphs
+
+
+def _sniff_kind(source: str, data: bytes) -> str:
+    if data[:5] == b"%PDF-":
+        return "pdf"
+    lowered = data[:2048].lstrip().lower()
+    if lowered.startswith(b"<!doctype html") or lowered.startswith(b"<html") or b"<body" in lowered:
+        return "html"
+    return "text"
+
+
+def _load_source(source: str) -> bytes:
+    if source == "-":
+        return sys.stdin.buffer.read()
+    if source.startswith("http://") or source.startswith("https://"):
+        return _fetch_url_bytes(source)
+    path = Path(source)
+    if not path.exists():
+        print(f"not found: {source}", file=sys.stderr)
+        sys.exit(1)
+    return path.read_bytes()
+
+
+def extract_paragraphs(source: str) -> list[str]:
+    data = _load_source(source)
+    if source.endswith(".pdf"):
+        kind = "pdf"
+    elif source.endswith((".html", ".htm")):
+        kind = "html"
+    elif source.endswith(".txt") or source == "-":
+        kind = "text"
+    else:
+        kind = _sniff_kind(source, data)
+
+    if kind == "pdf":
+        return _paragraphs_from_pdf(data)
+    if kind == "html":
+        return _paragraphs_from_html(data.decode("utf-8", errors="replace"))
+    return _paragraphs_from_plain_text(data.decode("utf-8", errors="replace"))
+
+
+def cmd_show(source: str, n: int) -> None:
+    path = _cache_path(source)
+    if not path.exists():
+        print(f"not cached -- run `extract {source} --cache` first", file=sys.stderr)
+        sys.exit(1)
+    paragraphs = path.read_text().splitlines()
+    if n < 0 or n >= len(paragraphs):
+        print(f"paragraph {n} out of range (0..{len(paragraphs) - 1})", file=sys.stderr)
+        sys.exit(1)
+    print(paragraphs[n])
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("source", help="URL, file path, or - for stdin")
+    parser.add_argument("--cache", action="store_true", help="Write paragraphs to the source's cache file")
+    parser.add_argument("--show", type=int, metavar="N", help="Print cached paragraph N verbatim, no re-fetch")
+    args = parser.parse_args()
+
+    if args.show is not None:
+        cmd_show(args.source, args.show)
+        return
+
+    paragraphs = extract_paragraphs(args.source)
+
+    if args.cache:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        _cache_path(args.source).write_text("\n".join(paragraphs))
+        print(f"cached: {_cache_path(args.source)} ({len(paragraphs)} paragraphs)", file=sys.stderr)
+
+    for para in paragraphs:
+        print(para)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except BrokenPipeError:
+        sys.stderr.close()

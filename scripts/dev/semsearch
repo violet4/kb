@@ -64,9 +64,9 @@ def main() -> None:
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_rank = sub.add_parser("rank", help="Rank stdin/FILE lines by relevance to a query")
-    p_rank.add_argument("query")
+    p_rank.add_argument("query", help="Text to rank paragraphs against")
     p_rank.add_argument("file", nargs="?", default="-", help="File to read paragraphs from (default: stdin)")
-    p_rank.add_argument("--top", type=int, default=5)
+    p_rank.add_argument("--top", type=int, default=5, help="Number of top-ranked paragraphs to print (default: 5)")
     p_rank.set_defaults(func=cmd_rank)
 
     p_compare = sub.add_parser("compare", help="Cosine similarity between two texts")

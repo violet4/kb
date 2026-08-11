@@ -168,6 +168,12 @@ Journal body cites the URL (e.g. "Sources: AB23"), not the bare URL alone, so th
 travels with the prose. Run `kb ab -h` for the full picture (list/show, ArchiveBox migration
 plan, why title and reason are split).
 
+"What does this page/PDF say about X", "search this doc for X", or "how similar are these two
+texts" is `scripts/dev/extract` (pull clean paragraphs from a URL/PDF/HTML/text file/stdin) and
+`scripts/dev/semsearch` (rank or compare those paragraphs by embedding) -- repo-local tools, not
+`kb` subcommands, composed via a pipe: `extract URL | semsearch rank "query"`. Run
+`scripts/dev/extract -h` / `scripts/dev/semsearch -h` for the full usage.
+
 Run `kb <command> --help` before typing a command from memory -- flags and shapes above are
 illustrative, not exhaustive. Run `kb -h` for full technical reference (what --context/--as-of
 really do, the complete subcommand list). See also: kb instructions root.

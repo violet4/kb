@@ -1,8 +1,12 @@
-"""Connection config for the live ArchiveBox instance. Values come from
-environment variables only -- never hardcoded, never stored in kb's own
-database (see kb Instruction #27 security: credentials are not a "stable fact"
-worth caching). Set these in the calling shell/service environment before
-using either backend:
+"""Connection config for the live ArchiveBox instance -- a plain dataclass, so a caller can
+construct it however fits its own credential-sourcing story; this module doesn't dictate one.
+kb (kb_cli/archivebox.py) owns auth end-to-end and builds ArchiveBoxConfig directly from
+Settings.archivebox_host + kb_cli.secrets.get_credential(), never through from_env() below --
+credentials live in the OS keyring, not environment variables, per kb Instruction #27
+(security: don't cache credentials as a plain env var any process can read).
+
+from_env() remains for non-kb callers (tests, standalone scripts) that don't have kb's keyring
+wrapper available:
 
     ARCHIVEBOX_BASE_URL   e.g. https://archivebox.internal (no trailing slash)
     ARCHIVEBOX_USERNAME   Django admin username (ScrapeBackend only)

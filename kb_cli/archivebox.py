@@ -1,10 +1,125 @@
-"""Interim URL capture ahead of a live ArchiveBox instance -- see ArchivedLink's docstring
-in models.py and kb Todo #70 for the eventual real-ArchiveBox integration."""
+"""kb ab: local capture (ArchivedLink) plus a push to the live ArchiveBox instance, queued on
+kb.service's own background task so `kb ab add` returns immediately instead of blocking on
+ArchiveBox's ~15-20s synchronous add (see kb Note #105) -- see ArchivedLink's docstring in
+models.py, and kb Todo #70 for the fuller history.
+
+kb owns auth end-to-end: credentials live in the OS keyring (kb_cli.secrets), never in
+archivebox_compat's own env-var path, and the ArchiveBox hostname lives in Settings, never
+baked into a URL anywhere -- see archivebox_url() below, the one place a host becomes a URL.
+
+resolve_or_push() is the one function that actually talks to ArchiveBox, shared by the
+server's background task (api/archivebox_router.py), startup reconciliation (server.py's
+lifespan), and `kb ab retry` -- every caller gets the same dedup-before-push behavior and the
+same push_status/resolved_at bookkeeping, so there's exactly one place that can decide a push
+succeeded, failed, or found an existing snapshot."""
 
 import argparse
 import sys
+from typing import Optional
 
-from models import ArchivedLink
+import httpx
+from sqlalchemy.orm import Session
+
+from archivebox_compat import ArchiveBoxConfig, ArchiveBoxConfigError, Snapshot, get_client
+from base import _now
+from kb_cli.text import extract_paragraphs
+from kb_cli.secrets import CredentialUnavailableError, get_credential, set_credential
+from models import ArchivedLink, ArchivedLinkPushStatus, Settings
+
+_CREDENTIAL_SERVICE = "kb-archivebox"
+_SERVER_BASE_URL = "http://127.0.0.1:25690"
+
+
+def archivebox_url(session: Session, path: str = "") -> str:
+    """The one place Settings.archivebox_host becomes a real URL -- every command that prints
+    or fetches a live ArchiveBox link goes through this, so a future hostname change is a
+    one-row Settings edit, never a grep-and-replace."""
+    settings = Settings.get(session)
+    if not settings.archivebox_host:
+        raise ArchiveBoxConfigError("ArchiveBox host not configured -- set with `kb ab configure --host HOST`")
+    return f"https://{settings.archivebox_host}/{path.lstrip('/')}"
+
+
+def _load_config(session: Session) -> ArchiveBoxConfig:
+    settings = Settings.get(session)
+    if not settings.archivebox_host:
+        raise ArchiveBoxConfigError("ArchiveBox host not configured -- set with `kb ab configure --host HOST`")
+    credential = get_credential(_CREDENTIAL_SERVICE)
+    if credential is None:
+        raise ArchiveBoxConfigError(
+            "ArchiveBox credentials not configured -- set with `kb ab configure --set-credentials`"
+        )
+    username, password = credential
+    return ArchiveBoxConfig(base_url=f"https://{settings.archivebox_host}", username=username, password=password)
+
+
+def cmd_configure(args: argparse.Namespace) -> None:
+    settings = Settings.get(args.session)
+    did_something = False
+    if args.host:
+        settings.archivebox_host = args.host
+        args.session.commit()
+        print(f"ArchiveBox host set to {args.host}")
+        did_something = True
+    if args.set_credentials:
+        import getpass
+
+        username = input("ArchiveBox username (must be a Django staff account): ").strip()
+        password = getpass.getpass("ArchiveBox password: ")
+        if not username or not password:
+            print("configure: username and password are both required, nothing stored", file=sys.stderr)
+            sys.exit(1)
+        set_credential(_CREDENTIAL_SERVICE, username, password)
+        print("ArchiveBox credentials stored in OS keyring.")
+        did_something = True
+    if not did_something:
+        print("Nothing to do -- pass --host and/or --set-credentials.", file=sys.stderr)
+        sys.exit(1)
+
+
+def resolve_or_push(session: Session, link: ArchivedLink) -> None:
+    """Resolve link's ArchiveBox fate: check whether the URL is already archived (covers a push
+    that actually succeeded server-side but whose result kb never recorded, e.g. a kb.service
+    crash mid-push) before ever issuing a new add() -- so a retry is always safe to re-run, never
+    a risk of double-submitting the same URL. Always ends with push_status set to SUCCESS or
+    FAILED and resolved_at stamped; never leaves a row at PENDING/QUEUED. The one function every
+    push path (cmd_add's background job, `kb ab retry`, startup reconciliation) calls."""
+    try:
+        config = _load_config(session)
+        client = get_client(config)
+        existing = [s for s in client.list(search=link.url) if s.url == link.url]
+    except (ArchiveBoxConfigError, CredentialUnavailableError) as exc:
+        link.push_error = str(exc)
+        link.push_status = ArchivedLinkPushStatus.FAILED
+        link.resolved_at = _now()
+        session.commit()
+        return
+
+    if existing:
+        snapshot = existing[0]
+        link.ab_id = snapshot.id
+        link.push_error = None
+        link.push_status = ArchivedLinkPushStatus.SUCCESS
+        link.resolved_at = _now()
+        link.migrated_at = link.migrated_at or _now()
+        session.commit()
+        return
+
+    try:
+        snapshot = client.add(link.url)
+    except Exception as exc:  # archivebox_compat backends raise plain RuntimeError/httpx errors
+        link.push_error = str(exc)
+        link.push_status = ArchivedLinkPushStatus.FAILED
+        link.resolved_at = _now()
+        session.commit()
+        return
+
+    link.ab_id = snapshot.id
+    link.push_error = None
+    link.push_status = ArchivedLinkPushStatus.SUCCESS
+    link.resolved_at = _now()
+    link.migrated_at = link.migrated_at or _now()
+    session.commit()
 
 
 def cmd_add(args: argparse.Namespace) -> None:
@@ -21,6 +136,17 @@ def cmd_add(args: argparse.Namespace) -> None:
             f"warning: title ({title_bytes} bytes) is longer than reason ({reason_bytes} bytes) "
             "-- reason is meant to carry the why, double check it isn't just a restated title"
         )
+
+    try:
+        resp = httpx.post(f"{_SERVER_BASE_URL}/ab/push", json={"link_id": link.id}, timeout=5.0)
+        resp.raise_for_status()
+    except httpx.HTTPError as exc:
+        print(f"failed to queue ArchiveBox push -- is kb.service running? ({exc})", file=sys.stderr)
+        sys.exit(1)
+
+    link.push_status = ArchivedLinkPushStatus.QUEUED
+    args.session.commit()
+    print(f"Queued for ArchiveBox push -- check later with `kb ab show {link.id}`")
 
 
 def cmd_list(args: argparse.Namespace) -> None:
@@ -40,15 +166,70 @@ def cmd_show(args: argparse.Namespace) -> None:
     print(link)
     print(f"url: {link.url}")
     print(f"reason: {link.reason}")
+    print(f"push_status: {link.push_status.value}")
+    if link.resolved_at:
+        print(f"resolved_at: {link.resolved_at}")
+    if link.ab_id:
+        print(f"ab_id: {link.ab_id}")
+        try:
+            print(f"ab_url: {archivebox_url(args.session, f'archive/{link.ab_id}/')}")
+        except ArchiveBoxConfigError as exc:
+            print(f"ab_url: unavailable -- {exc}", file=sys.stderr)
+    if link.push_error:
+        print(f"push_error: {link.push_error}")
+        if link.push_status == ArchivedLinkPushStatus.FAILED:
+            print(f"retry with: kb ab retry {link.id}")
+
+
+def cmd_fetch(args: argparse.Namespace) -> None:
+    link = args.session.get(ArchivedLink, args.id)
+    if link is None:
+        print(f"AB{args.id}: not found", file=sys.stderr)
+        sys.exit(1)
+    if not link.ab_id:
+        print(f"AB{args.id}: not yet pushed to ArchiveBox, nothing to fetch", file=sys.stderr)
+        sys.exit(1)
+    try:
+        url = archivebox_url(args.session, f"archive/{link.ab_id}/")
+    except ArchiveBoxConfigError as exc:
+        print(f"fetch failed: {exc}", file=sys.stderr)
+        sys.exit(1)
+    try:
+        paragraphs = extract_paragraphs(url)
+    except Exception as exc:
+        print(f"fetch failed: {exc}", file=sys.stderr)
+        sys.exit(1)
+    for para in paragraphs:
+        print(para)
+
+
+def cmd_retry(args: argparse.Namespace) -> None:
+    for link_id in args.id:
+        link = args.session.get(ArchivedLink, link_id)
+        if link is None:
+            print(f"AB{link_id}: not found", file=sys.stderr)
+            continue
+        resolve_or_push(args.session, link)
+        if link.push_status == ArchivedLinkPushStatus.SUCCESS:
+            print(f"AB{link.id}: success -- {archivebox_url(args.session, f'archive/{link.ab_id}/')}")
+        else:
+            print(f"AB{link.id}: failed -- {link.push_error}", file=sys.stderr)
 
 
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
-    parser = subparsers.add_parser("ab", help="ArchiveBox URL capture (interim -- not wired to a live instance yet)")
+    parser = subparsers.add_parser("ab", help="ArchiveBox URL capture, pushed to the live instance best-effort")
     sub = parser.add_subparsers(dest="cmd", required=True)
+
+    p_configure = sub.add_parser("configure", help="Set the ArchiveBox host and/or credentials (stored in OS keyring)")
+    p_configure.add_argument("--host", help="ArchiveBox hostname, e.g. archivebox.internal (no scheme/path)")
+    p_configure.add_argument(
+        "--set-credentials", action="store_true", help="Prompt for and store the ArchiveBox staff-account login"
+    )
+    p_configure.set_defaults(func=cmd_configure)
 
     p_add = sub.add_parser(
         "add",
-        help="Save a URL with a title and required reason -- never save a bare link with no record of why it matters",
+        help="Save a URL with a title and required reason, then queue a background push to ArchiveBox",
     )
     p_add.add_argument("url")
     p_add.add_argument("title", help="Neutral description of what the page/content is, not why it was saved")
@@ -58,6 +239,14 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_list = sub.add_parser("list", help="List URLs not yet migrated to a live ArchiveBox instance")
     p_list.set_defaults(func=cmd_list)
 
-    p_show = sub.add_parser("show", help="Resolve an ABn id back to its URL/title/reason")
+    p_show = sub.add_parser("show", help="Resolve an ABn id back to its URL/title/reason and live ArchiveBox link")
     p_show.add_argument("id", type=int)
     p_show.set_defaults(func=cmd_show)
+
+    p_fetch = sub.add_parser("fetch", help="Pull extracted paragraph text from the live ArchiveBox snapshot")
+    p_fetch.add_argument("id", type=int)
+    p_fetch.set_defaults(func=cmd_fetch)
+
+    p_retry = sub.add_parser("retry", help="Re-attempt an ArchiveBox push for one or more failed/stuck rows")
+    p_retry.add_argument("id", type=int, nargs="+")
+    p_retry.set_defaults(func=cmd_retry)

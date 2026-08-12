@@ -30,6 +30,8 @@ Usage: kb [--context NAME] [--as-of WHEN] <command> [subcommand ...] [args ...]
   kb summary|sum|s [SECTION ...]
   kb wishlist add ... | update ID ... | search QUERY
   kb search QUERY   # search Goals, Todos, and Wishlist by text, plus Notes by semantic similarity
+  kb text extract SOURCE [--cache] [--show N]   # clean text paragraphs from a URL/PDF/HTML/text file/stdin
+  kb text semsearch rank QUERY [FILE] | compare A B   # rank/compare paragraphs by embedding
   kb games pg entity npc|mob|mob-drop|item|player|character|relation|skill|hangout ...
   kb games pg quest show|add|complete ...
   kb pager FILE [--lines N] [--reset]
@@ -72,6 +74,7 @@ from kb_cli import (
     pager,
     search,
     sessions,
+    text,
     si,
     summary,
     tag,
@@ -180,10 +183,11 @@ travels with the prose. Run `kb ab -h` for the full picture (list/show, ArchiveB
 plan, why title and reason are split).
 
 "What does this page/PDF say about X", "search this doc for X", or "how similar are these two
-texts" is `scripts/dev/extract` (pull clean paragraphs from a URL/PDF/HTML/text file/stdin) and
-`scripts/dev/semsearch` (rank or compare those paragraphs by embedding) -- repo-local tools, not
-`kb` subcommands, composed via a pipe: `extract URL | semsearch rank "query"`. Run
-`scripts/dev/extract -h` / `scripts/dev/semsearch -h` for the full usage.
+texts" is `kb text extract` (pull clean paragraphs from a URL/PDF/HTML/text file/stdin) piped
+into `kb text semsearch` (rank or compare those paragraphs by embedding) -- grouped under one
+`kb text` parent since both are usable from any directory, not repo-local, and are two halves of
+the same pipeline: `kb text extract URL | kb text semsearch rank "query"`. Run
+`kb text extract --help` / `kb text semsearch --help` for the full usage.
 
 Run `kb <command> --help` before typing a command from memory -- flags and shapes above are
 illustrative, not exhaustive. Run `kb -h` for full technical reference (what --context/--as-of
@@ -247,11 +251,13 @@ anki.add_subparser(subparsers)
 games.add_subparser(subparsers)
 search.add_subparser(subparsers)
 sessions.add_subparser(subparsers)
+text.add_subparser(subparsers)
 archivebox.add_subparser(subparsers)
 si.add_subparser(subparsers)
 
 args = parser.parse_args()
 if args.command is None:
+    print(f"This routing guide is printed by {Path(__file__).resolve()} (bare `kb`, no subcommand).\n")
     print(_BARE_INSTRUCTIONS, end="")
     sys.exit(0)
 args.session = SessionFactory()

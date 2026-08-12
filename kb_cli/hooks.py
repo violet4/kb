@@ -86,6 +86,24 @@ _TREE_REMINDER = (
 )
 
 
+_ARCHIVE_REMINDER = (
+    "A web search/fetch just ran. If anything in the results actually panned out as useful or worth keeping "
+    "(not the bulk of low-quality/SEO/irrelevant hits a search normally returns), snapshot it now: "
+    "`kb ab add URL TITLE REASON`. Judgment call each time, not an auto-save -- most search results aren't worth it."
+)
+
+
+def cmd_archive_reminder(args: argparse.Namespace) -> None:
+    """Unconditional -- always prints the same short reminder, no stdin/detection needed.
+    Deliberately does not auto-save anything: a WebSearch/WebFetch turns up mostly
+    low-quality/SEO/irrelevant results, so saving every URL a search touches would hoover up
+    the internet (the exact failure mode kb Todo #70 calls out avoiding). This only nudges a
+    judgment call at the moment it's cheapest to make -- right after seeing the results -- and
+    leaves the actual save-or-skip decision to whoever's driving, the same as any other
+    `kb ab add` call."""
+    print(_ARCHIVE_REMINDER)
+
+
 _LAST_ACTIVITY_FILE = Path("/dev/shm/kb-last-activity")
 
 
@@ -193,6 +211,12 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         help="Unconditional one-line reminder to re-check the Instruction tree for mid-task relevance",
     )
     p_tree.set_defaults(func=cmd_tree_reminder)
+
+    p_archive = sub.add_parser(
+        "archive-reminder",
+        help="Unconditional one-line reminder to snapshot anything worth keeping after a WebSearch/WebFetch",
+    )
+    p_archive.set_defaults(func=cmd_archive_reminder)
 
     p_daily = sub.add_parser(
         "daily-check",

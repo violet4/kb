@@ -503,6 +503,7 @@ class Settings(Base):
     timezone: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     notifications_muted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     notifications_volume: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    archivebox_host: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     @classmethod
     def get(cls, session: Session) -> Settings:
@@ -1490,6 +1491,13 @@ class InboxItem(Base):
         return f"<InboxItem #{self.id} [{state}]{' ' + tags if tags else ''}: {body!r}>"
 
 
+class ArchivedLinkPushStatus(enum.Enum):
+    PENDING = "pending"  # not yet attempted -- fresh row, or startup reconciliation hasn't reached it yet
+    QUEUED = "queued"  # background push accepted by the server, not yet resolved
+    SUCCESS = "success"  # ab_id confirmed, either via a fresh push or a dedup lookup finding an existing snapshot
+    FAILED = "failed"  # push attempted and confirmed failed -- see push_error; only retried via `kb ab retry`
+
+
 class ArchivedLink(Base):
     """A URL queued for archival -- interim capture ahead of a live ArchiveBox instance
     (kb Goal/Todo #70). Today this is just url+title+reason+timestamp; migrated_at marks
@@ -1508,7 +1516,16 @@ class ArchivedLink(Base):
     Note/Todo/Journal body that references the URL, so the pointer travels with the prose
     instead of living only in this table. ABn today means this table's own id; once a live
     ArchiveBox instance exists, migrated ids get remapped to the real AB snapshot id and
-    every ABn citation in kb text is updated to match."""
+    every ABn citation in kb text is updated to match.
+
+    push_status tracks the live-ArchiveBox push independently of ab_id/push_error being
+    populated, so "is this row still owed attention" is one column, not an inference over two
+    others: PENDING (fresh, no push attempted yet) -> QUEUED (kb.service accepted the
+    background job) -> SUCCESS or FAILED (resolved, either by a successful push or a dedup
+    lookup that found the URL already archived). resolved_at is set only on that final
+    transition -- when the row's fate became known, not when a push merely started. A row
+    stuck at PENDING/QUEUED across a kb.service restart is exactly what startup reconciliation
+    (server.py's lifespan) looks for and logs -- see kb Note #105 and kb Todo #70."""
 
     __tablename__ = "archived_link"
 
@@ -1517,6 +1534,14 @@ class ArchivedLink(Base):
     title: Mapped[str] = mapped_column(String, nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     migrated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    ab_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    push_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    push_status: Mapped[ArchivedLinkPushStatus] = mapped_column(
+        Enum(ArchivedLinkPushStatus, create_constraint=True, validate_strings=True),
+        nullable=False,
+        default=ArchivedLinkPushStatus.PENDING,
+    )
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     @classmethod
     def create(cls, session: Session, url: str, title: str, reason: str) -> ArchivedLink:
@@ -1528,6 +1553,16 @@ class ArchivedLink(Base):
     @classmethod
     def pending(cls, session: Session) -> Sequence[ArchivedLink]:
         return session.scalars(select(cls).where(cls.migrated_at.is_(None)).order_by(cls.created_at)).all()
+
+    @classmethod
+    def stuck_mid_push(cls, session: Session) -> Sequence[ArchivedLink]:
+        """Rows still PENDING/QUEUED -- either never picked up, or mid-flight when kb.service
+        last stopped. Startup reconciliation (server.py's lifespan) is the one caller."""
+        return session.scalars(
+            select(cls)
+            .where(cls.push_status.in_((ArchivedLinkPushStatus.PENDING, ArchivedLinkPushStatus.QUEUED)))
+            .order_by(cls.created_at)
+        ).all()
 
     def __repr__(self) -> str:
         state = "migrated" if self.migrated_at else "pending"

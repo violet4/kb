@@ -9,6 +9,7 @@ dependencies = [
     "beautifulsoup4>=4.15.0",
     "fastapi>=0.141.1",
     "httpx>=0.28.1",
+    "keyring>=25.7.0",
     "lxml>=6.1.1",
     "pypdf>=6.15.0",
     "readability-lxml>=0.8.4.1",
@@ -27,6 +28,10 @@ python_version = "3.12"
 strict = true
 files = ["*.py", "kb_cli", "scripts"]
 plugins = ["sqlalchemy.ext.mypy.plugin"]
+
+[[tool.mypy.overrides]]
+module = "readability"
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

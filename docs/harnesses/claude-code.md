@@ -167,6 +167,31 @@ See `kb hooks --help` / `kb_cli/hooks.py` for what this does and why (Instructio
 
 Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/violet/kb/kb`).
 
+## archive-reminder (harness-agnostic detector, unconditional)
+
+See `kb hooks --help` / `kb_cli/hooks.py` for what this does and why (nudge to snapshot anything from a web search/fetch that actually panned out, without auto-saving — see kb Todo #70 for why auto-save was rejected: a search mostly returns low-quality/SEO/irrelevant hits, and archiving all of them would hoover up the internet instead of the useful subset). This section is only the Claude Code wiring: takes no stdin, always prints (no detection condition), fires on `PostToolUse` for `WebSearch`/`WebFetch`.
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "WebSearch|WebFetch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hint=$(/path/to/kb hooks archive-reminder 2>/dev/null); jq -n --arg h \"$hint\" '{hookSpecificOutput: {hookEventName: \"PostToolUse\", additionalContext: $h}}'",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/violet/kb/kb`). If a `PostToolUse`/`Bash` entry already exists for `mypy-check`, this is a separate matcher (`WebSearch|WebFetch` vs `Bash`) so it needs its own entry in the `PostToolUse` array, not merged into that one.
+
 ## Adding a new one
 
 Harness-agnostic detector (default — prefer this unless the check genuinely needs Claude Code's own event data):

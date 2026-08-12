@@ -129,6 +129,7 @@ class Collection(enum.Enum):
     PERSONAL = "personal"
     GORGON = "gorgon"
     WORK = "work"
+    INBOX = "inbox"  # default collection for a note created without an explicit one
 
     ALL = "all"  # search-only sentinel — not a valid storage collection
 
@@ -1563,7 +1564,12 @@ class Note(Base, HasEmbedding):
 
     @classmethod
     def create(
-        cls, session: Session, title: str, body: str, collection: Collection, tags: Optional[str] = None
+        cls,
+        session: Session,
+        title: str,
+        body: str,
+        collection: Collection = Collection.INBOX,
+        tags: Optional[str] = None,
     ) -> Note:
         if collection == Collection.ALL:
             raise ValueError("Collection.ALL is a search sentinel and cannot be used for storage.")

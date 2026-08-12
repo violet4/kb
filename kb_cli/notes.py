@@ -25,7 +25,7 @@ def cmd_show(args: argparse.Namespace) -> None:
 
 def cmd_add(args: argparse.Namespace) -> None:
     client = KBClient()
-    result = client.note_create(title=args.title, body=args.body, collection=args.collection, tags=args.tags)
+    result = client.note_create(title=args.title, body=args.body, collection=Collection.INBOX.value, tags=args.tags)
     print(f"Added: {result}")
 
 
@@ -84,7 +84,6 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_show.set_defaults(func=cmd_show)
 
     p_add = sub.add_parser("add", help="Add a note")
-    p_add.add_argument("collection", choices=[c.value for c in Collection if c != Collection.ALL])
     p_add.add_argument("title")
     p_add.add_argument("body")
     p_add.add_argument("--tags", default=None, help="Comma-separated tags")

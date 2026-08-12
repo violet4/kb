@@ -64,9 +64,16 @@ def cmd_rm(args: argparse.Namespace) -> None:
     if link is None:
         print(f"EntityLink #{args.id}: not found", file=sys.stderr)
         sys.exit(1)
+    # Print the full link, including note, before it's gone -- this is the only record of
+    # exactly what was deleted, and the only way to re-create it (`kb link add A B --relation
+    # "..."`) without digging through a DB backup.
+    recreate = f"kb link add {link.type_a}:{link.id_a} {link.type_b}:{link.id_b} --relation {link.relation!r}"
+    if link.note:
+        recreate += f" --note {link.note!r}"
+    print(f"Deleted {link!r}")
+    print(f"To re-create: {recreate}")
     args.session.delete(link)
     args.session.commit()
-    print(f"Deleted EntityLink #{args.id}")
 
 
 def cmd_show(args: argparse.Namespace) -> None:

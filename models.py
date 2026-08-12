@@ -1288,7 +1288,7 @@ class EntityLink(Base):
         return (self.type_a, self.id_a)
 
     def __repr__(self) -> str:
-        return f"<EntityLink {self.type_a}:{self.id_a} --{self.relation}--> {self.type_b}:{self.id_b}>"
+        return f"<EntityLink #{self.id} {self.type_a}:{self.id_a} --{self.relation}--> {self.type_b}:{self.id_b}>"
 
 
 # ---------------------------------------------------------------------------

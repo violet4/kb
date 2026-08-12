@@ -163,14 +163,21 @@ never silently wrong -- trust the one-shot scoped command first, fall back to un
 `context tree`/`search` only if the scoped result comes back empty and the context itself
 might be wrong.
 
-`kb link add TYPE:ID TYPE:ID --relation "..."` links any two existing rows in any tables
-(e.g. `kb link add Goal:34 Todo:102 --relation "tracked-by"`) -- TYPE is the record's own model
-name (Goal, Todo, Note, ...) and ID its numeric id. `--relation` is required and must be a
-non-empty label; both endpoints are validated to actually exist before the link is written, so
-a link can never point at a nonexistent row. `kb link show TYPE:ID` renders the graph outward
-from that row, one hop deep by default (`--depth N` to go further -- start with 1, since
-link-dense areas of the graph can expand into a large subgraph fast at 2+ hops). Run
-`kb link -h` for rm and the full picture.
+`kb link add A B --relation "..."` links any two existing rows in any tables, each given as
+TYPE:ID (e.g. `kb link add Goal:34 Todo:102 --relation "tracked-by"`) -- TYPE is the record's
+own model name (Goal, Todo, Note, ...) and ID its numeric id. Order is meaningful and stored
+exactly as given, never reordered: `--relation` reads strictly A-to-B, so
+`Goal:34 --tracked-by--> Todo:102` means "Goal 34 is tracked by Todo 102," not the reverse --
+put whichever side is the grammatical subject of the relation label first (A), the object
+second (B). Swapping A and B does not express the same fact backwards, it silently records a
+different, usually wrong, fact -- if in doubt, read the args back as a sentence ("A [relation]
+B") before running the command. `--relation` is required and must be a non-empty label; both
+endpoints are validated to actually exist before the link is written, so a link can never point
+at a nonexistent row. `kb link add` prints the created link's own `#ID` in its output --
+`kb link rm ID` takes that id, never guess or reuse an id from an earlier link. `kb link show
+TYPE:ID` renders the graph outward from that row, one hop deep by default (`--depth N` to go
+further -- start with 1, since link-dense areas of the graph can expand into a large subgraph
+fast at 2+ hops). Run `kb link -h` for rm and the full picture.
 
 `kb ab add URL TITLE REASON` snapshots a URL -- TITLE (neutral, what the page is) and REASON
 (why it was worth keeping) are both required, never optional, so nothing gets saved as a bare

@@ -15,6 +15,8 @@ succeeded, failed, or found an existing snapshot."""
 
 import argparse
 import sys
+import time
+from datetime import datetime
 from typing import Optional
 
 import httpx
@@ -28,6 +30,7 @@ from models import ArchivedLink, ArchivedLinkPushStatus, Settings
 
 _CREDENTIAL_SERVICE = "kb-archivebox"
 _SERVER_BASE_URL = "http://127.0.0.1:25690"
+_WATCH_STATUS_INTERVAL_DEFAULT = 30
 
 
 def archivebox_url(session: Session, path: str = "") -> str:
@@ -146,7 +149,37 @@ def cmd_add(args: argparse.Namespace) -> None:
 
     link.push_status = ArchivedLinkPushStatus.QUEUED
     args.session.commit()
-    print(f"Queued for ArchiveBox push -- check later with `kb ab show {link.id}`")
+
+    if not args.watch:
+        print(f"Queued for ArchiveBox push -- check later with `kb ab show {link.id}`")
+        return
+
+    start_dt = datetime.now()
+    print(f"Watching for push result... (started {start_dt:%Y-%m-%d %H:%M:%S})")
+    start = time.monotonic()
+    poll_interval = 1.0
+    status_interval = args.watch
+    next_status_at = start + status_interval
+    while True:
+        args.session.expire(link)
+        if link.push_status == ArchivedLinkPushStatus.SUCCESS:
+            elapsed = time.monotonic() - start
+            try:
+                ab_url = archivebox_url(args.session, f"archive/{link.ab_id}/")
+            except ArchiveBoxConfigError as exc:
+                print(f"AB{link.id}: success ({elapsed:.1f}s) -- ab_url unavailable ({exc})")
+                return
+            print(f"AB{link.id}: success ({elapsed:.1f}s) -- {ab_url}")
+            return
+        if link.push_status == ArchivedLinkPushStatus.FAILED:
+            elapsed = time.monotonic() - start
+            print(f"AB{link.id}: failed ({elapsed:.1f}s) -- {link.push_error}", file=sys.stderr)
+            sys.exit(1)
+        now = time.monotonic()
+        if now >= next_status_at:
+            print(f"still waiting... ({now - start:.0f}s elapsed, {datetime.now():%Y-%m-%d %H:%M:%S})")
+            next_status_at = now + status_interval
+        time.sleep(poll_interval)
 
 
 def cmd_list(args: argparse.Namespace) -> None:
@@ -234,6 +267,19 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_add.add_argument("url")
     p_add.add_argument("title", help="Neutral description of what the page/content is, not why it was saved")
     p_add.add_argument("reason", help="Why this was worth keeping -- what made it pass the filter")
+    p_add.add_argument(
+        "--watch",
+        type=int,
+        nargs="?",
+        const=_WATCH_STATUS_INTERVAL_DEFAULT,
+        default=None,
+        metavar="SECONDS",
+        help=(
+            "Block and poll for the background push to resolve, printing success/failure and elapsed time. "
+            "Optional SECONDS sets how often a still-waiting status line is printed while polling "
+            f"(default {_WATCH_STATUS_INTERVAL_DEFAULT})."
+        ),
+    )
     p_add.set_defaults(func=cmd_add)
 
     p_list = sub.add_parser("list", help="List URLs not yet migrated to a live ArchiveBox instance")

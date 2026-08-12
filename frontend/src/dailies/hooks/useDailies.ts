@@ -37,6 +37,13 @@ export function useDailies(dueOnly: boolean): UseDailiesResult {
     load(true);
   }, [load]);
 
+  // Poll for content changes (e.g. a daily rolling over at midnight) without
+  // showing the loading spinner on every tick.
+  useEffect(() => {
+    const interval = setInterval(() => load(false), 60_000);
+    return () => clearInterval(interval);
+  }, [load]);
+
   const withReload = useCallback(
     (action: (id: number) => Promise<Daily>) => async (id: number) => {
       await action(id);

@@ -20,6 +20,7 @@ from datetime import datetime
 from typing import Optional
 
 import httpx
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from archivebox_compat import ArchiveBoxConfig, ArchiveBoxConfigError, Snapshot, get_client
@@ -125,24 +126,37 @@ def resolve_or_push(session: Session, link: ArchivedLink) -> None:
     session.commit()
 
 
+def _report_already_saved(session: Session, existing: ArchivedLink) -> None:
+    print(f"AB{existing.id}: already saved -- {existing.url}")
+    print(existing)
+    print(f"title: {existing.title!r}")
+    print(f"reason: {existing.reason!r}")
+    print(f"push_status: {existing.push_status.value}")
+    if existing.ab_id:
+        try:
+            print(f"ab_url: {archivebox_url(session, f'archive/{existing.ab_id}/')}")
+        except ArchiveBoxConfigError as exc:
+            print(f"ab_url: unavailable -- {exc}", file=sys.stderr)
+    print(f"Not creating a duplicate -- see `kb ab show {existing.id}`")
+
+
 def cmd_add(args: argparse.Namespace) -> None:
     existing = ArchivedLink.find_by_url(args.session, args.url)
     if existing is not None:
-        print(f"AB{existing.id}: already saved -- {existing.url}")
-        print(existing)
-        print(f"title: {existing.title!r}")
-        print(f"reason: {existing.reason!r}")
-        print(f"push_status: {existing.push_status.value}")
-        if existing.ab_id:
-            try:
-                print(f"ab_url: {archivebox_url(args.session, f'archive/{existing.ab_id}/')}")
-            except ArchiveBoxConfigError as exc:
-                print(f"ab_url: unavailable -- {exc}", file=sys.stderr)
-        print(f"Not creating a duplicate -- see `kb ab show {existing.id}`")
+        _report_already_saved(args.session, existing)
         return
 
-    link = ArchivedLink.create(args.session, args.url, args.title, args.reason)
-    args.session.commit()
+    try:
+        link = ArchivedLink.create(args.session, args.url, args.title, args.reason)
+        args.session.commit()
+    except IntegrityError:
+        # Lost a race against a concurrent `kb ab add` for the same URL -- the unique
+        # constraint on archived_link.url caught what the find_by_url check above couldn't.
+        args.session.rollback()
+        existing = ArchivedLink.find_by_url(args.session, args.url)
+        assert existing is not None, "IntegrityError on url uniqueness but no row found by that url"
+        _report_already_saved(args.session, existing)
+        return
     print(link)
     print(f"AB{link.id} -- embed this ID in whatever note/todo/journal entry cites {link.url}")
     title_bytes = len(link.title.encode())

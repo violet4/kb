@@ -87,6 +87,7 @@ class NoteUpdateIn(BaseModel):
     title: Optional[str] = None
     body: Optional[str] = None
     tags: Optional[str] = None
+    collection: Optional[str] = None
 
 
 @router.patch("/notes", response_model=str)
@@ -100,6 +101,12 @@ async def update_note(body: NoteUpdateIn, session: Session = Depends(get_session
         raise HTTPException(status_code=400, detail="note update requires 'id' or 'find'")
     if note is None:
         raise HTTPException(status_code=404, detail="Note not found")
-    note.update(title=body.title, body=body.body, tags=body.tags)
+    collection: Optional[Collection] = None
+    if body.collection is not None:
+        try:
+            collection = Collection(body.collection)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Unknown collection: {body.collection!r}")
+    note.update(title=body.title, body=body.body, tags=body.tags, collection=collection)
     session.commit()
     return repr(note)

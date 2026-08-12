@@ -1587,13 +1587,23 @@ class Note(Base, HasEmbedding):
     def find(cls, session: Session, title: str) -> Optional[Note]:
         return session.scalars(select(cls).filter_by(title=title)).one_or_none()
 
-    def update(self, title: Optional[str] = None, body: Optional[str] = None, tags: Optional[str] = None) -> None:
+    def update(
+        self,
+        title: Optional[str] = None,
+        body: Optional[str] = None,
+        tags: Optional[str] = None,
+        collection: Optional[Collection] = None,
+    ) -> None:
         if title is not None:
             self.title = title
         if body is not None:
             self.body = body
         if tags is not None:
             self.tags = tags
+        if collection is not None:
+            if collection == Collection.ALL:
+                raise ValueError("Collection.ALL is a search sentinel and cannot be used for storage.")
+            self.collection = collection
 
     def __repr__(self) -> str:
         tags_str = f" #{self.tags}" if self.tags else ""

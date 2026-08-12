@@ -71,10 +71,18 @@ class KBClient:
         title: str | None = None,
         body: str | None = None,
         tags: str | None = None,
+        collection: str | None = None,
     ) -> str:
         if id is None and find is None:
             raise ValueError("id or find required")
-        payload: dict[str, Any] = {"id": id, "find": find, "title": title, "body": body, "tags": tags}
+        payload: dict[str, Any] = {
+            "id": id,
+            "find": find,
+            "title": title,
+            "body": body,
+            "tags": tags,
+            "collection": collection,
+        }
         result = self._request("PATCH", "/notes", json=payload)
         if not isinstance(result, str):
             raise RuntimeError(f"kb.service returned a non-string result: {result!r}")

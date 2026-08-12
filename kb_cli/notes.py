@@ -2,6 +2,7 @@
 
 import argparse
 import sys
+from typing import Optional
 
 from sqlalchemy import select
 
@@ -23,9 +24,25 @@ def cmd_show(args: argparse.Namespace) -> None:
     print(f"body: {note.body}")
 
 
+def _resolve_collection(name: Optional[str]) -> Optional[Collection]:
+    """Resolve a --collection argument, warning and falling back to INBOX if unknown."""
+    if name is None:
+        return None
+    try:
+        return Collection(name)
+    except ValueError:
+        print(
+            f'Warning: collection "{name}" not found -- placed in inbox instead. '
+            "Relocate with `kb notes update --collection`.",
+            file=sys.stderr,
+        )
+        return Collection.INBOX
+
+
 def cmd_add(args: argparse.Namespace) -> None:
+    collection = _resolve_collection(args.collection) or Collection.INBOX
     client = KBClient()
-    result = client.note_create(title=args.title, body=args.body, collection=Collection.INBOX.value, tags=args.tags)
+    result = client.note_create(title=args.title, body=args.body, collection=collection.value, tags=args.tags)
     print(f"Added: {result}")
 
 
@@ -41,7 +58,8 @@ def cmd_update(args: argparse.Namespace) -> None:
     if args.append is not None or args.replace is not None:
         replace = tuple(args.replace) if args.replace is not None else None
         body = apply_text_edit(note.body, f"body of {note.title!r}", args.append, replace)
-    note.update(title=args.title, body=body, tags=args.tags)
+    collection = _resolve_collection(args.collection)
+    note.update(title=args.title, body=body, tags=args.tags, collection=collection)
     args.session.commit()
     print(f"Updated: {note}")
 
@@ -87,6 +105,11 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_add.add_argument("title")
     p_add.add_argument("body")
     p_add.add_argument("--tags", default=None, help="Comma-separated tags")
+    p_add.add_argument(
+        "--collection",
+        default=None,
+        help="Collection to file the note under (default: inbox). Unknown names fall back to inbox with a warning.",
+    )
     p_add.set_defaults(func=cmd_add)
 
     p_update = sub.add_parser("update", help="Update a note by id or title")
@@ -102,6 +125,11 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         help="Replace one occurrence of OLD with NEW in the body -- errors if OLD is missing or not unique",
     )
     p_update.add_argument("--tags", help="New tags (comma-separated)")
+    p_update.add_argument(
+        "--collection",
+        default=None,
+        help="Move the note to this collection. Unknown names fall back to inbox with a warning.",
+    )
     p_update.set_defaults(func=cmd_update)
 
     p_search = sub.add_parser("search", help="Semantic search over notes")

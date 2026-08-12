@@ -1551,6 +1551,10 @@ class ArchivedLink(Base):
         return link
 
     @classmethod
+    def find_by_url(cls, session: Session, url: str) -> Optional[ArchivedLink]:
+        return session.scalars(select(cls).where(cls.url == url).order_by(cls.created_at)).first()
+
+    @classmethod
     def pending(cls, session: Session) -> Sequence[ArchivedLink]:
         return session.scalars(select(cls).where(cls.migrated_at.is_(None)).order_by(cls.created_at)).all()
 

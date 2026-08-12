@@ -126,6 +126,21 @@ def resolve_or_push(session: Session, link: ArchivedLink) -> None:
 
 
 def cmd_add(args: argparse.Namespace) -> None:
+    existing = ArchivedLink.find_by_url(args.session, args.url)
+    if existing is not None:
+        print(f"AB{existing.id}: already saved -- {existing.url}")
+        print(existing)
+        print(f"title: {existing.title!r}")
+        print(f"reason: {existing.reason!r}")
+        print(f"push_status: {existing.push_status.value}")
+        if existing.ab_id:
+            try:
+                print(f"ab_url: {archivebox_url(args.session, f'archive/{existing.ab_id}/')}")
+            except ArchiveBoxConfigError as exc:
+                print(f"ab_url: unavailable -- {exc}", file=sys.stderr)
+        print(f"Not creating a duplicate -- see `kb ab show {existing.id}`")
+        return
+
     link = ArchivedLink.create(args.session, args.url, args.title, args.reason)
     args.session.commit()
     print(link)

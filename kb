@@ -24,7 +24,7 @@ Usage: kb [--context NAME] [--as-of WHEN] <command> [subcommand ...] [args ...]
     # nodes are referenced by title everywhere; prefix with # for an id (only needed if a title is ambiguous). Use global --context to link a node into the Context tree.
   kb si root   # system instructions, shipped with kb via git -- same for every user, distinct from `kb instructions` (this user's own DB tree)
   kb journal add ENTITY_TYPE ID NOTE | show ENTITY_TYPE ID
-  kb notes get ID | add ... | update ... | search ... | reembed
+  kb notes show ID | add ... | update ... | search ... | reembed
   kb notifications mute | unmute | volume 0-100 | status | send TITLE [BODY] [--priority high]
   kb log add ... | recent
   kb context add NAME | list | tree

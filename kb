@@ -166,7 +166,11 @@ never silently wrong -- trust the one-shot scoped command first, fall back to un
 `context tree`/`search` only if the scoped result comes back empty and the context itself
 might be wrong.
 
-`kb link add A B --relation "..."` links any two existing rows in any tables, each given as
+Default to several small linked records over one large one: the moment a record would cover
+more than one reason someone might come looking for it, split it and connect the pieces with
+`kb link add` instead of writing one combined record — a link costs one command and makes each
+piece independently reachable, so there's no size/completeness tradeoff to weigh before
+reaching for it. `kb link add A B --relation "..."` links any two existing rows in any tables, each given as
 TYPE:ID (e.g. `kb link add Goal:34 Todo:102 --relation "tracked-by"`) -- TYPE is the record's
 own model name (Goal, Todo, Note, ...) and ID its numeric id. Order is meaningful and stored
 exactly as given, never reordered: `--relation` reads strictly A-to-B, so

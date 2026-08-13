@@ -211,6 +211,23 @@ def cmd_add(args: argparse.Namespace) -> None:
         time.sleep(poll_interval)
 
 
+def cmd_check(args: argparse.Namespace) -> None:
+    urls = args.url if args.url else [line.strip() for line in sys.stdin if line.strip()]
+    if not urls:
+        print("No URLs given -- pass as arguments or pipe newline-separated URLs on stdin.", file=sys.stderr)
+        sys.exit(1)
+    any_new = False
+    for url in urls:
+        existing = ArchivedLink.find_by_url(args.session, url)
+        if existing is None:
+            print(f"NEW: {url}")
+            any_new = True
+        else:
+            print(f"AB{existing.id}: {url}")
+    if any_new:
+        sys.exit(1)
+
+
 def cmd_list(args: argparse.Namespace) -> None:
     links = ArchivedLink.pending(args.session)
     if not links:
@@ -310,6 +327,13 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         ),
     )
     p_add.set_defaults(func=cmd_add)
+
+    p_check = sub.add_parser(
+        "check",
+        help="Check which URLs are already saved (AB<id>) vs NEW, without saving anything",
+    )
+    p_check.add_argument("url", nargs="*", help="URLs to check; if omitted, read newline-separated from stdin")
+    p_check.set_defaults(func=cmd_check)
 
     p_list = sub.add_parser("list", help="List URLs not yet migrated to a live ArchiveBox instance")
     p_list.set_defaults(func=cmd_list)

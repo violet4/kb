@@ -211,14 +211,35 @@ class Context(Base, HasUniqueName):
 
     @classmethod
     def get_existing(cls, session: Session, name: str) -> Context:
-        """Look up a context by name, raising rather than silently creating one --
-        use this for switching/filtering, where a typo'd name should be a hard error,
-        not a new, accidental Context row. Use get_or_create only for the explicit
-        `context add` path, where creating a new Context is the intended action."""
+        """Look up a context by name, raising if it's missing -- used only where the name is
+        known-good already (e.g. self_and_descendants walking a Context that was just resolved
+        via get_or_create_reporting), never on raw user-typed --context input. See
+        get_or_create_reporting for the user-facing path, which creates rather than raises."""
         obj = session.scalars(select(cls).filter_by(name=name)).one_or_none()
         if obj is None:
             raise ValueError(f"no such context: {name!r} (create it with: kb context add {name!r})")
         return obj
+
+    @classmethod
+    def get_or_create_reporting(cls, session: Session, name: str) -> tuple[Context, bool]:
+        """Look up a context by name, creating a new top-level one if it doesn't exist yet.
+        Returns (context, was_created) -- callers print a short "created new context" notice
+        when was_created is True (see kb_cli._util.scope_to_context), rather than raising.
+        A misspelled --context is meant to be caught by noticing that notice and fixing it
+        with `kb context rm`/`context set-parent`, not by a hard error -- a full argparse
+        error for a bare typo was expensive to recover from (had to retype a long --body
+        verbatim) for a mistake that's actually a 1-2 command fix after the fact."""
+        obj = session.scalars(select(cls).filter_by(name=name)).one_or_none()
+        if obj is not None:
+            return obj, False
+        obj = cls(name=name)
+        session.add(obj)
+        # Commit immediately, independent of whatever the enclosing command later commits
+        # (or doesn't) -- a read-only command like `todo list` never calls session.commit(),
+        # but the auto-created context must still persist, or the "created" notice would
+        # print again on every subsequent call for a context that never actually exists.
+        session.commit()
+        return obj, True
 
     def ancestors(self) -> list[Context]:
         """This context plus every parent up the chain, broadest last."""
@@ -1884,6 +1905,33 @@ class Timer(Base, HasContextOrTag):
             f"<Timer #{self.id}{label_str} [{self.status.value}] "
             f"ends_at={self.ends_at.strftime('%Y-%m-%d %H:%M:%S')}{context_str}{tag_str}>"
         )
+
+
+# ---------------------------------------------------------------------------
+# CliInvocation
+# ---------------------------------------------------------------------------
+
+
+class CliInvocation(Base):
+    """One record per top-level `kb` CLI invocation -- command text, whether it succeeded,
+    and the error message if it didn't. Written by kb's own top-level dispatch (see the `kb`
+    script), independent of any one subcommand knowing about it, so every invocation is
+    covered without each kb_cli/*.py module having to opt in. The point is to make CLI
+    friction (a confusing error, a command that fails the same way repeatedly) queryable
+    (`kb stats`) instead of relying on it being reported by hand each time it's hit --
+    see kb Instruction root, "the tree's own re-check mechanisms... exist for exactly this:
+    surfacing friction proactively, not after the fact," applied to the CLI's own errors."""
+
+    __tablename__ = "cli_invocation"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    command: Mapped[str] = mapped_column(Text, nullable=False)
+    success: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    def __repr__(self) -> str:
+        status = "ok" if self.success else "error"
+        return f"<CliInvocation #{self.id} [{status}] {self.command!r}>"
 
 
 # ---------------------------------------------------------------------------

@@ -2,12 +2,13 @@
 """Global kb CLI entry point. Usable from any directory (see ~/bin/kb symlink).
 
 Usage: kb [--context NAME] [--as-of WHEN] <command> [subcommand ...] [args ...]
-  --context NAME acts in that context for this command only (must already exist; see
-  `kb context add`) -- applies for READ-scoped commands only (`todo list`, `context tree`,
-  `kb summary`, ...), which always print which context they resolved to (or "context: none"
-  if unscoped). There is no persisted default context to fall back to; omitting --context
-  shows everything. `add` commands ignore --context's ambient behavior entirely: with no
-  explicit --context, a new row lands in the fixed `inbox` context instead.
+  --context NAME acts in that context for this command only, creating it as a new top-level
+  context (with a short notice printed) if it doesn't exist yet -- applies for READ-scoped
+  commands only (`todo list`, `context tree`, `kb summary`, ...), which always print which
+  context they resolved to (or "context: none" if unscoped). There is no persisted default
+  context to fall back to; omitting --context shows everything. `add` commands ignore
+  --context's ambient behavior entirely: with no explicit --context, a new row lands in the
+  fixed `inbox` context instead.
   --as-of WHEN runs this command as if the current time were WHEN, via time_machine --
   for previewing/debugging time-dependent output (e.g. `kb daily list` at a future
   hour) without waiting for real time to pass. Accepts 'HH:MM' (today), 'YYYY-MM-DD',
@@ -36,6 +37,7 @@ Usage: kb [--context NAME] [--as-of WHEN] <command> [subcommand ...] [args ...]
   kb games pg quest show|add|complete ...
   kb pager FILE [--lines N] [--reset]
   kb sessions   # list Claude Code CLI sessions across all projects
+  kb stats errors [--days N] [--top N]   # CLI error patterns from CliInvocation audit log
   kb anki decks | deck-add NAME | notetype-init | search QUERY | add DECK NOTETYPE FIELD... [--tags T] | delete ID... | run [-f FILE|-i]
 """
 
@@ -74,6 +76,7 @@ from kb_cli import (
     pager,
     search,
     sessions,
+    stats,
     text,
     si,
     summary,
@@ -202,13 +205,16 @@ really do, the complete subcommand list). See also: kb instructions root.
 """
 
 _HELP_EPILOG = """
---context resolves once via resolve_context(): an explicit value is looked up (must already
-exist, see `kb context add`) and applies for that single invocation only -- there is no
-ambient persisted default context to fall back to (one used to exist -- CurrentContext,
-switched via `kb context switch` -- but a context switched once for an unrelated task would
-silently narrow every later read, for both sessions and days, without ever showing up as a
-strange result; it was removed for exactly that reason). The resolved value (a Context, or
-None if --context wasn't passed) is threaded through as args.context to every subcommand.
+--context resolves once via resolve_context(): an explicit value is looked up, or created as
+a new top-level Context with a short notice printed if it doesn't exist yet (a misspelled name
+is meant to be caught by noticing that notice and fixed afterward with a context rename/move,
+not by a hard error that forces retyping a whole command including any long --body text), and
+applies for that single invocation only -- there is no ambient persisted default context to
+fall back to (one used to exist -- CurrentContext, switched via `kb context switch` -- but a
+context switched once for an unrelated task would silently narrow every later read, for both
+sessions and days, without ever showing up as a strange result; it was removed for exactly
+that reason). The resolved value (a Context) is threaded through as args.context to every
+subcommand.
 
 args.context is for READ-scoping only (`todo list`, `context tree`, `kb summary`, ...) --
 every such command prints "context: NAME" (or "context: none") so the scope is never silently
@@ -232,7 +238,11 @@ parser = argparse.ArgumentParser(
     epilog=_HELP_EPILOG,
     formatter_class=argparse.RawDescriptionHelpFormatter,
 )
-parser.add_argument("--context", metavar="NAME", help="Act in context NAME for this command only (must already exist)")
+parser.add_argument(
+    "--context",
+    metavar="NAME",
+    help="Act in context NAME for this command only (created as new top-level if it doesn't exist)",
+)
 parser.add_argument("--as-of", metavar="WHEN", help="Run as if the current time were WHEN (local); see usage docstring")
 subparsers = parser.add_subparsers(dest="command", required=False)
 
@@ -258,9 +268,43 @@ anki.add_subparser(subparsers)
 games.add_subparser(subparsers)
 search.add_subparser(subparsers)
 sessions.add_subparser(subparsers)
+stats.add_subparser(subparsers)
 text.add_subparser(subparsers)
 archivebox.add_subparser(subparsers)
 si.add_subparser(subparsers)
+
+
+def _log_invocation(success: bool, error: str | None) -> None:
+    """Record one row per top-level `kb` invocation (see CliInvocation in models.py) --
+    a fresh, short-lived session, since a failed command may have left args.session's
+    transaction in a state that shouldn't be reused for this. Logging itself must never
+    be the reason a command fails, so any error here is swallowed, not raised."""
+    try:
+        from models import CliInvocation
+
+        log_session = SessionFactory()
+        log_session.add(CliInvocation(command=" ".join(sys.argv[1:]), success=success, error=error))
+        log_session.commit()
+        log_session.close()
+    except Exception:
+        pass
+
+
+_original_error = argparse.ArgumentParser.error
+
+
+def _error_and_log(self: argparse.ArgumentParser, message: str) -> None:
+    """Overridden at the class level, not just on the top-level `parser` instance, since
+    every subparser (`todo add`, `context tree`, ...) has its own bound .error() that a
+    top-level-only override would never intercept -- a bad flag several levels deep
+    (e.g. `todo add` with no title) needs the same audit-log row as a bad top-level
+    subcommand name."""
+    _log_invocation(success=False, error=message)
+    print("(see `kb stats errors` for recent CLI error patterns)", file=sys.stderr)
+    _original_error(self, message)  # always raises SystemExit(2)
+
+
+argparse.ArgumentParser.error = _error_and_log  # type: ignore[method-assign]
 
 args = parser.parse_args()
 if args.command is None:
@@ -269,16 +313,22 @@ if args.command is None:
     sys.exit(0)
 args.session = SessionFactory()
 args.context_explicit = args.context is not None
+args.context = resolve_context(args.session, args.context)
+
 try:
-    args.context = resolve_context(args.session, args.context)
-except ValueError as e:
-    parser.error(str(e))
+    if args.as_of:
+        import time_machine
 
-if args.as_of:
-    import time_machine
-
-    as_of_local = _parse_as_of(args.as_of).astimezone()
-    with time_machine.travel(as_of_local, tick=False):
+        as_of_local = _parse_as_of(args.as_of).astimezone()
+        with time_machine.travel(as_of_local, tick=False):
+            args.func(args)
+    else:
         args.func(args)
+except SystemExit:
+    raise
+except Exception as e:
+    _log_invocation(success=False, error=f"{type(e).__name__}: {e}")
+    print("(see `kb stats errors` for recent CLI error patterns)", file=sys.stderr)
+    raise
 else:
-    args.func(args)
+    _log_invocation(success=True, error=None)

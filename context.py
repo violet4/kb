@@ -32,13 +32,18 @@ INBOX_CONTEXT_NAME = "inbox"
 def resolve_context(session: Session, cli_override: Optional[str] = None) -> Optional[Context]:
     """Resolve the context a read-scoped command should act in.
 
-    cli_override, if given, is a context name that applies for this call only.
-    Absent that, returns None -- "show everything, unscoped" -- there is no
-    ambient default context to silently fall back to. Every caller must print what
-    it resolved to (see kb_cli._util.scope_to_context) so the scope is never invisible.
+    cli_override, if given, is a context name that applies for this call only -- if it
+    doesn't exist yet, it's created as a new top-level Context (and a short "created new
+    context" notice is printed; see kb_cli._util.scope_to_context), not a hard error. Absent
+    cli_override, returns None -- "show everything, unscoped" -- there is no ambient default
+    context to silently fall back to. Every caller must print what it resolved to so the
+    scope is never invisible.
     """
     if cli_override is not None:
-        return Context.get_existing(session, cli_override)
+        context, created = Context.get_or_create_reporting(session, cli_override)
+        if created:
+            print(f"Created new top-level context {context.name!r} (see `kb context -h` to move/manage it).")
+        return context
     return None
 
 

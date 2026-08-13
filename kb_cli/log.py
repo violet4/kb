@@ -21,7 +21,11 @@ def cmd_add(args: argparse.Namespace) -> None:
 
 
 def cmd_recent(args: argparse.Namespace) -> None:
-    context = Context.get_existing(args.session, args.context_name) if args.context_name else None
+    context = None
+    if args.context_name:
+        context, created = Context.get_or_create_reporting(args.session, args.context_name)
+        if created:
+            print(f"Created new top-level context {context.name!r} (see `kb context -h` to move/manage it).")
     entries = LogEntry.recent(args.session, domain=args.domain, context=context, limit=args.limit)
     if not entries:
         print("No entries.")

@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from models import (
     Context,
     Daily,
+    EntityLink,
     Goal,
     Idea,
     Item,
@@ -22,6 +23,7 @@ from models import (
 )
 
 from kb_cli._util import get_by_name
+from kb_cli.link import parse_ref
 
 # Every model that can be pinned to a context, in the order counts should print.
 CONTEXT_LINKED_MODELS = (Goal, Todo, Daily, Item, Reference, WorkingMemory, LogEntry, Wishlist, Idea, Timer)
@@ -54,6 +56,17 @@ def cmd_set_parent(args: argparse.Namespace) -> None:
     context = get_by_name(args.session, Context, args.name)
     parent = get_by_name(args.session, Context, args.parent) if args.parent else None
     context.parent = parent
+    args.session.commit()
+    print(context)
+
+
+def cmd_rename(args: argparse.Namespace) -> None:
+    context = get_by_name(args.session, Context, args.name)
+    existing = args.session.scalars(select(Context).where(Context.name == args.new_name)).one_or_none()
+    if existing is not None:
+        print(f"Context {args.new_name!r} already exists (#{existing.id})", file=sys.stderr)
+        sys.exit(1)
+    context.name = args.new_name
     args.session.commit()
     print(context)
 
@@ -238,6 +251,100 @@ def cmd_untag(args: argparse.Namespace) -> None:
     print(context)
 
 
+def _linked_entities(session: Any, node: Context) -> list[tuple[str, int, Any]]:
+    """Every row directly pinned to this Context (context_id match only, not tag fan-out --
+    a tag-addressed row isn't "connected to" this Context in the ownership sense that rm/
+    reassign care about, it just happens to surface here too) across every model in
+    CONTEXT_LINKED_MODELS, as (type_name, id, row) triples."""
+    out: list[tuple[str, int, Any]] = []
+    for model in CONTEXT_LINKED_MODELS:
+        rows = session.scalars(select(model).where(model.context_id == node.id)).all()
+        out.extend((model.__name__, row.id, row) for row in rows)
+    return out
+
+
+def cmd_show(args: argparse.Namespace) -> None:
+    context = get_by_name(args.session, Context, args.name)
+    entities = _linked_entities(args.session, context)
+    print(context)
+    if not entities:
+        print("No connected entities.")
+        return
+    print(f"{len(entities)} connected entit{'y' if len(entities) == 1 else 'ies'}:")
+    for type_name, entity_id, row in entities:
+        print(f"  {type_name}:{entity_id} {row!r}")
+
+
+def cmd_reassign(args: argparse.Namespace) -> None:
+    """Bulk move a list of TYPE:ID entities to a different context -- same TYPE:ID syntax as
+    `kb link add`, so `kb link show Context:ID` output can be fed straight back in. The one
+    mechanism `context rm` (on a nonempty context) and `context merge` both point callers at,
+    instead of each entity type needing its own one-off reassignment command."""
+    target = get_by_name(args.session, Context, args.to)
+    moved = 0
+    for ref in args.refs:
+        type_name, entity_id = parse_ref(ref)
+        model = EntityLink.entity_registry().get(type_name)
+        if model is None or not hasattr(model, "context_id"):
+            print(f"{ref}: {type_name!r} is not a context-addressable entity type", file=sys.stderr)
+            sys.exit(1)
+        row = args.session.get(model, entity_id)
+        if row is None:
+            print(f"{ref}: not found", file=sys.stderr)
+            sys.exit(1)
+        row.context_id = target.id
+        moved += 1
+    args.session.commit()
+    print(f"Moved {moved} entit{'y' if moved == 1 else 'ies'} to {target.name!r}.")
+
+
+def cmd_rm(args: argparse.Namespace) -> None:
+    context = get_by_name(args.session, Context, args.name)
+    entities = _linked_entities(args.session, context)
+    if entities:
+        print(
+            f"Context {context.name!r} has {len(entities)} connected entit{'y' if len(entities) == 1 else 'ies'} — refusing to delete.",
+            file=sys.stderr,
+        )
+        print(f"  See them:    kb context show {context.name}", file=sys.stderr)
+        print(f"  Move them:   kb context reassign TYPE:ID [TYPE:ID ...] --to OTHER_CONTEXT", file=sys.stderr)
+        print(f"  Rename instead of deleting: kb context rename {context.name} NEW_NAME", file=sys.stderr)
+        print(f"  Same place as another context? kb context merge {context.name} --into OTHER_CONTEXT", file=sys.stderr)
+        sys.exit(1)
+    children = args.session.scalars(select(Context).where(Context.parent_id == context.id)).all()
+    if children:
+        names = ", ".join(c.name for c in children)
+        print(
+            f"Context {context.name!r} has child context(s) ({names}) — reparent or remove them first.", file=sys.stderr
+        )
+        sys.exit(1)
+    args.session.delete(context)
+    args.session.commit()
+    print(f"Deleted context {context.name!r}.")
+
+
+def cmd_merge(args: argparse.Namespace) -> None:
+    """Fold one context's connected entities into another, then delete the emptied source --
+    the single-step version of `reassign` (every entity) + `rm`, for the common "these two
+    are actually the same place" case (see kb-instructions context-creation-check #65)."""
+    source = get_by_name(args.session, Context, args.name)
+    target = get_by_name(args.session, Context, args.into)
+    if source.id == target.id:
+        print("Cannot merge a context into itself.", file=sys.stderr)
+        sys.exit(1)
+    entities = _linked_entities(args.session, source)
+    for _type_name, _entity_id, row in entities:
+        row.context_id = target.id
+    children = args.session.scalars(select(Context).where(Context.parent_id == source.id)).all()
+    for child in children:
+        child.parent_id = target.id
+    args.session.delete(source)
+    args.session.commit()
+    print(
+        f"Merged {len(entities)} entit{'y' if len(entities) == 1 else 'ies'} and {len(children)} child context(s) from {source.name!r} into {target.name!r}; deleted {source.name!r}."
+    )
+
+
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     parser = subparsers.add_parser("context", aliases=["c"], help="Context operations")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -252,6 +359,31 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_set_parent.add_argument("name")
     p_set_parent.add_argument("parent", nargs="?", help="Omit to clear the parent")
     p_set_parent.set_defaults(func=cmd_set_parent)
+
+    p_rename = sub.add_parser("rename", help="Rename a context in place")
+    p_rename.add_argument("name")
+    p_rename.add_argument("new_name")
+    p_rename.set_defaults(func=cmd_rename)
+
+    p_show = sub.add_parser("show", help="Show a context and everything directly connected to it")
+    p_show.add_argument("name")
+    p_show.set_defaults(func=cmd_show)
+
+    p_reassign = sub.add_parser(
+        "reassign", help="Bulk-move entities (TYPE:ID, same syntax as `kb link add`) to a different context"
+    )
+    p_reassign.add_argument("refs", nargs="+", metavar="TYPE:ID", help="Entities to move, e.g. Todo:102 Goal:34")
+    p_reassign.add_argument("--to", required=True, help="Destination context name")
+    p_reassign.set_defaults(func=cmd_reassign)
+
+    p_rm = sub.add_parser("rm", help="Delete a context (refuses if it has connected entities or child contexts)")
+    p_rm.add_argument("name")
+    p_rm.set_defaults(func=cmd_rm)
+
+    p_merge = sub.add_parser("merge", help="Move everything from one context into another, then delete the source")
+    p_merge.add_argument("name", help="Context to merge away")
+    p_merge.add_argument("--into", required=True, help="Destination context name")
+    p_merge.set_defaults(func=cmd_merge)
 
     p_list = sub.add_parser("list", help="List all known contexts (flat)")
     p_list.set_defaults(func=cmd_list)

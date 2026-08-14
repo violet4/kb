@@ -119,6 +119,30 @@ See `kb hooks --help` / `kb_cli/hooks.py` for what this detects and why (points 
 
 Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/violet/kb/kb`).
 
+## plan-md-check (harness-agnostic detector, advisory)
+
+See `kb hooks --help` / `kb_cli/hooks.py` for what this detects and why (points at `kb instructions show 18`, legacy-claude-code-artifacts). Same target pattern as `memory-md-check` (`Write`/`Edit` to a Claude Code local file), but **not** a block: writing `~/.claude/plans/*.md` is how plan mode's own `ExitPlanMode` mechanism works, so denying it would break plan mode outright. Instead this fires as a second hook in the same `Write|Edit` `PreToolUse` matcher, alongside `memory-md-check`, injecting an `additionalContext` reminder rather than a `permissionDecision: "deny"`.
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hint=$(jq -r '.tool_input.file_path' | /path/to/kb hooks plan-md-check 2>/dev/null); jq -n --arg h \"$hint\" '{hookSpecificOutput: {hookEventName: \"PreToolUse\", additionalContext: $h}}'"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/violet/kb/kb`).
+
 ## daily-check (harness-agnostic detector, session-scoped lock)
 
 See [`../daily-check.md`](../daily-check.md) for what this does and why (session-priming lock, sleep detection via the shared heartbeat in `tree-reminder` below) — this section is only the Claude Code wiring. Fires once per new session on `SessionStart`/`source: "startup"` (not `resume` or `compact` — those aren't a new session starting), piping `.session_id` in.

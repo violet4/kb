@@ -106,11 +106,22 @@ def todos_section(session: Session, context: Optional[Context]) -> str | None:
     todos = Todo.active(session, contexts=in_scope, include_no_context=True)
     if not todos:
         return None
-    lines = ["=== TODOS ==="]
+    by_context: dict[str, int] = {}
     for t in todos:
-        goal = f" → {t.goal.title}" if t.goal else ""
-        ctx = f" [{t.context.name}]" if t.context else ""
-        lines.append(f"- #{t.id} [{t.status.value}] {t.title}{goal}{ctx}")
+        name = t.context.name if t.context else "(no context)"
+        by_context[name] = by_context.get(name, 0) + 1
+    by_effort: dict[str, int] = {}
+    for t in todos:
+        effort = t.effort.value if t.effort else "(no effort)"
+        by_effort[effort] = by_effort.get(effort, 0) + 1
+    context_breakdown = ", ".join(f"{count} {name}" for name, count in sorted(by_context.items()))
+    effort_breakdown = ", ".join(f"{count} {effort}" for effort, count in sorted(by_effort.items()))
+    lines = [
+        f"=== TODOS ({len(todos)}) ===",
+        f"by context: {context_breakdown}",
+        f"by effort: {effort_breakdown}",
+        "— kb todo list [--context NAME] [--effort E]",
+    ]
     if context is not None:
         all_ids = [t.context_id for t in Todo.active(session)]
         hint = _other_contexts_hint(session, {c.id for c in in_scope} if in_scope else set(), all_ids)

@@ -81,6 +81,30 @@ def cmd_memory_md_check(args: argparse.Namespace) -> None:
         print(_MEMORY_MD_HINT)
 
 
+_PLAN_MD_RE = re.compile(r"(?:^|/)\.claude/plans/.*\.md$")
+
+_PLAN_MD_HINT = (
+    "Reminder: this Claude Code plan file (~/.claude/plans/*.md) is a required part of the "
+    "plan-mode mechanism (ExitPlanMode reads it), so it can't be blocked outright the way "
+    "~/.claude/memory/*.md is -- but its CONTENT is not durable, it vanishes with the session. "
+    "Same content-vs-mechanism split as `kb instructions show 18` (legacy-claude-code-artifacts): "
+    "before or immediately after exiting plan mode, fold the actual plan detail into a kb Goal "
+    "(with full detail in a Journal entry) and keep this file itself as thin as the mechanism "
+    "requires -- a summary and a pointer to the kb Goal ID, not the durable copy."
+)
+
+
+def cmd_plan_md_check(args: argparse.Namespace) -> None:
+    """Read a file path on stdin (the target of a Write/Edit call); if it's a Claude Code
+    plan-mode file (~/.claude/plans/*.md), print an advisory reminder to stdout -- unlike
+    memory-md-check, this is never a block, since writing this exact path is how plan mode's
+    own ExitPlanMode mechanism works. Prints nothing (exit 0) otherwise, so a harness adapter
+    can pipe any file-write target through unconditionally and only act on non-empty output."""
+    path = sys.stdin.read().strip()
+    if _PLAN_MD_RE.search(path):
+        print(_PLAN_MD_HINT)
+
+
 _TREE_REMINDER = (
     "Re-check the Instruction tree for a child relevant to what you're about to do now, not just at session start."
 )
@@ -205,6 +229,12 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         help="Detect a write targeting ~/.claude/memory/*.md on stdin; print a block reason if it matches",
     )
     p_memory_md.set_defaults(func=cmd_memory_md_check)
+
+    p_plan_md = sub.add_parser(
+        "plan-md-check",
+        help="Detect a write targeting ~/.claude/plans/*.md on stdin; print an advisory (non-blocking) reminder if it matches",
+    )
+    p_plan_md.set_defaults(func=cmd_plan_md_check)
 
     p_tree = sub.add_parser(
         "tree-reminder",

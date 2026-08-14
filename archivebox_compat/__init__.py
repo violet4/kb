@@ -6,12 +6,13 @@ stable release exists' for why this exists instead of just upgrading."""
 from .client import ArchiveBoxClient
 from .config import ArchiveBoxConfig, ArchiveBoxConfigError
 from .factory import get_client
-from .models import Snapshot
+from .models import ArchiveMethodResult, Snapshot
 
 __all__ = [
     "ArchiveBoxClient",
     "ArchiveBoxConfig",
     "ArchiveBoxConfigError",
+    "ArchiveMethodResult",
     "Snapshot",
     "get_client",
 ]

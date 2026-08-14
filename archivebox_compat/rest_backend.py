@@ -15,13 +15,14 @@ switched on -- don't trust this guess silently."""
 
 from __future__ import annotations
 
+import builtins
 from datetime import datetime
 from typing import Any, Optional
 
 import httpx
 
 from .config import ArchiveBoxConfig, ArchiveBoxConfigError
-from .models import Snapshot
+from .models import ArchiveMethodResult, Snapshot
 
 LIST_PATH = "/api/v1/core/snapshots"
 ADD_PATH = "/api/v1/cli/add"  # best-effort guess, unconfirmed -- see module docstring
@@ -53,7 +54,7 @@ class RestBackend:
         self._client = client or config.new_http_client()
         self._client.headers.update({"Authorization": f"Bearer {config.api_token}", "Accept": "application/json"})
 
-    def add(self, url: str, *, tags: Optional[list[str]] = None, depth: int = 0) -> Snapshot:
+    def add(self, url: str, *, tags: Optional[builtins.list[str]] = None, depth: int = 0) -> Snapshot:
         resp = self._client.post(ADD_PATH, json={"urls": [url], "tag": ",".join(tags or []), "depth": depth})
         resp.raise_for_status()
         data = resp.json()
@@ -66,7 +67,7 @@ class RestBackend:
         search: Optional[str] = None,
         tag: Optional[str] = None,
         limit: int = 200,
-    ) -> list[Snapshot]:
+    ) -> builtins.list[Snapshot]:
         params: dict[str, Any] = {"limit": limit}
         if search:
             params["search"] = search
@@ -83,3 +84,15 @@ class RestBackend:
             return None
         resp.raise_for_status()
         return _snapshot_from_json(resp.json())
+
+    def method_results(self, snapshot_id: str) -> builtins.list[ArchiveMethodResult]:
+        raise NotImplementedError(
+            "RestBackend.method_results: not yet confirmed against a live >=0.8 instance -- "
+            "see module docstring, this backend is unused until then"
+        )
+
+    def pull(self, snapshot_id: str) -> None:
+        raise NotImplementedError(
+            "RestBackend.pull: not yet confirmed against a live >=0.8 instance -- "
+            "see module docstring, this backend is unused until then"
+        )

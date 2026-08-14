@@ -20,3 +20,17 @@ class Snapshot:
     created_at: Optional[datetime] = None
     tags: list[str] = field(default_factory=list)
     num_archiveresults: Optional[int] = None
+
+
+@dataclass
+class ArchiveMethodResult:
+    """One archive method's (singlefile, wget, screenshot, ...) latest attempt against a
+    snapshot -- ArchiveBox retains full history per method (every retry), this is only the
+    most recent entry per method, matching what a caller deciding "is this snapshot actually
+    usable" needs. output carries the method's own success path (e.g. "output.pdf") or
+    failure message (e.g. "ArchiveError: SingleFile was not able to archive the page")."""
+
+    method: str
+    succeeded: bool
+    output: Optional[str] = None
+    end_ts: Optional[datetime] = None

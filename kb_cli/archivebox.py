@@ -23,7 +23,7 @@ import httpx
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from archivebox_compat import ArchiveBoxConfig, ArchiveBoxConfigError, Snapshot, get_client
+from archivebox_compat import ArchiveBoxConfig, ArchiveBoxConfigError, ArchiveMethodResult, Snapshot, get_client
 from base import _now
 from kb_cli.text import extract_paragraphs
 from kb_cli.secrets import CredentialUnavailableError, get_credential, set_credential
@@ -87,7 +87,11 @@ def resolve_or_push(session: Session, link: ArchivedLink) -> None:
     crash mid-push) before ever issuing a new add() -- so a retry is always safe to re-run, never
     a risk of double-submitting the same URL. Always ends with push_status set to SUCCESS or
     FAILED and resolved_at stamped; never leaves a row at PENDING/QUEUED. The one function every
-    push path (cmd_add's background job, `kb ab retry`, startup reconciliation) calls."""
+    push path (cmd_add's background job, startup reconciliation) calls -- `kb ab retry` calls
+    pull_failed_methods() instead, see below, since a SUCCESS here only means ArchiveBox
+    accepted the add job, never that any individual archive method actually captured content
+    (confirmed live 2026-08-14, see kb Note #105/#131 -- re-POSTing to /add/ for an
+    already-saved URL is a no-op, it does not retry failed methods)."""
     try:
         config = _load_config(session)
         client = get_client(config)
@@ -124,6 +128,23 @@ def resolve_or_push(session: Session, link: ArchivedLink) -> None:
     link.resolved_at = _now()
     link.migrated_at = link.migrated_at or _now()
     session.commit()
+
+
+def pull_failed_methods(session: Session, link: ArchivedLink) -> list[ArchiveMethodResult]:
+    """Actually re-trigger archiving for link's already-pushed snapshot, via the admin's "Pull"
+    bulk action (only re-runs methods that don't already have a successful result -- doesn't
+    touch already-succeeded files, doesn't create a new Snapshot row). Requires link.ab_id (a
+    snapshot that was already pushed) and the account to hold Django's core.view_snapshot
+    permission on the ArchiveBox instance (see kb Note #131). Returns the post-pull
+    method_results() list so the caller can report what actually changed -- a pull can 504 at
+    the proxy while the job keeps running server-side, so method_results() after the call is
+    the only reliable signal, not whether the pull request itself returned cleanly."""
+    if not link.ab_id:
+        raise ArchiveBoxConfigError(f"AB{link.id}: no ab_id yet -- push it first with `kb ab retry {link.id}`")
+    config = _load_config(session)
+    client = get_client(config)
+    client.pull(link.ab_id)
+    return client.method_results(link.ab_id)
 
 
 def _report_already_saved(session: Session, existing: ArchivedLink) -> None:
@@ -279,10 +300,50 @@ def _show_one(args: argparse.Namespace, link_id: int) -> None:
         if link.push_status == ArchivedLinkPushStatus.FAILED:
             print(f"retry with: kb ab retry {link.id}")
 
+    if args.methods:
+        if not link.ab_id:
+            print("methods: not yet pushed, nothing to check", file=sys.stderr)
+            return
+        try:
+            config = _load_config(args.session)
+            client = get_client(config)
+            results = client.method_results(link.ab_id)
+        except (ArchiveBoxConfigError, CredentialUnavailableError, NotImplementedError) as exc:
+            print(f"methods: unavailable -- {exc}", file=sys.stderr)
+            return
+        if not results:
+            print("methods: no per-method results found")
+            return
+        failed = [r for r in results if not r.succeeded]
+        print(f"methods ({len(results) - len(failed)}/{len(results)} succeeded):")
+        for r in sorted(results, key=lambda r: r.method):
+            mark = "ok" if r.succeeded else "FAILED"
+            print(f"  {r.method:<12} {mark:<6} {r.output}")
+        if failed:
+            print(f"pull the failed methods with: kb ab pull {link.id}")
+
 
 def cmd_show(args: argparse.Namespace) -> None:
     for link_id in args.id:
         _show_one(args, link_id)
+
+
+def cmd_pull(args: argparse.Namespace) -> None:
+    for link_id in args.id:
+        link = args.session.get(ArchivedLink, link_id)
+        if link is None:
+            print(f"AB{link_id}: not found", file=sys.stderr)
+            continue
+        try:
+            results = pull_failed_methods(args.session, link)
+        except (ArchiveBoxConfigError, CredentialUnavailableError, NotImplementedError) as exc:
+            print(f"AB{link.id}: pull failed -- {exc}", file=sys.stderr)
+            continue
+        failed = [r for r in results if not r.succeeded]
+        succeeded_count = len(results) - len(failed)
+        print(f"AB{link.id}: pull complete -- {succeeded_count}/{len(results)} methods succeeded")
+        for r in failed:
+            print(f"  {r.method}: {r.output}")
 
 
 def cmd_fetch(args: argparse.Namespace) -> None:
@@ -377,6 +438,15 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         action="store_true",
         help="Point the ab_url at the singlefile.html capture instead of the archive index page",
     )
+    p_show.add_argument(
+        "--methods",
+        action="store_true",
+        help=(
+            "Show each ArchiveBox archive method's (singlefile, wget, screenshot, ...) real "
+            "pass/fail -- push_status success only means ArchiveBox accepted the add job, "
+            "never that any individual method actually captured content"
+        ),
+    )
     p_show.set_defaults(func=cmd_show)
 
     p_fetch = sub.add_parser("fetch", help="Pull extracted paragraph text from the live ArchiveBox snapshot")
@@ -386,3 +456,14 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_retry = sub.add_parser("retry", help="Re-attempt an ArchiveBox push for one or more failed/stuck rows")
     p_retry.add_argument("id", type=int, nargs="+")
     p_retry.set_defaults(func=cmd_retry)
+
+    p_pull = sub.add_parser(
+        "pull",
+        help=(
+            "Re-run failed archive methods (singlefile, wget, ...) for an already-pushed "
+            "snapshot -- unlike retry, which only re-checks whether the URL was ever pushed "
+            "successfully, pull actually re-triggers archiving for methods that failed"
+        ),
+    )
+    p_pull.add_argument("id", type=int, nargs="+")
+    p_pull.set_defaults(func=cmd_pull)

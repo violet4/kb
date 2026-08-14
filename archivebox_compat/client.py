@@ -8,13 +8,14 @@ for why a live instance isn't in use yet."""
 
 from __future__ import annotations
 
+import builtins
 from typing import Optional, Protocol
 
-from .models import Snapshot
+from .models import ArchiveMethodResult, Snapshot
 
 
 class ArchiveBoxClient(Protocol):
-    def add(self, url: str, *, tags: Optional[list[str]] = None, depth: int = 0) -> Snapshot: ...
+    def add(self, url: str, *, tags: Optional[builtins.list[str]] = None, depth: int = 0) -> Snapshot: ...
 
     def list(
         self,
@@ -22,6 +23,10 @@ class ArchiveBoxClient(Protocol):
         search: Optional[str] = None,
         tag: Optional[str] = None,
         limit: int = 200,
-    ) -> list[Snapshot]: ...
+    ) -> builtins.list[Snapshot]: ...
 
     def get(self, snapshot_id: str) -> Optional[Snapshot]: ...
+
+    def method_results(self, snapshot_id: str) -> builtins.list[ArchiveMethodResult]: ...
+
+    def pull(self, snapshot_id: str) -> None: ...

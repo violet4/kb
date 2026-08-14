@@ -237,11 +237,28 @@ def cmd_list(args: argparse.Namespace) -> None:
         print(f"AB{link.id} {link.created_at:%Y-%m-%d %H:%M} {link.title!r} {link.url} -- {link.reason}")
 
 
-def cmd_show(args: argparse.Namespace) -> None:
-    link = args.session.get(ArchivedLink, args.id)
+def _show_one(args: argparse.Namespace, link_id: int) -> None:
+    link = args.session.get(ArchivedLink, link_id)
     if link is None:
-        print(f"AB{args.id}: not found", file=sys.stderr)
+        print(f"AB{link_id}: not found", file=sys.stderr)
+        if args.urls_only:
+            return
         sys.exit(1)
+
+    if args.urls_only:
+        if not link.ab_id:
+            print(f"AB{link.id}: not yet pushed, no ab_url -- see `kb ab show {link.id}`", file=sys.stderr)
+            return
+        try:
+            url = archivebox_url(args.session, f"archive/{link.ab_id}/")
+        except ArchiveBoxConfigError as exc:
+            print(f"AB{link.id}: ab_url unavailable -- {exc}", file=sys.stderr)
+            return
+        if args.singlefile:
+            url = url.rstrip("/") + "/singlefile.html"
+        print(url)
+        return
+
     print(link)
     print(f"url: {link.url}")
     print(f"reason: {link.reason}")
@@ -251,13 +268,21 @@ def cmd_show(args: argparse.Namespace) -> None:
     if link.ab_id:
         print(f"ab_id: {link.ab_id}")
         try:
-            print(f"ab_url: {archivebox_url(args.session, f'archive/{link.ab_id}/')}")
+            ab_url = archivebox_url(args.session, f"archive/{link.ab_id}/")
+            if args.singlefile:
+                ab_url = ab_url.rstrip("/") + "/singlefile.html"
+            print(f"ab_url: {ab_url}")
         except ArchiveBoxConfigError as exc:
             print(f"ab_url: unavailable -- {exc}", file=sys.stderr)
     if link.push_error:
         print(f"push_error: {link.push_error}")
         if link.push_status == ArchivedLinkPushStatus.FAILED:
             print(f"retry with: kb ab retry {link.id}")
+
+
+def cmd_show(args: argparse.Namespace) -> None:
+    for link_id in args.id:
+        _show_one(args, link_id)
 
 
 def cmd_fetch(args: argparse.Namespace) -> None:
@@ -338,8 +363,20 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_list = sub.add_parser("list", help="List URLs not yet migrated to a live ArchiveBox instance")
     p_list.set_defaults(func=cmd_list)
 
-    p_show = sub.add_parser("show", help="Resolve an ABn id back to its URL/title/reason and live ArchiveBox link")
-    p_show.add_argument("id", type=int)
+    p_show = sub.add_parser(
+        "show", help="Resolve one or more ABn ids back to their URL/title/reason and live ArchiveBox link"
+    )
+    p_show.add_argument("id", type=int, nargs="+")
+    p_show.add_argument(
+        "--urls-only",
+        action="store_true",
+        help="Print only the ab_url for each id (no other fields), one per line -- composes with --singlefile",
+    )
+    p_show.add_argument(
+        "--singlefile",
+        action="store_true",
+        help="Point the ab_url at the singlefile.html capture instead of the archive index page",
+    )
     p_show.set_defaults(func=cmd_show)
 
     p_fetch = sub.add_parser("fetch", help="Pull extracted paragraph text from the live ArchiveBox snapshot")

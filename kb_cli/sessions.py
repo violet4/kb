@@ -56,6 +56,37 @@ def _session_info(path: Path) -> dict[str, str] | None:
     return {"title": resolved_title, "timestamp": last_ts}
 
 
+def _find_session_path(session_id: str) -> Path | None:
+    """Locate a session transcript by its session_id (filename stem) across all projects."""
+    if not _PROJECTS_DIR.is_dir():
+        return None
+    for project_dir in _PROJECTS_DIR.iterdir():
+        candidate = project_dir / f"{session_id}.jsonl"
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def cmd_show(args: argparse.Namespace) -> None:
+    path = _find_session_path(args.session_id)
+    if path is None:
+        if not args.title:
+            print(f"No session found with id {args.session_id}")
+        return
+
+    info = _session_info(path)
+    if info is None:
+        return
+
+    if args.title:
+        print(info["title"])
+        return
+
+    print(f"Project: {path.parent.name}")
+    print(f"Title:   {info['title']}")
+    print(f"Updated: {info['timestamp']}")
+
+
 def cmd_list(args: argparse.Namespace) -> None:
     if not _PROJECTS_DIR.is_dir():
         print(f"No sessions directory found at {_PROJECTS_DIR}")
@@ -92,4 +123,14 @@ def cmd_list(args: argparse.Namespace) -> None:
 
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     parser = subparsers.add_parser("sessions", help="List Claude Code CLI sessions across all projects")
+    sub = parser.add_subparsers(dest="subcommand")
+
+    list_parser = sub.add_parser("list", help="List all sessions (default)")
+    list_parser.set_defaults(func=cmd_list)
+
+    show_parser = sub.add_parser("show", help="Show one session by its session_id")
+    show_parser.add_argument("session_id", help="Session id (transcript filename stem)")
+    show_parser.add_argument("--title", action="store_true", help="Print only the resolved title, no other output")
+    show_parser.set_defaults(func=cmd_show)
+
     parser.set_defaults(func=cmd_list)

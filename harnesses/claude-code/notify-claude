@@ -2,7 +2,9 @@
 # Claude Code hook handler: extracts this event's own JSON payload (.cwd,
 # .session_id, .message) into a plain title/body and hands delivery off to
 # `kb notifications send`, which owns mute/volume/sound/ntfy -- this script
-# owns nothing but reading Claude Code's own hook envelope.
+# owns nothing but reading Claude Code's own hook envelope. Session titles
+# are resolved via `kb sessions show ID --title`, not read directly here,
+# so the transcript-parsing logic stays in kb and reusable outside this hook.
 #
 # Usage: notify-claude <event-label>
 #   event-label: free text distinguishing which hook fired (e.g. "waiting",
@@ -20,7 +22,15 @@ message=$(jq -r '.message // empty' <<<"$payload")
 project="${cwd:+$(basename "$cwd")}"
 title="Claude Code — ${project:-unknown} — ${event_label}"
 body="$message"
-[ -n "$session_id" ] && body="${body:+$body }(session ${session_id:0:8})"
+
+if [ -n "$session_id" ]; then
+    session_title=$(kb sessions show "$session_id" --title 2>/dev/null || true)
+    if [ -n "$session_title" ]; then
+        body="${body:+$body }($session_title)"
+    else
+        body="${body:+$body }(session ${session_id:0:8})"
+    fi
+fi
 
 priority="default"
 [ "$event_label" = "waiting" ] && priority="high"

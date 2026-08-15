@@ -233,6 +233,52 @@ def cmd_add(args: argparse.Namespace) -> None:
         time.sleep(poll_interval)
 
 
+def cmd_url(args: argparse.Namespace) -> None:
+    """Raw URL(s) in, archivebox.internal URL(s) out -- one call, no bash loop, no manual
+    AB-id round trip. For a URL never seen before this creates an ArchivedLink with an
+    auto-filled title/reason (still fixable later via `kb ab show`/`journal`) rather than
+    skipping the required-title/reason discipline `ab add` enforces -- every archived URL
+    still gets a real row, just without blocking this command on interactive metadata entry.
+    Pushes synchronously (via resolve_or_push, not the queued background path `ab add` uses)
+    so the ab_url is available to print before this command returns."""
+    urls = args.url if args.url else [line.strip() for line in sys.stdin if line.strip()]
+    if not urls:
+        print("No URLs given -- pass as arguments or pipe newline-separated URLs on stdin.", file=sys.stderr)
+        sys.exit(1)
+
+    any_failed = False
+    for url in urls:
+        link = ArchivedLink.find_by_url(args.session, url)
+        if link is None:
+            try:
+                link = ArchivedLink.create(args.session, url, url, "auto-saved via `kb ab url`")
+                args.session.commit()
+            except IntegrityError:
+                args.session.rollback()
+                link = ArchivedLink.find_by_url(args.session, url)
+                assert link is not None, "IntegrityError on url uniqueness but no row found by that url"
+
+        if not link.ab_id:
+            resolve_or_push(args.session, link)
+
+        if link.push_status == ArchivedLinkPushStatus.SUCCESS and link.ab_id:
+            try:
+                ab_url = archivebox_url(args.session, f"archive/{link.ab_id}/")
+            except ArchiveBoxConfigError as exc:
+                print(f"{url}: ab_url unavailable -- {exc}", file=sys.stderr)
+                any_failed = True
+                continue
+            if args.singlefile:
+                ab_url = ab_url.rstrip("/") + "/singlefile.html"
+            print(ab_url)
+        else:
+            print(f"{url}: failed -- {link.push_error}", file=sys.stderr)
+            any_failed = True
+
+    if any_failed:
+        sys.exit(1)
+
+
 def cmd_check(args: argparse.Namespace) -> None:
     urls = args.url if args.url else [line.strip() for line in sys.stdin if line.strip()]
     if not urls:
@@ -416,6 +462,21 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         ),
     )
     p_add.set_defaults(func=cmd_add)
+
+    p_url = sub.add_parser(
+        "url",
+        help=(
+            "Raw URL(s) in, archivebox.internal URL(s) out -- saves+pushes any URL not yet "
+            "archived (auto title/reason) and prints each resolved ab_url, one per line"
+        ),
+    )
+    p_url.add_argument("url", nargs="*", help="URLs to resolve; if omitted, read newline-separated from stdin")
+    p_url.add_argument(
+        "--singlefile",
+        action="store_true",
+        help="Point each ab_url at the singlefile.html capture instead of the archive index page",
+    )
+    p_url.set_defaults(func=cmd_url)
 
     p_check = sub.add_parser(
         "check",

@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from models import Instruction
 
-from kb_cli._util import apply_text_edit, check_no_links
+from kb_cli._util import apply_text_edit, check_no_links, print_links
 from kb_cli.search import cmd_search_one
 
 
@@ -53,6 +53,8 @@ def _print_node(session: Session, node: Instruction, show_body: bool) -> None:
         print("children:")
         for c in children:
             print(f"  {c.title} #{c.id}{_trigger_marker(c)}")
+    if show_body:
+        print_links(session, "Instruction", node.id)
 
 
 def _check_title_valid(title: str) -> None:
@@ -115,6 +117,7 @@ def _resolve_or_exit(session: Session, ref: str) -> Instruction:
 
 def cmd_show(args: argparse.Namespace) -> None:
     any_failed = False
+    nodes: list[Instruction] = []
     for i, ref in enumerate(args.refs):
         if i > 0:
             print()
@@ -124,9 +127,37 @@ def cmd_show(args: argparse.Namespace) -> None:
             print("not found", file=sys.stderr)
             any_failed = True
         else:
+            nodes.append(node)
             _print_node(args.session, node, show_body=True)
+    if len(nodes) > 1:
+        _print_merged_children(args.session, nodes)
     if any_failed:
         sys.exit(1)
+
+
+def _print_merged_children(session: Session, nodes: list[Instruction]) -> None:
+    """When two or more ids are shown at once, a child shared by several of them (e.g. two
+    domain nodes both parented under the same subtopic) would otherwise print once per parent
+    under each node's own children list above -- easy to miss as "the same node" when it's
+    repeated. This prints one deduplicated cross-reference section instead, each child listed
+    once with every given node it belongs to, so the shared structure across the requested ids
+    is visible at a glance rather than reconstructed by the reader."""
+    shown_ids = {n.id for n in nodes}
+    child_to_parents: dict[int, list[Instruction]] = {}
+    child_nodes: dict[int, Instruction] = {}
+    for n in nodes:
+        for c in Instruction.children(session, n.id):
+            child_to_parents.setdefault(c.id, []).append(n)
+            child_nodes[c.id] = c
+    shared = {cid: parents for cid, parents in child_to_parents.items() if len(parents) > 1}
+    if not shared:
+        return
+    print()
+    print(f"shared children across {', '.join(str(n.id) for n in nodes if n.id in shown_ids)}:")
+    for cid, parents in shared.items():
+        c = child_nodes[cid]
+        parent_titles = ", ".join(p.title for p in parents)
+        print(f"  {c.title} #{c.id}{_trigger_marker(c)}  (child of: {parent_titles})")
 
 
 def cmd_add(args: argparse.Namespace) -> None:

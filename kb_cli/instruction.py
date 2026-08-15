@@ -19,7 +19,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from models import Instruction
+from models import EntityLink, Instruction
 
 from kb_cli._util import apply_text_edit, check_no_links, print_links
 from kb_cli.search import cmd_search_one
@@ -37,12 +37,16 @@ def _size_line(node: Instruction) -> str:
 
 
 def _trigger_marker(node: Instruction) -> str:
-    return f"  (trigger: {node.trigger})" if node.trigger else ""
+    trigger = f"  (trigger: {node.trigger})" if node.trigger else ""
+    system = "  [system]" if node.system_level else ""
+    return f"{trigger}{system}"
 
 
 def _print_node(session: Session, node: Instruction, show_body: bool) -> None:
     trigger_line = f"\ntrigger: {node.trigger}" if node.trigger else ""
     print(f"#{node.id} {node.title}{trigger_line}")
+    if node.system_level:
+        print("system_level: true")
     print(_size_line(node))
     if show_body:
         print()
@@ -160,22 +164,53 @@ def _print_merged_children(session: Session, nodes: list[Instruction]) -> None:
         print(f"  {c.title} #{c.id}{_trigger_marker(c)}  (child of: {parent_titles})")
 
 
+def _clear_parent_link(session: Session, node: Instruction) -> None:
+    """Delete node's own incoming "parent-of" EntityLink, if any -- the graph-backed
+    equivalent of the old `node.parent = None` FK assignment."""
+    existing = session.scalars(
+        select(EntityLink).where(
+            EntityLink.type_b == "Instruction",
+            EntityLink.id_b == node.id,
+            EntityLink.relation == Instruction._PARENT_RELATION,
+        )
+    ).first()
+    if existing is not None:
+        session.delete(existing)
+
+
+def _set_parent_link(session: Session, node: Instruction, parent: Optional[Instruction]) -> None:
+    """Replace node's own "parent-of" EntityLink with one pointing at `parent` (or none, if
+    `parent` is None) -- the graph-backed equivalent of the old `node.parent = X` FK
+    assignment. A node has at most one incoming parent-of edge by construction here, even
+    though the schema itself doesn't enforce that (see Instruction.parent's docstring)."""
+    _clear_parent_link(session, node)
+    if parent is not None:
+        session.flush()
+        EntityLink.create(session, "Instruction", parent.id, "Instruction", node.id, Instruction._PARENT_RELATION)
+
+
 def cmd_add(args: argparse.Namespace) -> None:
     _check_title_valid(args.title)
     if _resolve(args.session, args.title) is not None:
         print(f"Instruction title {args.title!r}: already exists -- titles must be unique", file=sys.stderr)
         sys.exit(1)
     parent = _resolve_or_exit(args.session, args.parent) if args.parent is not None else None
-    node = Instruction(title=args.title, body=args.body, trigger=args.trigger, parent=parent, context=args.context)
+    node = Instruction(
+        title=args.title, body=args.body, trigger=args.trigger, system_level=args.system_level, context=args.context
+    )
     node.reembed()
     args.session.add(node)
+    args.session.flush()
+    if parent is not None:
+        EntityLink.create(args.session, "Instruction", parent.id, "Instruction", node.id, Instruction._PARENT_RELATION)
     args.session.commit()
     _print_node(args.session, node, show_body=False)
 
 
 def cmd_set_parent(args: argparse.Namespace) -> None:
     node = _resolve_or_exit(args.session, args.ref)
-    node.parent = _resolve_or_exit(args.session, args.parent) if args.parent is not None else None
+    parent = _resolve_or_exit(args.session, args.parent) if args.parent is not None else None
+    _set_parent_link(args.session, node, parent)
     args.session.commit()
     _print_node(args.session, node, show_body=False)
 
@@ -196,13 +231,14 @@ def cmd_edit(args: argparse.Namespace) -> None:
         node.body = apply_text_edit(node.body, f"body of {node.title!r}", args.append, replace)
     if args.trigger is not None:
         node.trigger = None if args.trigger == "" else args.trigger
+    if args.system_level is not None:
+        node.system_level = args.system_level
     args.session.commit()
     _print_node(args.session, node, show_body=False)
 
 
 def cmd_delete(args: argparse.Namespace) -> None:
     node = _resolve_or_exit(args.session, args.ref)
-    check_no_links(args.session, "Instruction", node.id, args.force_delete_links)
     children = Instruction.children(args.session, node.id)
     if children and not args.reparent_children:
         titles = ", ".join(c.title for c in children)
@@ -212,8 +248,12 @@ def cmd_delete(args: argparse.Namespace) -> None:
             file=sys.stderr,
         )
         sys.exit(1)
+    grandparent = Instruction.parent(args.session, node.id)
     for child in children:
-        child.parent = node.parent
+        _set_parent_link(args.session, child, grandparent)
+    _clear_parent_link(args.session, node)
+    args.session.flush()
+    check_no_links(args.session, "Instruction", node.id, args.force_delete_links)
     args.session.delete(node)
     args.session.commit()
     print(f"Deleted Instruction #{node.id} {node.title!r}")
@@ -225,9 +265,16 @@ def cmd_tree(args: argparse.Namespace) -> None:
         print("No Instruction nodes yet -- create one with: kb instructions add TITLE ...")
         return
 
+    parent_links = args.session.scalars(
+        select(EntityLink).where(
+            EntityLink.type_a == "Instruction", EntityLink.relation == Instruction._PARENT_RELATION
+        )
+    ).all()
+    parent_id_by_child_id = {link.id_b: link.id_a for link in parent_links}
+
     children: dict[int | None, list[Instruction]] = {}
     for n in all_nodes:
-        children.setdefault(n.parent_id, []).append(n)
+        children.setdefault(parent_id_by_child_id.get(n.id), []).append(n)
     for kids in children.values():
         kids.sort(key=lambda n: n.title)
 
@@ -263,6 +310,12 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_add.add_argument("body")
     p_add.add_argument("--parent", metavar="TITLE|#ID", help="Parent node (omit for a root node)")
     p_add.add_argument("--trigger", help='"If/when ..." condition; omit for an always-relevant node')
+    p_add.add_argument(
+        "--system-level",
+        dest="system_level",
+        action="store_true",
+        help="Mark as a candidate for the eventual kb si (filesystem-shippable) split -- see kb Todo #101",
+    )
     p_add.set_defaults(func=cmd_add)
 
     p_set_parent = sub.add_parser("set-parent", help="Change (or clear) a node's parent")
@@ -282,6 +335,13 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         help="Replace one occurrence of OLD with NEW in the body -- errors if OLD is missing or not unique",
     )
     p_edit.add_argument("--trigger", help='New "if/when ..." condition; pass "" to clear it')
+    system_level_group = p_edit.add_mutually_exclusive_group()
+    system_level_group.add_argument(
+        "--system-level", dest="system_level", action="store_true", default=None, help="Mark as system-level"
+    )
+    system_level_group.add_argument(
+        "--no-system-level", dest="system_level", action="store_false", help="Clear system-level"
+    )
     p_edit.set_defaults(func=cmd_edit)
 
     p_delete = sub.add_parser("delete", help="Delete a node (must have no children, unless --reparent-children)")

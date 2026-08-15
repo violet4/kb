@@ -14,7 +14,7 @@ found-or-not-found lookup, never an ambiguous-match situation.
 
 import argparse
 import sys
-from typing import Optional
+from typing import Callable, Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -42,7 +42,31 @@ def _trigger_marker(node: Instruction) -> str:
     return f"{trigger}{system}"
 
 
-def _print_node(session: Session, node: Instruction, show_body: bool) -> None:
+def _link_filter(session: Session, instructions_only: bool, system_only: bool) -> Optional[Callable[[str, int], bool]]:
+    """Builds the (other_type, other_id) -> bool predicate for print_links's other_filter,
+    from --instructions-only/--system-only. Returns None (no filtering) when both are False,
+    the default -- show every linked node, matching kb i show root's current framing that
+    reachable connections should be cheap to see, not gated behind flags by default."""
+    if not instructions_only and not system_only:
+        return None
+
+    def accept(other_type: str, other_id: int) -> bool:
+        if instructions_only and other_type != "Instruction":
+            return False
+        if system_only:
+            if other_type != "Instruction":
+                return False
+            other = session.get(Instruction, other_id)
+            if other is None or not other.system_level:
+                return False
+        return True
+
+    return accept
+
+
+def _print_node(
+    session: Session, node: Instruction, show_body: bool, instructions_only: bool = False, system_only: bool = False
+) -> None:
     trigger_line = f"\ntrigger: {node.trigger}" if node.trigger else ""
     print(f"#{node.id} {node.title}{trigger_line}")
     if node.system_level:
@@ -58,7 +82,7 @@ def _print_node(session: Session, node: Instruction, show_body: bool) -> None:
         for c in children:
             print(f"  {c.title} #{c.id}{_trigger_marker(c)}")
     if show_body:
-        print_links(session, "Instruction", node.id)
+        print_links(session, "Instruction", node.id, other_filter=_link_filter(session, instructions_only, system_only))
 
 
 def _check_title_valid(title: str) -> None:
@@ -132,7 +156,13 @@ def cmd_show(args: argparse.Namespace) -> None:
             any_failed = True
         else:
             nodes.append(node)
-            _print_node(args.session, node, show_body=True)
+            _print_node(
+                args.session,
+                node,
+                show_body=True,
+                instructions_only=args.instructions_only,
+                system_only=args.system_only,
+            )
     if len(nodes) > 1:
         _print_merged_children(args.session, nodes)
     if any_failed:
@@ -302,6 +332,16 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         metavar="TITLE|#ID|root",
         nargs="+",
         help="One or more node titles or ids ('#' prefix optional); 'root' shows the entry point",
+    )
+    p_show.add_argument(
+        "--instructions-only",
+        action="store_true",
+        help="In the printed links section, only show links to other Instruction nodes (hide links to Notes/Goals/etc.)",
+    )
+    p_show.add_argument(
+        "--system-only",
+        action="store_true",
+        help="In the printed links section, only show links to system_level Instruction nodes (implies --instructions-only)",
     )
     p_show.set_defaults(func=cmd_show)
 

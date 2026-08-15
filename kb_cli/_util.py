@@ -7,7 +7,7 @@ dependencies flow one way, from command modules down to here.
 
 import argparse
 import sys
-from typing import Any, Iterable, Optional, Sequence, Type, TypeVar
+from typing import Any, Callable, Iterable, Optional, Sequence, Type, TypeVar
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -140,18 +140,31 @@ def describe_entity_ref(session: Session, entity_type: str, entity_id: int) -> s
     return f"{label} {row!r}"
 
 
-def print_links(session: Session, entity_type: str, entity_id: int) -> None:
+def print_links(
+    session: Session,
+    entity_type: str,
+    entity_id: int,
+    other_filter: Optional[Callable[[str, int], bool]] = None,
+) -> None:
     """Print every EntityLink touching (entity_type, entity_id), one hop out, the same
     format `kb link show` uses one level deep -- the automatic, always-on counterpart to
     that command's on-demand deeper traversal. Every `show` subcommand for a linkable
     entity calls this last, so a link is visible the moment its owning row is shown,
     without a separate `kb link show TYPE:ID` round trip. Silent when there are no links,
-    matching print_journal_history's "say nothing if there's nothing to say" convention."""
+    matching print_journal_history's "say nothing if there's nothing to say" convention.
+
+    other_filter, if given, is called with (other_type, other_id) for each linked row and
+    only prints the ones it accepts -- e.g. Instruction's show command uses this to offer
+    --instructions-only / --system-only display flags without duplicating this function."""
     links = EntityLink.for_entity(session, entity_type, entity_id)
     if not links:
         return
     pairs = sorted(((link.other_side(entity_type, entity_id), link) for link in links), key=lambda p: p[0])
-    print(f"links: {len(links)}")
+    if other_filter is not None:
+        pairs = [(other, link) for other, link in pairs if other_filter(*other)]
+    if not pairs:
+        return
+    print(f"links: {len(pairs)}")
     for (other_type, other_id), link in pairs:
         arrow = (
             f"--{link.relation}-->" if (entity_type, entity_id) == (link.type_a, link.id_a) else f"<--{link.relation}--"

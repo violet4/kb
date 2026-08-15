@@ -1471,6 +1471,10 @@ class LogEntry(Base, HasEmbedding):
     body: Mapped[str] = mapped_column(Text, nullable=False)
     domain: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     context_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("context.id"), nullable=True)
+    source_ref: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True
+    )  # free-form origin pointer, e.g. a Claude Code session ID -- most entries (a cat note, a
+    # health fact) have none; only set when the entry came from a traceable external context
 
     context: Mapped[Optional[Context]] = relationship("Context")
 
@@ -1489,9 +1493,14 @@ class LogEntry(Base, HasEmbedding):
         domain: Optional[str] = None,
         context: Optional[Context] = None,
         occurred_at: Optional[datetime] = None,
+        source_ref: Optional[str] = None,
     ) -> LogEntry:
         entry = cls(
-            body=body, domain=domain, context_id=context.id if context else None, occurred_at=occurred_at or _now()
+            body=body,
+            domain=domain,
+            context_id=context.id if context else None,
+            occurred_at=occurred_at or _now(),
+            source_ref=source_ref,
         )
         entry.reembed()
         session.add(entry)

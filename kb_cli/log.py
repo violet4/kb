@@ -4,6 +4,7 @@ import argparse
 from datetime import datetime, timezone
 
 from context import creation_context
+from harness import current_session_id
 from models import Context, LogEntry
 
 from kb_cli.search import cmd_search_one
@@ -25,7 +26,13 @@ def cmd_flag(args: argparse.Namespace) -> None:
     flag to recall, so flagging an observed phrase or behavior in the moment carries no friction.
     Not limited to language/phrasing -- any Claude habit or behavior worth tracking (a repeated
     workflow shortcut, an overused pattern, anything else worth analyzing later). See kb Goal #41."""
-    entry = LogEntry.create(args.session, body=args.note, domain="claude-behavior", context=creation_context(args))
+    entry = LogEntry.create(
+        args.session,
+        body=args.note,
+        domain="claude-behavior",
+        context=creation_context(args),
+        source_ref=current_session_id(),
+    )
     args.session.commit()
     print(entry)
 

@@ -13,6 +13,7 @@ from kb_cli._util import (
     apply_context_or_tag_update,
     apply_updates,
     print_journal_history,
+    print_links,
     scope_to_context,
 )
 from kb_cli.search import cmd_search_one
@@ -69,6 +70,7 @@ def cmd_show(args: argparse.Namespace) -> None:
             args.history,
             f"journal show Idea {idea.id} or kb idea show {idea.id} --history [N]",
         )
+        print_links(args.session, "Idea", idea.id)
 
 
 def cmd_list(args: argparse.Namespace) -> None:

@@ -129,6 +129,36 @@ def apply_context_or_tag_update(
         row.tag = get_by_name(session, Tag, new_tag)
 
 
+def describe_entity_ref(session: Session, entity_type: str, entity_id: int) -> str:
+    """TYPE:ID plus that row's own __repr__/title, or a bare '(missing)' marker if the row
+    is gone -- links themselves are never silently dropped when their target disappears
+    outside kb's own delete guard (e.g. a manual DB edit), so traversal must tolerate it."""
+    row = EntityLink.resolve(session, entity_type, entity_id)
+    label = f"{entity_type}:{entity_id}"
+    if row is None:
+        return f"{label} (missing)"
+    return f"{label} {row!r}"
+
+
+def print_links(session: Session, entity_type: str, entity_id: int) -> None:
+    """Print every EntityLink touching (entity_type, entity_id), one hop out, the same
+    format `kb link show` uses one level deep -- the automatic, always-on counterpart to
+    that command's on-demand deeper traversal. Every `show` subcommand for a linkable
+    entity calls this last, so a link is visible the moment its owning row is shown,
+    without a separate `kb link show TYPE:ID` round trip. Silent when there are no links,
+    matching print_journal_history's "say nothing if there's nothing to say" convention."""
+    links = EntityLink.for_entity(session, entity_type, entity_id)
+    if not links:
+        return
+    pairs = sorted(((link.other_side(entity_type, entity_id), link) for link in links), key=lambda p: p[0])
+    print(f"links: {len(links)}")
+    for (other_type, other_id), link in pairs:
+        arrow = (
+            f"--{link.relation}-->" if (entity_type, entity_id) == (link.type_a, link.id_a) else f"<--{link.relation}--"
+        )
+        print(f"  {arrow} {describe_entity_ref(session, other_type, other_id)}")
+
+
 def print_fields(fields: Iterable[tuple[str, object]]) -> None:
     """Print (label, value) pairs, skipping None/empty values."""
     for label, value in fields:

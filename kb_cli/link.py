@@ -12,6 +12,7 @@ from typing import Optional
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from kb_cli._util import describe_entity_ref as describe
 from models import EntityLink
 
 REF_HELP = "Entity reference in TYPE:ID form, e.g. Goal:34 or Todo:102"
@@ -27,17 +28,6 @@ def parse_ref(ref: str) -> tuple[str, int]:
     except ValueError:
         print(f"{ref!r}: {id_str!r} is not a valid id", file=sys.stderr)
         sys.exit(1)
-
-
-def describe(session: Session, entity_type: str, entity_id: int) -> str:
-    """TYPE:ID plus that row's own __repr__/title, or a bare '(missing)' marker if the row
-    is gone -- links themselves are never silently dropped when their target disappears
-    outside kb's own delete guard (e.g. a manual DB edit), so traversal must tolerate it."""
-    row = EntityLink.resolve(session, entity_type, entity_id)
-    label = f"{entity_type}:{entity_id}"
-    if row is None:
-        return f"{label} (missing)"
-    return f"{label} {row!r}"
 
 
 def cmd_add(args: argparse.Namespace) -> None:

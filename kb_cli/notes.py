@@ -7,7 +7,7 @@ from typing import Optional
 from sqlalchemy import select
 
 from client import KBClient
-from kb_cli._util import apply_text_edit
+from kb_cli._util import apply_text_edit, print_links
 from models import Collection, Note
 
 
@@ -22,6 +22,7 @@ def cmd_show(args: argparse.Namespace) -> None:
     if note.tags:
         print(f"tags: {note.tags}")
     print(f"body: {note.body}")
+    print_links(args.session, "Note", note.id)
 
 
 def _resolve_collection(name: Optional[str]) -> Optional[Collection]:

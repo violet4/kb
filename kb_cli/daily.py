@@ -9,7 +9,7 @@ from sqlalchemy import select
 from context import creation_context
 from models import Daily, DailyTier
 
-from kb_cli._util import apply_context_or_tag_update, apply_updates, print_fields, print_table
+from kb_cli._util import apply_context_or_tag_update, apply_updates, print_fields, print_links, print_table
 
 
 def _daily_fields(daily: Daily) -> list[tuple[str, object]]:
@@ -35,6 +35,7 @@ def cmd_show(args: argparse.Namespace) -> None:
         print(f"Daily #{args.id}: not found", file=sys.stderr)
         sys.exit(1)
     print_fields(_daily_fields(daily))
+    print_links(args.session, "Daily", daily.id)
 
 
 def cmd_list(args: argparse.Namespace) -> None:

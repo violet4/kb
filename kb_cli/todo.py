@@ -14,6 +14,7 @@ from kb_cli._util import (
     apply_updates,
     get_by_name,
     print_journal_history,
+    print_links,
     scope_to_context,
 )
 from kb_cli.search import cmd_search
@@ -74,6 +75,7 @@ def cmd_show(args: argparse.Namespace) -> None:
             args.history,
             f"journal show Todo {todo.id} or kb todo show {todo.id} --history [N]",
         )
+        print_links(args.session, "Todo", todo.id)
 
 
 def cmd_add(args: argparse.Namespace) -> None:

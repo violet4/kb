@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from archivebox_compat import ArchiveBoxConfig, ArchiveBoxConfigError, ArchiveMethodResult, Snapshot, get_client
 from base import _now
+from kb_cli._util import print_links
 from kb_cli.text import extract_paragraphs
 from kb_cli.secrets import CredentialUnavailableError, get_credential, set_credential
 from models import ArchivedLink, ArchivedLinkPushStatus, Settings
@@ -299,6 +300,8 @@ def _show_one(args: argparse.Namespace, link_id: int) -> None:
         print(f"push_error: {link.push_error}")
         if link.push_status == ArchivedLinkPushStatus.FAILED:
             print(f"retry with: kb ab retry {link.id}")
+
+    print_links(args.session, "ArchivedLink", link.id)
 
     if args.methods:
         if not link.ab_id:

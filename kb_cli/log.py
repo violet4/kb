@@ -20,6 +20,16 @@ def cmd_add(args: argparse.Namespace) -> None:
     print(entry)
 
 
+def cmd_flag(args: argparse.Namespace) -> None:
+    """Thin front door onto `log add --domain claude-behavior` -- one word to type instead of a
+    flag to recall, so flagging an observed phrase or behavior in the moment carries no friction.
+    Not limited to language/phrasing -- any Claude habit or behavior worth tracking (a repeated
+    workflow shortcut, an overused pattern, anything else worth analyzing later). See kb Goal #41."""
+    entry = LogEntry.create(args.session, body=args.note, domain="claude-behavior", context=creation_context(args))
+    args.session.commit()
+    print(entry)
+
+
 def cmd_recent(args: argparse.Namespace) -> None:
     context = None
     if args.context_name:
@@ -34,6 +44,16 @@ def cmd_recent(args: argparse.Namespace) -> None:
         when = e.occurred_at.strftime("%Y-%m-%d %H:%M")
         domain = f" [{e.domain}]" if e.domain else ""
         print(f"#{e.id} {when}{domain}: {e.body}")
+
+
+def add_flag_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Registers `kb flag` as its own top-level command (not nested under `log`), since the
+    point is a one-word verb with nothing to recall -- see cmd_flag."""
+    p_flag = subparsers.add_parser(
+        "flag", help="Flag an observed Claude phrase or behavior for later analysis (see kb Goal #41)"
+    )
+    p_flag.add_argument("note", help="What was observed, e.g. 'found it' or 'skipped checking tests first'")
+    p_flag.set_defaults(func=cmd_flag)
 
 
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:

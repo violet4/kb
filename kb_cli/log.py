@@ -7,6 +7,7 @@ from context import creation_context
 from harness import current_session_id
 from models import Context, LogEntry
 
+from kb_cli._util import resolve_text_arg
 from kb_cli.search import cmd_search_one
 
 
@@ -15,7 +16,11 @@ def cmd_add(args: argparse.Namespace) -> None:
     if args.date:
         occurred_at = datetime.strptime(args.date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
     entry = LogEntry.create(
-        args.session, body=args.body, domain=args.domain, context=creation_context(args), occurred_at=occurred_at
+        args.session,
+        body=resolve_text_arg(args.body),
+        domain=args.domain,
+        context=creation_context(args),
+        occurred_at=occurred_at,
     )
     args.session.commit()
     print(entry)

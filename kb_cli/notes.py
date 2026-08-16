@@ -7,7 +7,7 @@ from typing import Optional
 from sqlalchemy import select
 
 from client import KBClient
-from kb_cli._util import apply_text_edit, print_links
+from kb_cli._util import apply_text_edit, print_links, resolve_text_arg
 from models import Collection, Note
 
 
@@ -43,7 +43,12 @@ def _resolve_collection(name: Optional[str]) -> Optional[Collection]:
 def cmd_add(args: argparse.Namespace) -> None:
     collection = _resolve_collection(args.collection) or Collection.INBOX
     client = KBClient()
-    result = client.note_create(title=args.title, body=args.body, collection=collection.value, tags=args.tags)
+    result = client.note_create(
+        title=resolve_text_arg(args.title),
+        body=resolve_text_arg(args.body),
+        collection=collection.value,
+        tags=args.tags,
+    )
     print(f"Added: {result}")
 
 

@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from models import EntityLink, Instruction
 
-from kb_cli._util import apply_text_edit, check_no_links, print_links
+from kb_cli._util import apply_text_edit, check_no_links, print_links, resolve_text_arg
 from kb_cli.search import cmd_search_one
 
 
@@ -226,7 +226,11 @@ def cmd_add(args: argparse.Namespace) -> None:
         sys.exit(1)
     parent = _resolve_or_exit(args.session, args.parent) if args.parent is not None else None
     node = Instruction(
-        title=args.title, body=args.body, trigger=args.trigger, system_level=args.system_level, context=args.context
+        title=args.title,
+        body=resolve_text_arg(args.body),
+        trigger=args.trigger,
+        system_level=args.system_level,
+        context=args.context,
     )
     node.reembed()
     args.session.add(node)
@@ -255,7 +259,7 @@ def cmd_edit(args: argparse.Namespace) -> None:
             sys.exit(1)
         node.title = args.title
     if args.body is not None:
-        node.body = args.body
+        node.body = resolve_text_arg(args.body)
     if args.append is not None or args.replace is not None:
         replace = tuple(args.replace) if args.replace is not None else None
         node.body = apply_text_edit(node.body, f"body of {node.title!r}", args.append, replace)

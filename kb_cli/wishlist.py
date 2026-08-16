@@ -5,7 +5,7 @@ import sys
 from typing import Iterable
 
 from models import Wishlist, WishlistEffort, WishlistStatus
-from kb_cli._util import apply_updates
+from kb_cli._util import apply_updates, resolve_text_arg
 from kb_cli.search import cmd_search
 
 
@@ -21,7 +21,7 @@ def cmd_add(args: argparse.Namespace) -> None:
     _validate_0_100(args, ("importance", "urgency", "clarity"))
     item = Wishlist(
         title=args.title,
-        description=args.description,
+        description=resolve_text_arg(args.description) if args.description else args.description,
         price_min=args.price_min,
         price_max=args.price_max,
         importance=args.importance,
@@ -29,7 +29,7 @@ def cmd_add(args: argparse.Namespace) -> None:
         clarity=args.clarity,
         effort=WishlistEffort(args.effort),
         priority=args.priority,
-        notes=args.notes,
+        notes=resolve_text_arg(args.notes) if args.notes else args.notes,
         pinned=args.pinned,
     )
     args.session.add(item)
@@ -46,7 +46,7 @@ def cmd_update(args: argparse.Namespace) -> None:
         "Wishlist",
         {
             "title": args.title,
-            "description": args.description,
+            "description": resolve_text_arg(args.description) if args.description else args.description,
             "price_min": args.price_min,
             "price_max": args.price_max,
             "importance": args.importance,
@@ -55,7 +55,7 @@ def cmd_update(args: argparse.Namespace) -> None:
             "effort": WishlistEffort(args.effort) if args.effort else None,
             "priority": args.priority,
             "status": WishlistStatus(args.status) if args.status else None,
-            "notes": args.notes,
+            "notes": resolve_text_arg(args.notes) if args.notes else args.notes,
             "pinned": args.pinned,
         },
     )

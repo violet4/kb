@@ -16,6 +16,7 @@ from kb_cli._util import (
     apply_updates,
     print_journal_history,
     print_links,
+    resolve_text_arg,
     scope_to_context,
 )
 from kb_cli.search import cmd_search
@@ -23,7 +24,11 @@ from kb_cli.search import cmd_search
 
 def cmd_add(args: argparse.Namespace) -> None:
     goal = Goal.create(
-        args.session, args.title, description=args.description, context=creation_context(args), notes=args.notes
+        args.session,
+        args.title,
+        description=resolve_text_arg(args.description) if args.description else args.description,
+        context=creation_context(args),
+        notes=resolve_text_arg(args.notes) if args.notes else args.notes,
     )
     args.session.commit()
     print(goal)

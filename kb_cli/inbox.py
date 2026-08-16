@@ -3,11 +3,12 @@
 import argparse
 import sys
 
+from kb_cli._util import resolve_text_arg
 from models import InboxItem
 
 
 def cmd_add(args: argparse.Namespace) -> None:
-    item = InboxItem.create(args.session, args.body, source=args.source, category=args.category)
+    item = InboxItem.create(args.session, resolve_text_arg(args.body), source=args.source, category=args.category)
     args.session.commit()
     print(item)
 

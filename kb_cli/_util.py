@@ -77,12 +77,18 @@ def apply_text_edit(current: str, entity_label: str, append: Optional[str], repl
     append adds a paragraph; replace substitutes one occurrence of (old, new), erroring
     (rather than guessing) if old is missing or not unique in the field -- exits the
     process directly, matching this module's existing get_by_name/apply_updates error
-    style, since these are CLI-only helpers with no non-CLI caller today.
+    style, since these are CLI-only helpers with no non-CLI caller today. Both append and
+    replace's new value are routed through resolve_text_arg, so `--append -` / `--replace OLD -`
+    read from stdin the same way any other free-text CLI arg does (root's stdin-body
+    convention) -- append/replace text is exactly as likely to be long/multi-line as a plain
+    --body value, so it should honor the same convention, not silently take the literal "-".
     Pass only one of append/replace -- the caller decides which, if either, applies."""
     if append is not None:
+        append = resolve_text_arg(append)
         return f"{current}\n\n{append}" if current else append
     if replace is not None:
         old, new = replace
+        new = resolve_text_arg(new)
         count = current.count(old)
         if count == 0:
             print(f"--replace: old text not found in {entity_label}", file=sys.stderr)
@@ -170,6 +176,18 @@ def print_links(
             f"--{link.relation}-->" if (entity_type, entity_id) == (link.type_a, link.id_a) else f"<--{link.relation}--"
         )
         print(f"  {arrow} {describe_entity_ref(session, other_type, other_id)}")
+
+
+def resolve_text_arg(value: str) -> str:
+    """A free-text CLI arg (Note.body, Todo.title, a journal note, ...) whose value is the
+    literal string "-" is read from stdin instead -- the standard Unix convention, so any long
+    or special-character-laden body can be piped in (`kb notes add "title" - <<'EOF'` or
+    `cmd | kb notes add "title" -`) instead of forcing it through shell argument quoting.
+    Every `add`/`update` subcommand taking free-text should route its positional/flag value
+    through this before use, the same shared-helper discipline as apply_text_edit above."""
+    if value == "-":
+        return sys.stdin.read()
+    return value
 
 
 def print_fields(fields: Iterable[tuple[str, object]]) -> None:

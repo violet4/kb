@@ -15,6 +15,7 @@ from kb_cli._util import (
     get_by_name,
     print_journal_history,
     print_links,
+    resolve_text_arg,
     scope_to_context,
 )
 from kb_cli.search import cmd_search
@@ -88,7 +89,7 @@ def cmd_add(args: argparse.Namespace) -> None:
     todo = Todo.create(
         args.session,
         args.title,
-        notes=args.notes,
+        notes=resolve_text_arg(args.notes) if args.notes else args.notes,
         effort=effort,
         defer_until=defer_until,
         context=None if tag else creation_context(args),
@@ -109,7 +110,7 @@ def cmd_update(args: argparse.Namespace) -> None:
             "title": args.title,
             "effort": WishlistEffort(args.effort) if args.effort else None,
             "defer_until": _parse_defer_until(args.defer_until) if args.defer_until else None,
-            "notes": args.notes,
+            "notes": resolve_text_arg(args.notes) if args.notes else args.notes,
             "goal_id": args.goal,
         },
     )

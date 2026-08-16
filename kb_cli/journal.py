@@ -2,11 +2,12 @@
 
 import argparse
 
+from kb_cli._util import resolve_text_arg
 from models import Journal
 
 
 def cmd_add(args: argparse.Namespace) -> None:
-    entry = Journal.record(args.session, args.entity_type, args.entity_id, note=args.note)
+    entry = Journal.record(args.session, args.entity_type, args.entity_id, note=resolve_text_arg(args.note))
     args.session.commit()
     print(entry)
 

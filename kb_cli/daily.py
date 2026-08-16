@@ -9,7 +9,14 @@ from sqlalchemy import select
 from context import creation_context
 from models import Daily, DailyTier
 
-from kb_cli._util import apply_context_or_tag_update, apply_updates, print_fields, print_links, print_table
+from kb_cli._util import (
+    apply_context_or_tag_update,
+    apply_updates,
+    print_fields,
+    print_links,
+    print_table,
+    resolve_text_arg,
+)
 
 
 def _daily_fields(daily: Daily) -> list[tuple[str, object]]:
@@ -97,7 +104,7 @@ def cmd_catch_up(args: argparse.Namespace) -> None:
 def cmd_add(args: argparse.Namespace) -> None:
     daily = Daily.create(
         args.session,
-        args.description,
+        resolve_text_arg(args.description),
         context=creation_context(args),
         domain=args.domain,
         tier=DailyTier(args.tier),

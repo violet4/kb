@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from archivebox_compat import ArchiveBoxConfig, ArchiveBoxConfigError, ArchiveMethodResult, Snapshot, get_client
 from base import _now
-from kb_cli._util import print_links
+from kb_cli._util import print_links, resolve_text_arg
 from kb_cli.text import extract_paragraphs
 from kb_cli.secrets import CredentialUnavailableError, get_credential, set_credential
 from models import ArchivedLink, ArchivedLinkPushStatus, Settings
@@ -169,7 +169,7 @@ def cmd_add(args: argparse.Namespace) -> None:
         return
 
     try:
-        link = ArchivedLink.create(args.session, args.url, args.title, args.reason)
+        link = ArchivedLink.create(args.session, args.url, resolve_text_arg(args.title), resolve_text_arg(args.reason))
         args.session.commit()
     except IntegrityError:
         # Lost a race against a concurrent `kb ab add` for the same URL -- the unique

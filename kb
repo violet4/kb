@@ -86,6 +86,7 @@ from kb_cli import (
     wishlist,
 )
 from kb_cli import games
+from kb_cli.bare_text import BARE_INSTRUCTIONS as _BARE_INSTRUCTIONS
 from models import SessionFactory
 
 
@@ -102,112 +103,6 @@ def _parse_as_of(raw: str) -> datetime:
         raise SystemExit(f"--as-of: could not parse {raw!r} (use HH:MM, 'YYYY-MM-DD', or 'YYYY-MM-DD HH:MM')")
     return now.replace(hour=t.hour, minute=t.minute, second=0, microsecond=0)
 
-
-# Bare `kb` (no args): short, instructional orientation -- "how do I use this right now."
-# `kb -h`: full technical reference -- every flag, every subcommand, what --context/--as-of
-# actually mean under the hood. Two tiers, not duplicated content -- bare kb points at -h for
-# depth rather than repeating it, same DRY-pointer discipline as the Instruction tree itself.
-_BARE_INSTRUCTIONS = """\
-Routing a plain statement to the right subcommand (the noun -- which table):
-  A stated fact/observation about the world -> log
-  Claude used a phrase or showed a habit worth flagging for later analysis -> flag NOTE (see kb Goal #41)
-  A stated need/intent, not yet done -> todo
-  A bigger purpose/end-goal, or multi-step work -> goal
-  A decision/change to an existing record -> journal ENTITY_TYPE ID NOTE
-  Durable reference knowledge (not tied to a task) -> notes add TITLE BODY
-  Something to buy/acquire, price-bearing -> wishlist
-  An idea you like but haven't committed to -> idea
-  A URL worth keeping a snapshot of -> ab add URL TITLE REASON (title+reason required, see below)
-  A relationship between two existing records (any tables) -> link add TYPE:ID TYPE:ID --relation "..."
-  Unsure where it goes -> inbox, triage later
-
-Global flags (--context, --as-of) are parsed by `kb` itself, before it even looks at the
-subcommand -- they must come immediately after `kb`, never after the subcommand or its own
-args. `kb --context "serbule keep" todo add "buy salt"` works; `kb todo add "buy salt"
---context "serbule keep"` fails with "unrecognized arguments: --context must come before
-subcommand", because by that point argparse is inside todo's own parser, which has no
---context of its own. (`todo update ID --context NAME` is the one unrelated exception -- a
-per-command flag for reassigning an existing row, not this global one.) `search` also has its
-own `--since DATE` (a subcommand-local flag, not global -- goes after `search`, e.g.
-`kb search --since 2026-07-28 "query"`) -- not yet available on other subcommands.
-
-Once you have the right noun, most subcommands share the same small set of verbs -- this is
-the shape, not per-command trivia, so it isn't repeated per row above: `add` creates a new
-record; `show ID` reads one; `update ID` edits one in place; `complete ID` (or a closer verb
-like `abandon`/`drop`/`activate` where one genuinely fits better) resolves one. A stated fact
-usually means `add`; "I finished/fixed/no longer need X" usually means `complete` or `update`
-on an EXISTING record, not a fresh `add` -- check `kb <noun> pending`/`list`/`search` for the
-existing record first rather than creating a duplicate. Run `kb <noun> --help` to see the real
-verb set for that noun; it isn't identical everywhere.
-
-The CLI itself should be ergonomic and intuitive to someone who has never used kb before --
-optimize for that fresh-eyes experience, not for muscle memory built up over a long session.
-When a command doesn't behave the way this shape would reasonably predict (e.g. `update` taking
-a bare positional ID everywhere else, but requiring a flag in one subcommand), that mismatch is
-a signal to fix the CLI so it matches the convention, not to just document the exception here --
-a documented exception still costs every first-time caller the same surprise, it only gives them
-somewhere to look afterward. Default to changing the code rather than this text, since a code fix
-removes the surprise for everyone going forward, including a session with no memory of this
-paragraph; only fix this text instead when the CLI's current shape is genuinely the more correct
-one and this text is what's stale.
-
-If the need/fact is tied to a place ("next time I'm in X"), always pin it with --context --
-never just mention the place in the title. Example: "I need salt next time I'm in Serbule
-Keep" is `kb --context "serbule keep" todo add "buy salt"`, not a title that mentions the
-place in passing.
-
-A question about a place ("what do we need at X", "what's pending at X") is the read-side
-mirror of the rule above -- go straight to `kb --context X search QUERY` (substring plus
-semantic, scoped to X's subtree) or `kb --context X todo list` (everything pending under X,
-no query needed), not `context tree`/`todo pending --all` plus manual grepping. Example:
-"what do we need at the grocery store" is `kb --context grocery search buy` or
-`kb --context grocery todo list`, not a walk through `context tree --todos`. Every read-scoped
-list/tree command prints which context it resolved to (`context: grocery`), so the scope is
-never silently wrong -- trust the one-shot scoped command first, fall back to unscoped
-`context tree`/`search` only if the scoped result comes back empty and the context itself
-might be wrong.
-
-Default to several small linked records over one large one: the moment a record would cover
-more than one reason someone might come looking for it, split it and connect the pieces with
-`kb link add` instead of writing one combined record — a link costs one command and makes each
-piece independently reachable, so there's no size/completeness tradeoff to weigh before
-reaching for it. `kb link add A B --relation "..."` links any two existing rows in any tables, each given as
-TYPE:ID (e.g. `kb link add Goal:34 Todo:102 --relation "tracked-by"`) -- TYPE is the record's
-own model name (Goal, Todo, Note, ...) and ID its numeric id. Order is meaningful and stored
-exactly as given, never reordered: `--relation` reads strictly A-to-B, so
-`Goal:34 --tracked-by--> Todo:102` means "Goal 34 is tracked by Todo 102," not the reverse --
-put whichever side is the grammatical subject of the relation label first (A), the object
-second (B). Swapping A and B does not express the same fact backwards, it silently records a
-different, usually wrong, fact -- if in doubt, read the args back as a sentence ("A [relation]
-B") before running the command. `--relation` is required and must be a non-empty label; both
-endpoints are validated to actually exist before the link is written, so a link can never point
-at a nonexistent row. `kb link add` prints the created link's own `#ID` in its output --
-`kb link rm ID` takes that id, never guess or reuse an id from an earlier link. `kb link show
-TYPE:ID` renders the graph outward from that row, one hop deep by default (`--depth N` to go
-further -- start with 1, since link-dense areas of the graph can expand into a large subgraph
-fast at 2+ hops). Run `kb link -h` for rm and the full picture.
-
-`kb ab add URL TITLE REASON` snapshots a URL -- TITLE (neutral, what the page is) and REASON
-(why it was worth keeping) are both required, never optional, so nothing gets saved as a bare
-link with no record of why it mattered. Save freely, err toward over-saving: e.g. a vendor's
-current privacy/telemetry policy page is worth a snapshot (it reflects a moment-in-time
-belief/policy that could later change), a doc page consulted just to fix one env var isn't.
-Prints the row's id as ABn (e.g. "AB23") -- embed that exact token in whatever Note/Todo/
-Journal body cites the URL (e.g. "Sources: AB23"), not the bare URL alone, so the citation
-travels with the prose. Run `kb ab -h` for the full picture (list/show, ArchiveBox migration
-plan, why title and reason are split).
-
-"What does this page/PDF say about X", "search this doc for X", or "how similar are these two
-texts" is `kb text extract` (pull clean paragraphs from a URL/PDF/HTML/text file/stdin) piped
-into `kb text semsearch` (rank or compare those paragraphs by embedding) -- grouped under one
-`kb text` parent since both are usable from any directory, not repo-local, and are two halves of
-the same pipeline: `kb text extract URL | kb text semsearch rank "query"`. Run
-`kb text extract --help` / `kb text semsearch --help` for the full usage.
-
-Run `kb <command> --help` before typing a command from memory -- flags and shapes above are
-illustrative, not exhaustive. Run `kb -h` for full technical reference (what --context/--as-of
-really do, the complete subcommand list). See also: kb instructions root.
-"""
 
 _HELP_EPILOG = """
 --context resolves once via resolve_context(): an explicit value is looked up, or created as

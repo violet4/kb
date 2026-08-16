@@ -3,13 +3,35 @@
 depending on it being reported by hand each time it's hit."""
 
 import argparse
+import io
 from collections import Counter
+from contextlib import redirect_stdout
 from datetime import timedelta
+from pathlib import Path
 
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from base import _now
 from models import CliInvocation
+
+from kb_cli import instruction
+from kb_cli.bare_text import BARE_INSTRUCTIONS
+
+# Anthropic publishes no offline tokenizer (unlike OpenAI's tiktoken) -- the only accurate
+# token count is the live count_tokens API endpoint, which this command deliberately does not
+# call (see kb Note #148: no network dependency for a lightweight local utility). This is a
+# chars-per-token heuristic for dense English prose/markdown; it can be off by roughly 15-20%
+# against the real tokenizer, so every output using it is labeled "approximate".
+_CHARS_PER_TOKEN = 4.0
+
+# Sonnet 5 introductory input-token pricing, in effect through 2026-08-31 (see the claude-api
+# skill's cached model table, refreshed 2026-06-24) -- $/million tokens. This block is
+# read-only session bootstrap content, so only input pricing is relevant, not output. A
+# snapshot in time, not a durable fact; pass --input-price for a different/current rate.
+_DEFAULT_INPUT_PRICE_PER_M = 2.00
+
+_KB_SCRIPT_PATH = Path(__file__).resolve().parent.parent / "kb"
 
 
 def cmd_errors(args: argparse.Namespace) -> None:
@@ -39,6 +61,45 @@ def cmd_errors(args: argparse.Namespace) -> None:
         print(f"  {count:>3}  {short}")
 
 
+def _session_header_text(session: Session) -> str:
+    """The exact text printed by `kb i show root; kb` -- the mandatory session-bootstrap
+    block every Claude Code session pays for at least once (see ~/.claude/CLAUDE.md's
+    first-tool-call rule, and kb Note #148 for why this is estimated rather than measured
+    via the live count_tokens API). Captured in-process via redirect_stdout rather than
+    shelling out to a `kb` subprocess -- same DB session, no second interpreter/DB connection
+    spun up just to capture stdout."""
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        root = instruction._resolve_ref(session, "root")
+        if root is None:
+            raise RuntimeError("Instruction tree has no root node -- run `kb i root --set TITLE` first")
+        instruction._print_node(session, root, show_body=True)
+        print(f"\nThis routing guide is printed by {_KB_SCRIPT_PATH} (bare `kb`, no subcommand).\n")
+        print(BARE_INSTRUCTIONS, end="")
+    return buf.getvalue()
+
+
+def cmd_session_header_cost(args: argparse.Namespace) -> None:
+    text = _session_header_text(args.session)
+    chars = len(text)
+    tokens = chars / _CHARS_PER_TOKEN
+
+    input_price = args.input_price if args.input_price is not None else _DEFAULT_INPUT_PRICE_PER_M
+    cost = tokens / 1_000_000 * input_price
+
+    print(f"`kb i show root; kb` session-header text: {chars:,} chars")
+    print(f"Approximate tokens (chars / {_CHARS_PER_TOKEN:g}): {tokens:,.0f}")
+    print(
+        f"Approximate cost at ${input_price:.2f}/1M input tokens: ${cost:.4f}"
+        + ("  (Sonnet 5 intro pricing snapshot)" if args.input_price is None else "")
+    )
+    print(
+        "\nApproximate only -- Anthropic publishes no offline tokenizer, so this uses a "
+        f"chars/{_CHARS_PER_TOKEN:g} heuristic (~15-20% error vs. the real tokenizer), not "
+        "the live count_tokens API. Pass --input-price for a different/current rate."
+    )
+
+
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     parser = subparsers.add_parser("stats", help="Report on kb CLI usage/error patterns")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -47,3 +108,15 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_errors.add_argument("--days", type=int, default=7, help="Look back this many days (default: 7)")
     p_errors.add_argument("--top", type=int, default=10, help="Show top N entries per section (default: 10)")
     p_errors.set_defaults(func=cmd_errors)
+
+    p_header = sub.add_parser(
+        "session-header-cost", help="Approximate token count/cost of the `kb i show root; kb` session-bootstrap text"
+    )
+    p_header.add_argument(
+        "--input-price",
+        type=float,
+        default=None,
+        metavar="USD_PER_M",
+        help=f"$/1M input tokens (default: today's Sonnet 5 intro snapshot, ${_DEFAULT_INPUT_PRICE_PER_M:.2f})",
+    )
+    p_header.set_defaults(func=cmd_session_header_cost)

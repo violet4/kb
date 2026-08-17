@@ -105,6 +105,8 @@ Autogenerate misses column renames (sees drop+add, write those by hand), table r
 
 `scripts/dev/format [path ...]` runs black over the project (whole project by default).
 
+`scripts/dev/check-syntax FILE [FILE ...]` parses one or more Python files with `ast.parse` (no import/execution) and reports OK/SYNTAX ERROR per file — the right tool for "did this edit leave valid Python" without the side effects of actually importing the module. Use this instead of an ad hoc `python3 -c "import ast; ast.parse(...)"` one-liner.
+
 Enum columns are constrained at the DB level (`Enum(..., create_constraint=True, validate_strings=True)`) — see kb-engineering-10 before adding a new `Enum(...)` column. Adding a new *value* to an existing enum still needs a migration to update the CHECK constraint; use a raw-SQL table recreate (CREATE + INSERT SELECT + DROP + RENAME), not `batch_alter_table`/`alter_column` — see kb-engineering-16 and `alembic/versions/752237ed2641_add_on_hold_to_goalstatus.py` for why and a worked example.
 
 Read kb-engineering-20 before renaming any table's `__tablename__` (e.g. a `PgFoo`->`PgBar` rename): `op.rename_table` renames only the table, never its own PK/UNIQUE/CHECK constraints, so the same raw-SQL table recreate as kb-engineering-16 is needed in the same migration to bring those constraint names in line with what the naming convention now expects. Autogenerate does not flag this drift until a much later, unrelated migration surfaces it as a confusing diff — fix it immediately in the rename's own migration, not later.

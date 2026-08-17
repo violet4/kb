@@ -10,6 +10,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Optional, Sequence
 
+import psutil
 import sqlite_vec  # type: ignore[import-untyped]  # no type stubs published for this package
 from sqlalchemy import (
     Boolean,
@@ -1966,6 +1967,136 @@ class Timer(Base, HasContextOrTag):
             f"<Timer #{self.id}{label_str} [{self.status.value}] "
             f"ends_at={self.ends_at.strftime('%Y-%m-%d %H:%M:%S')}{context_str}{tag_str}>"
         )
+
+
+# ---------------------------------------------------------------------------
+# HarnessSession + SessionMessage
+# ---------------------------------------------------------------------------
+
+
+class HarnessSessionStatus(enum.Enum):
+    INFERRING = "inferring"
+    IDLE = "idle"
+
+
+class HarnessSession(Base):
+    """One row per live harness session (a `claude` CLI process, or another harness's
+    equivalent), registered at SessionStart and read by `kb sessions` for cross-session
+    discovery/messaging -- see Goal #46. Named HarnessSession, not Session, since SQLAlchemy's
+    own Session class is already imported under that name throughout this file.
+
+    id is the harness's own session id (harness.py:current_session_id()), not a surrogate --
+    it's already globally unique and is exactly what SessionMessage.from_session/to_session
+    need to reference, the same way source_ref (LogEntry) reuses it as a plain string rather
+    than inventing a second id space.
+
+    Liveness is a pid check at read time (psutil.pid_exists(pid)), not a status flag here -- a
+    crashed/killed process self-heals out of `kb sessions` output with no de-registration hook
+    required. Same-machine only for now (pid doesn't resolve across hosts); revisit with a
+    last_active_at-based heartbeat instead of/alongside pid if cross-machine sessions
+    (SSH, Remote Control) become a real use case -- not designed for yet, deliberately.
+
+    status/last_active_at/last_response_at are populated only by hooks that actually observe
+    those transitions (UserPromptSubmit -> INFERRING + bump last_active_at, Stop -> IDLE +
+    bump last_response_at) -- don't add a field here that no hook can honestly populate.
+    is_listening is set/cleared by `kb sessions listen` itself on start and on exit (including
+    a trap so a killed listener doesn't leave it permanently stuck true)."""
+
+    __tablename__ = "harness_session"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    cwd: Mapped[str] = mapped_column(String, nullable=False)
+    title: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    pid: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[HarnessSessionStatus] = mapped_column(
+        Enum(HarnessSessionStatus, create_constraint=True, validate_strings=True),
+        nullable=False,
+        default=HarnessSessionStatus.IDLE,
+    )
+    is_listening: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    last_active_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_response_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    @classmethod
+    def register(
+        cls, session: Session, session_id: str, cwd: str, pid: int, title: Optional[str] = None
+    ) -> HarnessSession:
+        """Called from a SessionStart hook. Upserts -- a resumed session reuses the same
+        harness session id, so this updates cwd/pid/title in place rather than erroring
+        on a duplicate PK."""
+        existing = session.get(cls, session_id)
+        if existing is not None:
+            existing.cwd = cwd
+            existing.pid = pid
+            if title is not None:
+                existing.title = title
+            session.flush()
+            return existing
+        row = cls(id=session_id, cwd=cwd, pid=pid, title=title)
+        session.add(row)
+        session.flush()
+        return row
+
+    def is_alive(self) -> bool:
+        return psutil.pid_exists(self.pid)
+
+    @classmethod
+    def live(cls, session: Session) -> list[HarnessSession]:
+        """Every registered session whose pid still resolves -- what `kb sessions` lists."""
+        return [row for row in session.scalars(select(cls)).all() if row.is_alive()]
+
+    def __repr__(self) -> str:
+        listening_str = " listening" if self.is_listening else ""
+        return f"<HarnessSession {self.id[:8]} [{self.status.value}]{listening_str} cwd={self.cwd!r}>"
+
+
+class SessionMessage(Base):
+    """A single DM between two HarnessSessions -- mailbox, not channel, deliberately: see
+    Goal #46 and Note #157 for why an open/broadcast channel was rejected (Buzz/Leo-anecdote
+    crosstalk failure mode). to_session is required (never null/broadcast) so the schema makes
+    broadcast structurally impossible for now rather than merely unused -- a future
+    SessionBroadcast table can be added alongside this one without touching it, if broadcast
+    (e.g. propagating an urgent Instruction-tree change to every live session) is ever wanted.
+
+    Plain text body only, no attachments/threading -- matches the one useful precedent from
+    Claude Code's own native (harness-specific, rejected for kb's purposes -- see Goal #46)
+    SendMessage: a concise body, not a payload the receiver has to unpack.
+
+    read_at alone (no separate archived/dismissed state) is enough: kb sessions inbox marks
+    read on view, and there's no dismiss-without-reading concept distinct from that elsewhere
+    in kb's other entities. created_at (from Base) plus read_at give enough of a timeline to
+    diagnose delivery-timing questions after the fact without inventing more state up front."""
+
+    __tablename__ = "session_message"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    from_session: Mapped[str] = mapped_column(String, ForeignKey("harness_session.id"), nullable=False)
+    to_session: Mapped[str] = mapped_column(String, ForeignKey("harness_session.id"), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    read_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    @classmethod
+    def send(cls, session: Session, from_session: str, to_session: str, body: str) -> SessionMessage:
+        msg = cls(from_session=from_session, to_session=to_session, body=body)
+        session.add(msg)
+        session.flush()
+        return msg
+
+    @classmethod
+    def inbox(cls, session: Session, to_session: str, unread_only: bool = True) -> Sequence[SessionMessage]:
+        q = select(cls).where(cls.to_session == to_session).order_by(cls.created_at)
+        if unread_only:
+            q = q.where(cls.read_at.is_(None))
+        return session.scalars(q).all()
+
+    def mark_read(self) -> None:
+        self.read_at = _now()
+
+    def __repr__(self) -> str:
+        # Full ids, not truncated -- this repr is what a caller sees after `kb sessions send`,
+        # and a shortened id here isn't usable for a reply/lookup.
+        read_str = "read" if self.read_at else "unread"
+        return f"<SessionMessage #{self.id} {self.from_session}->{self.to_session} [{read_str}]>"
 
 
 # ---------------------------------------------------------------------------

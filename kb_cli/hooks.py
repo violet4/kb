@@ -200,6 +200,89 @@ def cmd_daily_check(args: argparse.Namespace) -> None:
     print(_DAILY_CHECK_PRIME)
 
 
+def cmd_session_register(args: argparse.Namespace) -> None:
+    """Read a session ID on stdin (SessionStart's own JSON envelope's .session_id, matching
+    daily-check's convention), falling back to current_session_id() for manual testing.
+    Registers/refreshes this session as live -- see HarnessSession.register (models.py) and
+    kb Goal #46 for the full cross-session-messaging design this feeds. Title is left unset
+    here (SessionStart's envelope doesn't carry a resolved title yet); `kb sessions list`
+    reads whatever HarnessSession.title holds, empty until something else backfills it."""
+    from harness import current_session_id
+    from models import HarnessSession
+
+    from kb_cli.sessions import _find_claude_ancestor_pid
+
+    session_id = sys.stdin.read().strip()
+    if not session_id:
+        session_id = current_session_id() or ""
+    if not session_id:
+        return
+    HarnessSession.register(args.session, session_id, cwd=os.getcwd(), pid=_find_claude_ancestor_pid())
+    args.session.commit()
+
+
+_SESSION_INBOX_HINT_NO_LISTENER = (
+    "No `kb sessions listen` currently running for this session -- messages from other "
+    "sessions will only surface on your next prompt (this check), not proactively. Start it "
+    "now as its own backgrounded Bash call (see CLAUDE_GLOBAL.md): required every session, "
+    "not optional, and needs restarting each time it delivers a message and exits."
+)
+
+
+def cmd_session_inbox_check(args: argparse.Namespace) -> None:
+    """Layer 1 of kb Goal #46's cross-session messaging delivery: called from
+    UserPromptSubmit on every prompt, prints any of this session's unread SessionMessages
+    (marking them read). The "no listener running" nudge fires on EVERY prompt while no
+    listener is running, not just alongside a delivered message -- a deliberate exception to
+    the usual "don't nag every turn" default, made because a session silently going without
+    Layer 2 delivery indefinitely (having simply forgotten to start it, or never having
+    restarted it after a prior delivery) is worse than the repetition cost of a one-line
+    reminder on every prompt. See CLAUDE_GLOBAL.md for the paired instruction to background
+    `kb sessions listen` right after the mandatory `kb i show root; kb` first call."""
+    from base import _now
+    from harness import current_session_id
+    from models import HarnessSession, HarnessSessionStatus, SessionMessage
+
+    session_id = current_session_id()
+    if not session_id:
+        return
+    row = args.session.get(HarnessSession, session_id)
+    if row is not None:
+        row.status = HarnessSessionStatus.INFERRING
+        row.last_active_at = _now()
+        args.session.commit()
+    messages = SessionMessage.inbox(args.session, session_id, unread_only=True)
+    lines = [f"New message from session {msg.from_session}:\n  {msg.body}" for msg in messages]
+    for msg in messages:
+        msg.mark_read()
+    if messages:
+        args.session.commit()
+
+    if row is None or not row.is_listening:
+        lines.append(_SESSION_INBOX_HINT_NO_LISTENER)
+    if lines:
+        print("\n\n".join(lines))
+
+
+def cmd_session_stop(args: argparse.Namespace) -> None:
+    """Called from the Stop hook -- marks this session IDLE and bumps last_response_at.
+    Silent always (no stdout), this only updates HarnessSession bookkeeping for kb sessions
+    list to show honest live-status info, per kb Goal #46's design discussion."""
+    from base import _now
+    from harness import current_session_id
+    from models import HarnessSession, HarnessSessionStatus
+
+    session_id = current_session_id()
+    if not session_id:
+        return
+    row = args.session.get(HarnessSession, session_id)
+    if row is None:
+        return
+    row.status = HarnessSessionStatus.IDLE
+    row.last_response_at = _now()
+    args.session.commit()
+
+
 def cmd_daily_check_release(args: argparse.Namespace) -> None:
     """Drop today's daily-check lock, if held, so the next new session claims it
     instead of waiting for a reboot to free it up."""
@@ -259,3 +342,21 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         help="Release today's daily-check lock so the next new session claims it",
     )
     p_daily_release.set_defaults(func=cmd_daily_check_release)
+
+    p_session_register = sub.add_parser(
+        "session-register",
+        help="Register/refresh this session as live (session ID read on stdin, or current_session_id() if stdin is empty) -- see kb Goal #46",
+    )
+    p_session_register.set_defaults(func=cmd_session_register)
+
+    p_session_inbox = sub.add_parser(
+        "session-inbox-check",
+        help="Print and mark-read this session's new SessionMessages, if any -- see kb Goal #46",
+    )
+    p_session_inbox.set_defaults(func=cmd_session_inbox_check)
+
+    p_session_stop = sub.add_parser(
+        "session-stop",
+        help="Mark this session IDLE and bump last_response_at -- see kb Goal #46",
+    )
+    p_session_stop.set_defaults(func=cmd_session_stop)

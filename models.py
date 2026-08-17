@@ -1581,7 +1581,13 @@ class ArchivedLinkPushStatus(enum.Enum):
     FAILED = "failed"  # push attempted and confirmed failed -- see push_error; only retried via `kb ab retry`
 
 
-class ArchivedLink(Base):
+class ArchivedLinkContentStatus(enum.Enum):
+    NOT_ATTEMPTED = "not_attempted"  # embedding (if any) covers title+reason only, content never fetched
+    EMBEDDED = "embedded"  # content was fetched and folded into the embedding
+    FETCH_FAILED = "fetch_failed"  # content fetch was attempted and failed -- see content_fetch_error, `kb ab pull`
+
+
+class ArchivedLink(Base, HasEmbedding):
     """A URL queued for archival -- interim capture ahead of a live ArchiveBox instance
     (kb Goal/Todo #70). Today this is just url+title+reason+timestamp; migrated_at marks
     the row as already pushed into a real ArchiveBox once that integration exists, so the
@@ -1625,13 +1631,61 @@ class ArchivedLink(Base):
         default=ArchivedLinkPushStatus.PENDING,
     )
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    content_status: Mapped[ArchivedLinkContentStatus] = mapped_column(
+        Enum(ArchivedLinkContentStatus, create_constraint=True, validate_strings=True),
+        nullable=False,
+        default=ArchivedLinkContentStatus.NOT_ATTEMPTED,
+    )
+    content_fetch_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    @staticmethod
+    def _embed_fields() -> set[str]:
+        return {"title", "reason"}
+
+    def _embed_source_text(self) -> str:
+        return f"{self.title}\n\n{self.reason}"
+
+    def reembed_with_content(self, content: str) -> None:
+        """The one place content gets folded into the embedding. `content` is a plain function
+        argument, never assigned to any attribute (mapped or otherwise) on self, so it never
+        reaches the DB and never lingers on the instance -- kb's DB stays limited to
+        user-written content plus small derived vectors, never bulk page text (see kb Note
+        #162). Deliberately bypasses the base HasEmbedding.reembed()/_embed_source_text() path
+        (which takes no arguments and is driven by the before_flush listener off _embed_fields()
+        alone) since content-aware embedding is always an explicit, caller-initiated action, not
+        something a plain title/reason attribute change should ever trigger. Caller is
+        responsible for content_status/content_fetch_error bookkeeping around this call (see
+        kb_cli/archivebox.py's fetch_and_embed_content(), the shared function both the
+        push-queue worker and `kb ab backfill-content` call)."""
+        from embed import embed, model_name
+
+        vec = embed(f"{self.title}\n\n{self.reason}\n\n{content}")
+        self.embedding = struct.pack(f"{len(vec)}f", *vec)
+        self.embedding_model = model_name()
 
     @classmethod
     def create(cls, session: Session, url: str, title: str, reason: str) -> ArchivedLink:
         link = cls(url=url, title=title, reason=reason)
+        link.reembed()
         session.add(link)
         session.flush()
         return link
+
+    @classmethod
+    def needing_content_backfill(cls, session: Session) -> Sequence[ArchivedLink]:
+        """SUCCESS-pushed rows whose embedding still only covers title+reason and haven't
+        already been recorded as a permanent content-fetch failure -- the exact candidate set
+        `kb ab backfill-content` (and the push-queue worker, per-row) operates on. Excluding
+        FETCH_FAILED here is what keeps a broken snapshot (e.g. singlefile.html missing) from
+        being re-attempted on every single backfill run forever -- `kb ab retry`/`kb ab pull`
+        followed by a manual re-embed is the deliberate escape hatch once ArchiveBox actually
+        has the content."""
+        return session.scalars(
+            select(cls)
+            .where(cls.push_status == ArchivedLinkPushStatus.SUCCESS)
+            .where(cls.content_status == ArchivedLinkContentStatus.NOT_ATTEMPTED)
+            .order_by(cls.created_at)
+        ).all()
 
     @classmethod
     def find_by_url(cls, session: Session, url: str) -> Optional[ArchivedLink]:

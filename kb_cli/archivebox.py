@@ -28,7 +28,7 @@ from base import _now
 from kb_cli._util import print_links, resolve_text_arg
 from kb_cli.text import extract_paragraphs
 from kb_cli.secrets import CredentialUnavailableError, get_credential, set_credential
-from models import ArchivedLink, ArchivedLinkPushStatus, Settings
+from models import ArchivedLink, ArchivedLinkContentStatus, ArchivedLinkPushStatus, Settings
 
 _CREDENTIAL_SERVICE = "kb-archivebox"
 _SERVER_BASE_URL = "http://127.0.0.1:25690"
@@ -128,6 +128,35 @@ def resolve_or_push(session: Session, link: ArchivedLink) -> None:
     link.push_status = ArchivedLinkPushStatus.SUCCESS
     link.resolved_at = _now()
     link.migrated_at = link.migrated_at or _now()
+    session.commit()
+
+
+def fetch_and_embed_content(session: Session, link: ArchivedLink) -> None:
+    """Fetch link's live ArchiveBox content and fold it into the embedding -- the one function
+    that actually performs a content-aware re-embed, shared by the push-queue worker (called
+    automatically once a push resolves to SUCCESS, api/archivebox_router.py) and `kb ab
+    backfill-content` (the on-demand/manual path for rows that missed the automatic one, e.g.
+    a kb.service restart mid-flight). Never persists the fetched text itself -- only the
+    resulting vector -- see ArchivedLink._pending_content's docstring in models.py. Always ends
+    with content_status set to EMBEDDED or FETCH_FAILED; never leaves a row at NOT_ATTEMPTED
+    once this has been called on it, so a broken snapshot is recorded once and skipped by every
+    later `needing_content_backfill()` call rather than re-attempted forever."""
+    if not link.ab_id:
+        link.content_status = ArchivedLinkContentStatus.FETCH_FAILED
+        link.content_fetch_error = "no ab_id yet -- content requires a resolved push"
+        session.commit()
+        return
+    try:
+        url = archivebox_url(session, f"archive/{link.ab_id}/")
+        paragraphs = extract_paragraphs(url)
+    except Exception as exc:
+        link.content_status = ArchivedLinkContentStatus.FETCH_FAILED
+        link.content_fetch_error = str(exc)
+        session.commit()
+        return
+    link.reembed_with_content("\n\n".join(paragraphs))
+    link.content_status = ArchivedLinkContentStatus.EMBEDDED
+    link.content_fetch_error = None
     session.commit()
 
 
@@ -417,6 +446,19 @@ def cmd_fetch(args: argparse.Namespace) -> None:
         print(para)
 
 
+def cmd_backfill_content(args: argparse.Namespace) -> None:
+    links = ArchivedLink.needing_content_backfill(args.session)
+    if not links:
+        print("Nothing to backfill -- every SUCCESS row already has a content embedding or a recorded fetch failure.")
+        return
+    for link in links:
+        fetch_and_embed_content(args.session, link)
+        if link.content_status == ArchivedLinkContentStatus.EMBEDDED:
+            print(f"AB{link.id}: embedded")
+        else:
+            print(f"AB{link.id}: failed -- {link.content_fetch_error}", file=sys.stderr)
+
+
 def cmd_retry(args: argparse.Namespace) -> None:
     for link_id in args.id:
         link = args.session.get(ArchivedLink, link_id)
@@ -531,3 +573,13 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     )
     p_pull.add_argument("id", type=int, nargs="+")
     p_pull.set_defaults(func=cmd_pull)
+
+    p_backfill_content = sub.add_parser(
+        "backfill-content",
+        help=(
+            "Fetch and embed article content for every SUCCESS-pushed row whose embedding "
+            "still only covers title+reason -- skips rows already recorded as a permanent "
+            "content-fetch failure (retry those via `kb ab pull` then re-run this)"
+        ),
+    )
+    p_backfill_content.set_defaults(func=cmd_backfill_content)

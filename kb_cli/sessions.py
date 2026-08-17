@@ -17,6 +17,7 @@ foreground poll loop) implement.
 import argparse
 import json
 import os
+import signal
 import sys
 import time
 from pathlib import Path
@@ -32,6 +33,13 @@ from kb_cli._util import print_table, resolve_text_arg
 _PROJECTS_DIR = Path.home() / ".claude" / "projects"
 
 _LISTEN_POLL_SECONDS = 5
+
+# How many characters of a message body to preview in `kb sessions listen`'s own printed
+# output -- long enough to judge relevance/urgency at a glance, short enough that a large
+# message doesn't derail whatever the agent was already doing (see kb Note #159's follow-up:
+# the completion notification's own <summary> line never carries message content, only a
+# pointer to the output file, so this preview is what actually needs to be self-sufficient).
+_LISTEN_PREVIEW_CHARS = 200
 
 
 def _session_info(path: Path) -> dict[str, str] | None:
@@ -293,6 +301,16 @@ def cmd_listen(args: argparse.Namespace) -> None:
             "rather than starting a second listener for the same session."
         )
         raise SystemExit(1)
+
+    def _handle_sigterm(signum: int, frame: object) -> None:
+        # TaskStop (or any external kill) sends SIGTERM, not KeyboardInterrupt -- without a
+        # handler that turns it into an exception, the `finally` block below never runs and
+        # is_listening is left stuck True in the DB, forcing a manual clear before the next
+        # `kb sessions listen` will start (hit live, 2026-08-17). SIGKILL still can't be caught,
+        # same as any Unix process -- that gap is unavoidable, not fixed here.
+        raise SystemExit(143)  # 128 + SIGTERM, conventional exit code for a killed process
+
+    signal.signal(signal.SIGTERM, _handle_sigterm)
     row.is_listening = True
     args.session.commit()
     try:
@@ -300,7 +318,19 @@ def cmd_listen(args: argparse.Namespace) -> None:
             messages = SessionMessage.inbox(args.session, to_session, unread_only=True)
             if messages:
                 for msg in messages:
-                    print(f"From {msg.from_session} at {msg.created_at.isoformat()}:\n  {msg.body}\n")
+                    body = msg.body
+                    if len(body) > _LISTEN_PREVIEW_CHARS:
+                        preview = body[:_LISTEN_PREVIEW_CHARS] + "..."
+                        print(
+                            f"From {msg.from_session} at {msg.created_at.isoformat()} "
+                            f"({len(body)} chars):\n  {preview}\n"
+                            f"  (run `kb sessions inbox` to see the full message)\n"
+                        )
+                    else:
+                        print(
+                            f"From {msg.from_session} at {msg.created_at.isoformat()} "
+                            f"({len(body)} chars):\n  {body}\n"
+                        )
                     msg.mark_read()
                 args.session.commit()
                 # stdout is fully buffered (not line-buffered) once it's not a TTY, which is

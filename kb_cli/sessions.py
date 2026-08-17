@@ -153,6 +153,17 @@ def cmd_list(args: argparse.Namespace) -> None:
     headers = ["Session", "You?", "Status", "Listening", "Cwd", "Title"]
     rows = []
     for row in live:
+        if row.is_listening_live():
+            listening = f"yes (pid {row.listener_pid})"
+        elif row.is_listening:
+            # Flag still true but listener_pid doesn't resolve -- a dead listener that never
+            # cleared its own flag (SIGKILL/OOM/harness reap, see HarnessSession's docstring),
+            # not a live one. Surfaced as "stale" rather than blank "no" so this is diagnosable
+            # at a glance instead of looking identical to a session that was never listening --
+            # `kb sessions listen` self-heals it on next start, this is a status readout only.
+            listening = "stale"
+        else:
+            listening = ""
         rows.append(
             [
                 # Full id, not truncated -- kb sessions send needs to copy-paste this
@@ -160,7 +171,7 @@ def cmd_list(args: argparse.Namespace) -> None:
                 row.id,
                 "yes" if row.id == self_id else "",
                 row.status.value,
-                "yes" if row.is_listening else "",
+                listening,
                 row.cwd,
                 row.title or "",
             ]
@@ -288,19 +299,32 @@ def cmd_listen(args: argparse.Namespace) -> None:
             "registration didn't happen), then retry"
         )
         raise SystemExit(1)
-    if row.is_listening:
+    if row.is_listening_live():
         # Refuse rather than try to kill the existing one -- a run_in_background shell is
         # entirely local to the harness session that started it, with no pid or handle
         # visible to this process, so there is no safe way to terminate it from here.
         # Two concurrent listeners for the same session would double-poll, race on
         # mark_read(), and stomp on is_listening in each other's `finally` block --
         # refusing to start a second one is the correct fix, not cross-process termination.
+        # is_listening_live() (not the bare is_listening flag) is what makes this refusal
+        # trustworthy -- a listener killed by SIGKILL/OOM/harness-reap without ever clearing
+        # its own flag no longer wedges every future `kb sessions listen` for this session
+        # (hit live, 2026-08-17, kb Note #163): the pid check below fails, so this branch is
+        # skipped and a fresh listener starts normally instead of refusing forever.
         print(
             f"kb sessions listen: already listening for session {to_session} (per kb's own records) -- "
             "check your own harness's background-task list (not another kb command) for the existing one "
             "rather than starting a second listener for the same session."
         )
         raise SystemExit(1)
+    if row.is_listening and not row.is_listening_live():
+        # Flag was stuck true from a dead listener (see is_listening_live()'s docstring) --
+        # self-heal it here rather than leaving the stale value in place until this row's own
+        # finally block below overwrites it, so `kb sessions list`'s Listening column doesn't
+        # keep reporting a dead listener as live in the window before this new one exits.
+        row.is_listening = False
+        row.listener_pid = None
+        args.session.commit()
 
     def _handle_sigterm(signum: int, frame: object) -> None:
         # TaskStop (or any external kill) sends SIGTERM, not KeyboardInterrupt -- without a
@@ -312,11 +336,21 @@ def cmd_listen(args: argparse.Namespace) -> None:
 
     signal.signal(signal.SIGTERM, _handle_sigterm)
     row.is_listening = True
+    row.listener_pid = os.getpid()
     args.session.commit()
     try:
         while True:
             messages = SessionMessage.inbox(args.session, to_session, unread_only=True)
             if messages:
+                # Deliberately not calling msg.mark_read() here -- this print is a best-effort
+                # preview whose actual delivery into the agent's context depends on the harness
+                # notification firing and being read, neither of which listen can confirm. If it
+                # marked read anyway, a failed/missed delivery would make `kb sessions inbox`
+                # (the one deterministic fallback) come back empty too, hiding a message that was
+                # never really seen (hit live, 2026-08-17 -- an agent explicitly ran `kb sessions
+                # inbox` right after a listen completion and got "No new messages" because listen
+                # had already marked it read). Marking read only happens in cmd_inbox now, at the
+                # point of actual confirmed consumption.
                 for msg in messages:
                     body = msg.body
                     if len(body) > _LISTEN_PREVIEW_CHARS:
@@ -331,8 +365,6 @@ def cmd_listen(args: argparse.Namespace) -> None:
                             f"From {msg.from_session} at {msg.created_at.isoformat()} "
                             f"({len(body)} chars):\n  {body}\n"
                         )
-                    msg.mark_read()
-                args.session.commit()
                 # stdout is fully buffered (not line-buffered) once it's not a TTY, which is
                 # always true for a run_in_background process -- an explicit flush here is
                 # required so the printed message is actually visible in the captured output
@@ -343,6 +375,7 @@ def cmd_listen(args: argparse.Namespace) -> None:
             time.sleep(_LISTEN_POLL_SECONDS)
     finally:
         row.is_listening = False
+        row.listener_pid = None
         args.session.commit()
 
 

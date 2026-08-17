@@ -2054,7 +2054,15 @@ class HarnessSession(Base):
     those transitions (UserPromptSubmit -> INFERRING + bump last_active_at, Stop -> IDLE +
     bump last_response_at) -- don't add a field here that no hook can honestly populate.
     is_listening is set/cleared by `kb sessions listen` itself on start and on exit (including
-    a trap so a killed listener doesn't leave it permanently stuck true)."""
+    a SIGTERM trap so a normally-killed listener doesn't leave it stuck true) -- but a SIGKILL,
+    an OOM kill, or a harness that reaps the process without ever delivering SIGTERM all skip
+    that exit path, and were all confirmed live (2026-08-17, kb Note #163) to leave is_listening
+    permanently stuck true with no self-heal. listener_pid (the `kb sessions listen` subprocess's
+    own pid, distinct from this row's own `pid` -- the harness process's pid, a different
+    process) is what makes that recoverable: is_listening_live() below checks whether
+    listener_pid still resolves before trusting the flag, the same pid-liveness pattern this
+    class already uses for the row itself (is_alive() below) rather than a status flag with no
+    external check."""
 
     __tablename__ = "harness_session"
 
@@ -2068,6 +2076,7 @@ class HarnessSession(Base):
         default=HarnessSessionStatus.IDLE,
     )
     is_listening: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    listener_pid: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     last_active_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     last_response_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -2093,6 +2102,18 @@ class HarnessSession(Base):
 
     def is_alive(self) -> bool:
         return psutil.pid_exists(self.pid)
+
+    def is_listening_live(self) -> bool:
+        """is_listening, corrected for a listener process that died without clearing its own
+        flag (SIGKILL, OOM, a harness reap that skips SIGTERM -- see this class's docstring).
+        False whenever the flag is set but listener_pid no longer resolves, so a caller never
+        has to trust a self-reported flag with no external check -- the same reasoning that
+        already makes is_alive() a pid check instead of a status column."""
+        if not self.is_listening:
+            return False
+        if self.listener_pid is None:
+            return False
+        return psutil.pid_exists(self.listener_pid)
 
     @classmethod
     def live(cls, session: Session) -> list[HarnessSession]:

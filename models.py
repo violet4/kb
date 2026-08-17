@@ -2120,6 +2120,34 @@ class HarnessSession(Base):
         """Every registered session whose pid still resolves -- what `kb sessions` lists."""
         return [row for row in session.scalars(select(cls)).all() if row.is_alive()]
 
+    @classmethod
+    def stale_listeners(cls, session: Session) -> list[HarnessSession]:
+        """Every row with is_listening stuck True whose listener_pid no longer resolves (see
+        is_listening_live()'s docstring for how this happens: SIGKILL/OOM/harness-reap skipping
+        the listen loop's own SIGTERM-triggered cleanup). Deliberately not scoped to live() --
+        a session itself can be gone (harness closed) while its is_listening flag is still
+        stuck true, and that row is exactly as safe to clear as one whose session is alive."""
+        return [
+            row
+            for row in session.scalars(select(cls).where(cls.is_listening.is_(True))).all()
+            if not row.is_listening_live()
+        ]
+
+    @classmethod
+    def clear_stale_listeners(cls, session: Session) -> list[HarnessSession]:
+        """DB-only cleanup: clears is_listening/listener_pid on stale_listeners() rows. Never
+        touches an OS process -- unlike killing by pid (see kb Note #159's postmortem, 2026-08-17:
+        an agent trying to stop its own session's background listener instead killed `kb sessions
+        listen` processes for other live sessions by grepping `ps aux`), this only ever corrects
+        this row's own bookkeeping for a listener process that has *already* exited on its own.
+        A live listener (listener_pid still resolves) is never a candidate, live or not-yours --
+        so this is always safe to run broadly, including automatically, with no scoping needed."""
+        rows = cls.stale_listeners(session)
+        for row in rows:
+            row.is_listening = False
+            row.listener_pid = None
+        return rows
+
     def __repr__(self) -> str:
         listening_str = " listening" if self.is_listening else ""
         return f"<HarnessSession {self.id[:8]} [{self.status.value}]{listening_str} cwd={self.cwd!r}>"

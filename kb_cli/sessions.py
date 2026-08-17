@@ -145,6 +145,14 @@ def cmd_list(args: argparse.Namespace) -> None:
     if args.all:
         cmd_history(args)
         return
+    cleared = HarnessSession.clear_stale_listeners(args.session)
+    if cleared:
+        args.session.commit()
+        print(
+            f"(cleared {len(cleared)} stale listener flag{'s' if len(cleared) != 1 else ''} -- "
+            f"dead process{'es' if len(cleared) != 1 else ''}, DB bookkeeping only, "
+            "see `kb sessions cleanup --help`)"
+        )
     live = HarnessSession.live(args.session)
     if not live:
         print("No live sessions.")
@@ -379,6 +387,21 @@ def cmd_listen(args: argparse.Namespace) -> None:
         args.session.commit()
 
 
+def cmd_cleanup(args: argparse.Namespace) -> None:
+    """Explicit verb for the same DB-only stale-listener clear that `kb sessions list` already
+    runs automatically -- for a script/hook that wants the clear without the rest of list's
+    table output, or for running it on demand right after noticing a 'stale' row. Never touches
+    an OS process (see HarnessSession.clear_stale_listeners docstring) -- this is always safe to
+    run against every session's rows, not just your own, unlike killing a pid found via `ps aux`."""
+    cleared = HarnessSession.clear_stale_listeners(args.session)
+    args.session.commit()
+    if not cleared:
+        print("No stale listener flags found.")
+        return
+    for row in cleared:
+        print(f"Cleared stale listener flag: session {row.id} (cwd={row.cwd!r})")
+
+
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     parser = subparsers.add_parser("sessions", help="Live harness sessions: discover, message, and listen")
     sub = parser.add_subparsers(dest="subcommand")
@@ -416,6 +439,13 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     )
     inbox_parser.add_argument("--quiet", action="store_true", help="Print nothing when there are no new messages")
     inbox_parser.set_defaults(func=cmd_inbox)
+
+    cleanup_parser = sub.add_parser(
+        "cleanup",
+        help="Clear stale is_listening flags (dead listener processes) -- DB bookkeeping only, "
+        "never touches an OS process. Also runs automatically as part of `kb sessions list`.",
+    )
+    cleanup_parser.set_defaults(func=cmd_cleanup)
 
     listen_parser = sub.add_parser(
         "listen",

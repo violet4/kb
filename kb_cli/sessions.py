@@ -297,7 +297,6 @@ def cmd_listen(args: argparse.Namespace) -> None:
     args.session.commit()
     try:
         while True:
-            args.session.expire_all()
             messages = SessionMessage.inbox(args.session, to_session, unread_only=True)
             if messages:
                 for msg in messages:

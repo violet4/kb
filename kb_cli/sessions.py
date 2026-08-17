@@ -307,9 +307,7 @@ def cmd_listen(args: argparse.Namespace) -> None:
                 # always true for a run_in_background process -- an explicit flush here is
                 # required so the printed message is actually visible in the captured output
                 # before the process exits, rather than depending on Python's own exit-time
-                # flush (which was silently lost at least once: message #8, 2026-08-17 --
-                # DB showed a correct mark_read()+commit but no delivered text ever appeared
-                # in the backgrounded task's output).
+                # flush. See kb Note #159 for the bug this fixes and how it was verified.
                 sys.stdout.flush()
                 return
             time.sleep(_LISTEN_POLL_SECONDS)

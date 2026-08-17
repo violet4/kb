@@ -35,18 +35,27 @@ def cmd_add(args: argparse.Namespace) -> None:
         print("--relation must be a non-empty string", file=sys.stderr)
         sys.exit(1)
     type_a, id_a = parse_ref(args.a)
-    type_b, id_b = parse_ref(args.b)
-    try:
-        link = EntityLink.create(args.session, type_a, id_a, type_b, id_b, args.relation, note=args.note)
-    except ValueError as e:
-        print(str(e), file=sys.stderr)
-        sys.exit(1)
-    except IntegrityError:
-        args.session.rollback()
-        print(f"Link already exists: {args.a} --{args.relation}-- {args.b}", file=sys.stderr)
-        sys.exit(1)
-    args.session.commit()
-    print(link)
+    # B may be a comma-separated list of refs, so one Note can be linked to several
+    # ArchivedLinks/etc. in a single command -- one shell-permission prompt instead of one per link.
+    b_refs = [b.strip() for b in args.b.split(",") if b.strip()]
+    exit_code = 0
+    for b_ref in b_refs:
+        type_b, id_b = parse_ref(b_ref)
+        try:
+            link = EntityLink.create(args.session, type_a, id_a, type_b, id_b, args.relation, note=args.note)
+        except ValueError as e:
+            print(str(e), file=sys.stderr)
+            exit_code = 1
+            continue
+        except IntegrityError:
+            args.session.rollback()
+            print(f"Link already exists: {args.a} --{args.relation}-- {b_ref}", file=sys.stderr)
+            exit_code = 1
+            continue
+        args.session.commit()
+        print(link)
+    if exit_code:
+        sys.exit(exit_code)
 
 
 def cmd_rm(args: argparse.Namespace) -> None:
@@ -112,7 +121,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
 
     p_add = sub.add_parser("add", help="Create a link between two entities")
     p_add.add_argument("a", metavar="A", help=REF_HELP)
-    p_add.add_argument("b", metavar="B", help=REF_HELP)
+    p_add.add_argument("b", metavar="B", help=REF_HELP + "; comma-separate multiple refs to link A to each in one call")
     p_add.add_argument("--relation", required=True, help="Non-empty label for what this link means, e.g. 'cites'")
     p_add.add_argument("--note")
     p_add.set_defaults(func=cmd_add)

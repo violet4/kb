@@ -1112,7 +1112,7 @@ class Daily(Base, HasContextOrTag):
 # ---------------------------------------------------------------------------
 
 
-class Item(Base):
+class Item(Base, HasEmbedding):
     """JTI base for game-specific items. Game side tables below join 1:1 via id, each composing
     whichever mixins.py traits it actually needs (weight, grid size, stack size, ...)."""
 
@@ -1128,6 +1128,13 @@ class Item(Base):
     context: Mapped[Optional[Context]] = relationship("Context")
 
     __mapper_args__ = {"polymorphic_on": "game", "polymorphic_identity": "item"}
+
+    @staticmethod
+    def _embed_fields() -> set[str]:
+        return {"name", "notes"}
+
+    def _embed_source_text(self) -> str:
+        return f"{self.name}\n\n{self.notes}" if self.notes else self.name
 
     @classmethod
     def by_game(cls, session: Session, game: str) -> Sequence[Item]:
@@ -1158,7 +1165,7 @@ class IrlItem(Item, HasWeight):
 # ---------------------------------------------------------------------------
 
 
-class Vendor(Base):
+class Vendor(Base, HasEmbedding):
     __tablename__ = "vendor"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -1166,6 +1173,13 @@ class Vendor(Base):
     domain: Mapped[str] = mapped_column(String, nullable=False)  # "irl", "pg", ...
     kind: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # e.g. "grocery", "npc", "player_shop"
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    @staticmethod
+    def _embed_fields() -> set[str]:
+        return {"name", "notes"}
+
+    def _embed_source_text(self) -> str:
+        return f"{self.name}\n\n{self.notes}" if self.notes else self.name
 
     def __repr__(self) -> str:
         return f"<Vendor {self.name!r} [{self.domain}]>"
@@ -1191,7 +1205,7 @@ class VendorItem(Base):
         return f"<VendorItem {self.vendor.name if self.vendor else '?'}:{self.vendor_sku} -> {self.item.name if self.item else '?'}>"
 
 
-class Purchase(Base):
+class Purchase(Base, HasEmbedding):
     __tablename__ = "purchase"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -1203,6 +1217,14 @@ class Purchase(Base):
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     vendor_item: Mapped[VendorItem] = relationship("VendorItem")
+
+    @staticmethod
+    def _embed_fields() -> set[str]:
+        return {"notes"}
+
+    def _embed_source_text(self) -> str:
+        item_name = self.vendor_item.item.name if self.vendor_item and self.vendor_item.item else ""
+        return f"{item_name}\n\n{self.notes}" if self.notes else item_name
 
     def __repr__(self) -> str:
         return (
@@ -2147,6 +2169,97 @@ class HarnessSession(Base):
             row.is_listening = False
             row.listener_pid = None
         return rows
+
+    @classmethod
+    def detached_listeners(cls, session: Session) -> list[HarnessSession]:
+        """Every row whose listener is genuinely alive (is_listening_live() True) but whose
+        own `pid` (the harness process, not listener_pid) has since gone on to register a
+        *different*, more recently active HarnessSession row -- a `kb sessions listen` process
+        that outlived the specific harness *session* that spawned it, even though the
+        underlying OS process (`pid`) is still very much alive.
+
+        Deliberately not `not row.is_alive()` (bare pid liveness) -- confirmed live 2026-08-17
+        (kb Note #163's follow-up) that this undercounts: `/clear` resets a Claude Code
+        session's transcript and gets issued a brand-new session id (CLAUDE_CODE_SESSION_ID
+        is fixed per-process, harness.py:current_session_id() reflects whatever id is current,
+        but the *old* id's HarnessSession row and its background `kb sessions listen` task are
+        never torn down), all while the OS process backing `pid` keeps right on running under
+        the new id. Three real rows were found sharing one pid this way. row.is_alive() reports
+        True for all of them, including the two stale ones -- pid liveness alone can't tell
+        "this is still my current session" from "this pid moved on to a newer session and I'm
+        an abandoned leftover". The real signal is relative: is there another row for the same
+        pid with a strictly later last_active_at -- if so, this row's session has been
+        superseded and its listener (if still running) is an orphan even though `pid` resolves.
+
+        Distinct from stale_listeners(): that method covers a listener that already died
+        without clearing its own flag (DB bookkeeping wrong, no live process to worry about).
+        This one is the opposite -- the process is still alive and will poll forever, since
+        nothing will ever attach to read its background-task-completion notification again.
+
+        DB-provable, not a `ps aux` grep -- same safety bar clear_stale_listeners() already
+        meets (see kb Note #159's postmortem) -- so this is safe to compute broadly, including
+        automatically. Unlike clear_stale_listeners() though, correcting this case requires
+        actually killing listener_pid, not just fixing the DB row -- see
+        kill_detached_listeners()."""
+        listening = [
+            row
+            for row in session.scalars(select(cls).where(cls.is_listening.is_(True))).all()
+            if row.is_listening_live()
+        ]
+        if not listening:
+            return []
+        pids = {row.pid for row in listening}
+        latest_active_by_pid: dict[int, datetime] = {}
+        for row in session.scalars(select(cls).where(cls.pid.in_(pids))).all():
+            if row.last_active_at is None:
+                continue
+            current = latest_active_by_pid.get(row.pid)
+            if current is None or row.last_active_at > current:
+                latest_active_by_pid[row.pid] = row.last_active_at
+        return [
+            row
+            for row in listening
+            if row.last_active_at is not None
+            and row.pid in latest_active_by_pid
+            and row.last_active_at < latest_active_by_pid[row.pid]
+        ]
+
+    @classmethod
+    def kill_detached_listeners(cls, session: Session) -> list[tuple[HarnessSession, int]]:
+        """Terminates (SIGTERM, falling back to SIGKILL if still alive after) every
+        detached_listeners() row's listener_pid, then clears is_listening/listener_pid on that
+        row -- the actual-process-kill counterpart to clear_stale_listeners()'s DB-only clear.
+
+        Safe to run broadly/automatically for the same reason detached_listeners() is: each
+        candidate pid is read from this row's own listener_pid, provably alive (is_listening_live()
+        already confirmed it resolves) and provably orphaned (is_alive() confirmed the owning
+        harness does not), never guessed from a process-list grep -- so unlike the Note #159
+        postmortem this can't collide with another session's live listener.
+
+        Returns (row, killed_pid) pairs rather than bare rows -- row.listener_pid is cleared
+        to None as part of this same call, so a caller that wants to report which pid it just
+        killed (e.g. cmd_listen's startup sweep) can't read it back off the row afterwards."""
+        rows = cls.detached_listeners(session)
+        result: list[tuple[HarnessSession, int]] = []
+        for row in rows:
+            pid = row.listener_pid
+            # detached_listeners() only returns rows that passed is_listening_live(), which
+            # already requires listener_pid is not None -- assert makes that cross-method
+            # invariant explicit and checkable rather than re-widening the type to Optional.
+            assert pid is not None, "detached_listeners() row must have a live listener_pid"
+            if psutil.pid_exists(pid):
+                try:
+                    proc = psutil.Process(pid)
+                    proc.terminate()
+                    proc.wait(timeout=2)
+                except psutil.TimeoutExpired:
+                    proc.kill()
+                except psutil.NoSuchProcess:
+                    pass
+            result.append((row, pid))
+            row.is_listening = False
+            row.listener_pid = None
+        return result
 
     def __repr__(self) -> str:
         listening_str = " listening" if self.is_listening else ""

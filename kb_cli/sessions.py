@@ -299,6 +299,18 @@ def cmd_listen(args: argparse.Namespace) -> None:
     (including on an unhandled exception), so a killed listener never leaves a stale
     "listening" status behind."""
     to_session = _require_session_id()
+    # Sweep detached listeners (orphaned by a harness that exited without tearing down its
+    # background `kb sessions listen` task -- e.g. /clear, terminal closed) before doing
+    # anything else, so a fresh listener starting up is also the point that cleans up after
+    # any it finds -- confirmed live 2026-08-17, two such orphans found via manual pgrep/ps
+    # before this got automated. Runs for every session's rows, not just to_session's own, for
+    # the same reason clear_stale_listeners() does -- see kb Note #159 and
+    # HarnessSession.detached_listeners()'s docstring for why this is safe to do unscoped.
+    killed = HarnessSession.kill_detached_listeners(args.session)
+    if killed:
+        args.session.commit()
+        for row, pid in killed:
+            print(f"kb sessions listen: cleaned up detached listener for session {row.id} (was pid {pid})")
     row = args.session.get(HarnessSession, to_session)
     if row is None:
         print(

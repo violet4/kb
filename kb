@@ -30,6 +30,9 @@ Usage: kb [--context NAME] [--as-of WHEN] <command> [subcommand ...] [args ...]
   kb context add NAME | list | tree
   kb summary|sum|s [SECTION ...]
   kb wishlist add ... | update ID ... | search QUERY
+  kb vendor add NAME [--domain D] [--kind K] | list [--domain D] | search QUERY
+  kb item add NAME [--game G] [--upc U] | list [--game G] | search QUERY
+  kb purchase add VENDOR ITEM [--quantity N] [--unit-price P] [--notes ...] | list [--vendor V] [--item I] | search QUERY
   kb search QUERY   # search Goals, Todos, and Wishlist by text, plus Notes by semantic similarity
   kb text extract SOURCE [--cache] [--show N]   # clean text paragraphs from a URL/PDF/HTML/text file/stdin
   kb text semsearch rank QUERY [FILE] | compare A B   # rank/compare paragraphs by embedding
@@ -83,6 +86,7 @@ from kb_cli import (
     tag,
     timer,
     todo,
+    vendor,
     wishlist,
 )
 from kb_cli import games
@@ -163,6 +167,7 @@ log.add_flag_subparser(subparsers)
 context_cmd.add_subparser(subparsers)
 summary.add_subparser(subparsers)
 wishlist.add_subparser(subparsers)
+vendor.add_subparser(subparsers)
 timer.add_subparser(subparsers)
 pager.add_subparser(subparsers)
 anki.add_subparser(subparsers)

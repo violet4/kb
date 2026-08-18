@@ -347,17 +347,28 @@ def cmd_listen(args: argparse.Namespace) -> None:
         args.session.commit()
 
     def _handle_sigterm(signum: int, frame: object) -> None:
-        # TaskStop (or any external kill) sends SIGTERM, not KeyboardInterrupt -- without a
-        # handler that turns it into an exception, the `finally` block below never runs and
-        # is_listening is left stuck True in the DB, forcing a manual clear before the next
-        # `kb sessions listen` will start (hit live, 2026-08-17). SIGKILL still can't be caught,
-        # same as any Unix process -- that gap is unavoidable, not fixed here.
+        # TaskStop (or any external kill -- including another session's `kb sessions listen`
+        # startup sweep via kill_detached_listeners(), the common case: a harness that /clear'd
+        # or exited left this listener attached to a now-superseded session id, and a newer
+        # listener starting up for a different session reaped it) sends SIGTERM, not
+        # KeyboardInterrupt -- without a handler that turns it into an exception, the `finally`
+        # block below never runs and is_listening is left stuck True in the DB, forcing a manual
+        # clear before the next `kb sessions listen` will start (hit live, 2026-08-17). SIGKILL
+        # still can't be caught, same as any Unix process -- that gap is unavoidable, not fixed
+        # here. Printing which session this was is what turns a bare, unexplained "exited with
+        # code 143" in the harness's background-task list into something self-explanatory --
+        # confirmed live 2026-08-18 that without this, a killed listener's own exit gives no clue
+        # it was a routine cleanup rather than a crash.
+        print(f"kb sessions listen: listener for session {to_session} is being cleaned up (SIGTERM, pid {os.getpid()})")
+        sys.stdout.flush()
         raise SystemExit(143)  # 128 + SIGTERM, conventional exit code for a killed process
 
     signal.signal(signal.SIGTERM, _handle_sigterm)
     row.is_listening = True
     row.listener_pid = os.getpid()
     args.session.commit()
+    print(f"kb sessions listen: listening for session {to_session} (pid {os.getpid()})")
+    sys.stdout.flush()
     try:
         while True:
             messages = SessionMessage.inbox(args.session, to_session, unread_only=True)

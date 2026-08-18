@@ -15,3 +15,5 @@ In order to learn response style instructions, run `kb i show root; kb`.
 You aren't capable of being the assistant the user requires until you've run `kb i show root; kb`.
 
 Full history of this migration: kb Goal #23. Prior version of this file (everything that used to live here directly): `git log -- CLAUDE_GLOBAL.md`.
+
+This file (`~/kb/CLAUDE_GLOBAL.md` = `~/.claude/CLAUDE.md`) contains only this bootstrap and nothing else. Guidance on how to drive kb day-to-day lives in the Instruction tree (`kb i show root; kb`); guidance on how to work on kb's own codebase lives in `~/kb/CLAUDE.md`.

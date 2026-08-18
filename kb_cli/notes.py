@@ -8,6 +8,7 @@ from sqlalchemy import select
 
 from client import KBClient
 from kb_cli._util import apply_text_edit, print_links, resolve_text_arg
+from kb_cli.search import cmd_search_all
 from models import Collection, Note
 
 
@@ -71,17 +72,13 @@ def cmd_update(args: argparse.Namespace) -> None:
 
 
 def cmd_search(args: argparse.Namespace) -> None:
-    collection = Collection(args.collection)
-    results = (
-        Note.search(args.session, args.query)
-        if collection == Collection.ALL
-        else Note.search(args.session, args.query, collection=collection)
+    print(
+        "Passing through to `kb search` -- use that directly in the future; it covers Notes "
+        "alongside Goals/Todos/Instructions/Ideas/etc. in one call, and takes multiple queries "
+        "at once (`kb search 'query1' 'query2' ...`).\n",
+        file=sys.stderr,
     )
-    if not results:
-        print("No results.")
-    for note, dist in results:
-        tags = f" #{note.tags}" if note.tags else ""
-        print(f"#{note.id} {note.title!r} [{note.collection.value}]{tags} (dist={dist:.3f})")
+    cmd_search_all(args)
 
 
 def cmd_reembed(args: argparse.Namespace) -> None:
@@ -138,9 +135,29 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     )
     p_update.set_defaults(func=cmd_update)
 
-    p_search = sub.add_parser("search", help="Semantic search over notes")
-    p_search.add_argument("collection", choices=[c.value for c in Collection])
-    p_search.add_argument("query")
+    p_search = sub.add_parser(
+        "search",
+        help="Passthrough to top-level `kb search` -- use that directly instead",
+    )
+    p_search.add_argument(
+        "query",
+        nargs="+",
+        help="One or more search queries (quote each one separately) -- results for each "
+        "are printed under their own header",
+    )
+    p_search.add_argument(
+        "--all", action="store_true", help="Also include done/abandoned/dropped/acquired items (excluded by default)"
+    )
+    p_search.add_argument(
+        "--limit",
+        type=int,
+        default=10,
+        help="Max results across all entities combined, ranked by score",
+    )
+    p_search.add_argument(
+        "--since",
+        help="Only include rows at or after this date/timestamp",
+    )
     p_search.set_defaults(func=cmd_search)
 
     p_reembed = sub.add_parser("reembed", help="Recompute embeddings for all notes")

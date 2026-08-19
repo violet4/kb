@@ -7,6 +7,8 @@ its token cost) without either one shelling out to the other -- see kb Note #148
 # actually mean under the hood. Two tiers, not duplicated content -- bare kb points at -h for
 # depth rather than repeating it, same DRY-pointer discipline as the Instruction tree itself.
 BARE_INSTRUCTIONS = """\
+## Routing
+
 Routing a plain statement to the right subcommand (the noun -- which table):
   A stated fact/observation about the world -> log
   Claude used a phrase or showed a habit worth flagging for later analysis -> flag NOTE (see kb Goal #41)
@@ -20,6 +22,17 @@ Routing a plain statement to the right subcommand (the noun -- which table):
   A relationship between two existing records (any tables) -> link add TYPE:ID TYPE:ID --relation "..."
   Unsure where it goes -> inbox, triage later
 
+Once you have the right noun, most subcommands share the same small set of verbs -- this is
+the shape, not per-command trivia, so it isn't repeated per row above: `add` creates a new
+record; `show ID` reads one; `update ID` edits one in place; `complete ID` (or a closer verb
+like `abandon`/`drop`/`activate` where one genuinely fits better) resolves one. A stated fact
+usually means `add`; "I finished/fixed/no longer need X" usually means `complete` or `update`
+on an EXISTING record, not a fresh `add` -- check `kb <noun> pending`/`list`/`search` for the
+existing record first rather than creating a duplicate. Run `kb <noun> --help` to see the real
+verb set for that noun; it isn't identical everywhere.
+
+## Global Flags
+
 Global flags (--context, --as-of) are parsed by `kb` itself, before it even looks at the
 subcommand -- they must come immediately after `kb`, never after the subcommand or its own
 args. `kb --context "serbule keep" todo add "buy salt"` works; `kb todo add "buy salt"
@@ -30,25 +43,7 @@ per-command flag for reassigning an existing row, not this global one.) `search`
 own `--since DATE` (a subcommand-local flag, not global -- goes after `search`, e.g.
 `kb search --since 2026-07-28 "query"`) -- not yet available on other subcommands.
 
-Once you have the right noun, most subcommands share the same small set of verbs -- this is
-the shape, not per-command trivia, so it isn't repeated per row above: `add` creates a new
-record; `show ID` reads one; `update ID` edits one in place; `complete ID` (or a closer verb
-like `abandon`/`drop`/`activate` where one genuinely fits better) resolves one. A stated fact
-usually means `add`; "I finished/fixed/no longer need X" usually means `complete` or `update`
-on an EXISTING record, not a fresh `add` -- check `kb <noun> pending`/`list`/`search` for the
-existing record first rather than creating a duplicate. Run `kb <noun> --help` to see the real
-verb set for that noun; it isn't identical everywhere.
-
-The CLI itself should be ergonomic and intuitive to someone who has never used kb before --
-optimize for that fresh-eyes experience, not for muscle memory built up over a long session.
-When a command doesn't behave the way this shape would reasonably predict (e.g. `update` taking
-a bare positional ID everywhere else, but requiring a flag in one subcommand), that mismatch is
-a signal to fix the CLI so it matches the convention, not to just document the exception here --
-a documented exception still costs every first-time caller the same surprise, it only gives them
-somewhere to look afterward. Default to changing the code rather than this text, since a code fix
-removes the surprise for everyone going forward, including a session with no memory of this
-paragraph; only fix this text instead when the CLI's current shape is genuinely the more correct
-one and this text is what's stale.
+## Context Scoping
 
 If the need/fact is tied to a place ("next time I'm in X"), always pin it with --context --
 never just mention the place in the title. Example: "I need salt next time I'm in Serbule
@@ -66,6 +61,8 @@ never silently wrong -- trust the one-shot scoped command first, fall back to un
 `context tree`/`search` only if the scoped result comes back empty and the context itself
 might be wrong.
 
+## Writing Long Text
+
 Write any body/description/note longer than a short sentence through stdin, not as an inline
 shell argument: pass `-` as that argument's value and pipe or heredoc the real content in, e.g.
 `kb notes add "title" - <<'EOF'` ... `EOF`, or `some_command | kb notes add "title" -`. This is
@@ -81,25 +78,27 @@ invocation (stdin can only be consumed once) -- for a command with two free-text
 `ab add URL TITLE REASON`), pass `-` for whichever one is actually long and give the other as a
 normal short inline string.
 
+## Linking Records
+
 Default to several small linked records over one large one: the moment a record would cover
 more than one reason someone might come looking for it, split it and connect the pieces with
 `kb link add` instead of writing one combined record — a link costs one command and makes each
 piece independently reachable, so there's no size/completeness tradeoff to weigh before
 reaching for it. `kb link add A B --relation "..."` links any two existing rows in any tables, each given as
 TYPE:ID (e.g. `kb link add Goal:34 Todo:102 --relation "tracked-by"`) -- TYPE is the record's
-own model name (Goal, Todo, Note, ...) and ID its numeric id. Order is meaningful and stored
-exactly as given, never reordered: `--relation` reads strictly A-to-B, so
-`Goal:34 --tracked-by--> Todo:102` means "Goal 34 is tracked by Todo 102," not the reverse --
-put whichever side is the grammatical subject of the relation label first (A), the object
-second (B). Swapping A and B does not express the same fact backwards, it silently records a
-different, usually wrong, fact -- if in doubt, read the args back as a sentence ("A [relation]
-B") before running the command. `--relation` is required and must be a non-empty label; both
-endpoints are validated to actually exist before the link is written, so a link can never point
-at a nonexistent row. `kb link add` prints the created link's own `#ID` in its output --
-`kb link rm ID` takes that id, never guess or reuse an id from an earlier link. `kb link show
-TYPE:ID` renders the graph outward from that row, one hop deep by default (`--depth N` to go
-further -- start with 1, since link-dense areas of the graph can expand into a large subgraph
-fast at 2+ hops). Run `kb link -h` for rm and the full picture.
+own model name (Goal, Todo, Note, ...) and ID its numeric id. `--relation` reads strictly
+A-to-B and is stored exactly as given, never reordered: `Goal:34 --tracked-by--> Todo:102`
+means "Goal 34 is tracked by Todo 102," not the reverse -- put the grammatical subject of the
+relation first (A), the object second (B); if in doubt, read the args back as a sentence
+("A [relation] B") before running the command. `--relation` is required and must be a
+non-empty label; both endpoints are validated to actually exist before the link is written, so
+a link can never point at a nonexistent row. `kb link add` prints the created link's own `#ID`
+in its output -- `kb link rm ID` takes that id, never guess or reuse an id from an earlier
+link. `kb link show TYPE:ID` renders the graph outward from that row, one hop deep by default
+(`--depth N` to go further -- start with 1, since link-dense areas of the graph can expand into
+a large subgraph fast at 2+ hops). Run `kb link -h` for rm and the full picture.
+
+## Archiving URLs
 
 `kb ab add URL TITLE REASON` snapshots a URL -- TITLE (neutral, what the page is) and REASON
 (why it was worth keeping) are both required, never optional, so nothing gets saved as a bare
@@ -111,6 +110,8 @@ Journal body cites the URL (e.g. "Sources: AB23"), not the bare URL alone, so th
 travels with the prose. Run `kb ab -h` for the full picture (list/show, ArchiveBox migration
 plan, why title and reason are split).
 
+## Searching Documents
+
 "What does this page/PDF say about X", "search this doc for X", or "how similar are these two
 texts" is `kb text extract` (pull clean paragraphs from a URL/PDF/HTML/text file/stdin) piped
 into `kb text semsearch` (rank or compare those paragraphs by embedding) -- grouped under one
@@ -118,7 +119,11 @@ into `kb text semsearch` (rank or compare those paragraphs by embedding) -- grou
 the same pipeline: `kb text extract URL | kb text semsearch rank "query"`. Run
 `kb text extract --help` / `kb text semsearch --help` for the full usage.
 
+## More
+
 Run `kb <command> --help` before typing a command from memory -- flags and shapes above are
 illustrative, not exhaustive. Run `kb -h` for full technical reference (what --context/--as-of
-really do, the complete subcommand list). See also: kb instructions root.
+really do, the complete subcommand list). See also: kb instructions root and `kb i show
+engineering` for the general CLI-ergonomics principle (applies across all projects, not just
+kb) that governs how this file should read.
 """

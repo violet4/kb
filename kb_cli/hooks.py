@@ -105,6 +105,75 @@ def cmd_plan_md_check(args: argparse.Namespace) -> None:
         print(_PLAN_MD_HINT)
 
 
+_DEPENDENCY_INSTALL_RE = re.compile(
+    r"(?:^|[;&|]\s*)"
+    r"(?:\w+=\S+\s+)*"  # skip leading env-var assignments (e.g. AUDITED=note215 npm install ...)
+    r"(?:npm\s+(?:install|i|add)|"
+    r"pnpm\s+(?:install|i|add)|"
+    r"yarn\s+add|"
+    r"pip3?\s+install|"
+    r"uv\s+(?:add|pip\s+install)|"
+    r"cargo\s+add|"
+    r"gem\s+install|"
+    r"go\s+get)"
+    r"\s+\S"  # require at least one argument -- bare `npm install` (no target) installs the existing lockfile, not a new dependency
+)
+
+_AUDITED_RE = re.compile(r"\bAUDITED=(\S+)")
+
+_DEPENDENCY_INSTALL_BLOCK = (
+    "Blocked: this looks like it adds a new third-party dependency. Per kb instructions #27 "
+    "(security), audit its supply-chain provenance BEFORE installing -- maintainer identity, "
+    "release history, real adoption, lookalike/typosquat check, transitive dependency graph. "
+    "Once the audit is done, write it to a kb Note (`kb notes add ...`) and re-run the same "
+    "install command prefixed with AUDITED=noteN (N = that Note's id), e.g. "
+    "`AUDITED=note215 npm install react-router-dom` -- this logs and links the install to its "
+    "audit record for later verification, and lets the command through."
+)
+
+
+def cmd_dependency_install_check(args: argparse.Namespace) -> None:
+    """Read a Bash command string on stdin; if it looks like it installs a new third-party
+    dependency (npm/pnpm/yarn install|add, pip/uv install|add, cargo add, gem install, go get
+    -- with at least one argument, so a bare `npm install` that just replays the lockfile
+    doesn't match), require an `AUDITED=noteN` token in the same command line before letting
+    it through. Missing the token: print a block reason to stdout (harness adapter denies the
+    tool call). Token present: log a LogEntry linking this exact install command to the named
+    Note (the audit record) via `kb link add`, so the audit-then-install claim is independently
+    checkable later rather than a bare self-report -- then print nothing so the command proceeds.
+    See kb instructions #27 (security) for the audit checklist itself."""
+    command = sys.stdin.read()
+    if not _DEPENDENCY_INSTALL_RE.search(command):
+        return
+
+    audited_match = _AUDITED_RE.search(command)
+    if not audited_match:
+        print(_DEPENDENCY_INSTALL_BLOCK)
+        return
+
+    from models import EntityLink, LogEntry, Note
+
+    token = audited_match.group(1)
+    note_match = re.fullmatch(r"note(\d+)", token, re.IGNORECASE)
+    if not note_match:
+        print(
+            f"Blocked: AUDITED={token} doesn't match the expected `noteN` shape "
+            "(e.g. AUDITED=note215) -- can't link it to an audit record."
+        )
+        return
+
+    note_id = int(note_match.group(1))
+    note = args.session.get(Note, note_id)
+    if note is None:
+        print(f"Blocked: AUDITED={token} -- no Note #{note_id} exists. Write the audit to a real Note first.")
+        return
+
+    entry = LogEntry.create(args.session, f"Dependency install (audited via Note #{note_id}): {command.strip()}")
+    args.session.flush()
+    EntityLink.create(args.session, "LogEntry", entry.id, "Note", note_id, "audited-by")
+    args.session.commit()
+
+
 _TREE_REMINDER = (
     "Re-check the Instruction tree for a child relevant to what you're about to do now, not just at session start."
 )
@@ -306,6 +375,12 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         help="Detect a `find /` (root-scoped) command on stdin; print a block reason if it matches",
     )
     p_find_root.set_defaults(func=cmd_find_root_check)
+
+    p_dep_install = sub.add_parser(
+        "dependency-install-check",
+        help="Detect a new-dependency install command on stdin; require AUDITED=noteN or print a block reason",
+    )
+    p_dep_install.set_defaults(func=cmd_dependency_install_check)
 
     p_memory_md = sub.add_parser(
         "memory-md-check",

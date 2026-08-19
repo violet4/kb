@@ -309,10 +309,20 @@ def cmd_edit(args: argparse.Namespace) -> None:
     args.session.commit()
     show_output = _rendered_show_output(args.session, node)
     print(show_output, end="")
-    if len(show_output) > _SHOW_OUTPUT_WARN_CHARS:
+    output_len = len(show_output)
+    pct = 100 * output_len / _SHOW_OUTPUT_WARN_CHARS
+    if output_len > _SHOW_OUTPUT_WARN_CHARS:
+        over_chars = output_len - _SHOW_OUTPUT_WARN_CHARS
         print(
+            f"{pct:.0f}%/{over_chars:,} chars over claude-code harness bash tool output size budget "
+            "before auto-truncation -- "
             "claude-code harness bash tool will truncate this node's output! "
             "you must ensure that you are following instructions editing guidance!",
+            file=sys.stderr,
+        )
+    else:
+        print(
+            f"{pct:.0f}% of claude-code harness bash tool output size budget before auto-truncation",
             file=sys.stderr,
         )
 

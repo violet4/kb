@@ -353,7 +353,9 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_add.add_argument("title")
     p_add.add_argument("body")
     p_add.add_argument("--parent", metavar="TITLE|#ID", help="Parent node (omit for a root node)")
-    p_add.add_argument("--trigger", help='"If/when ..." condition; omit for an always-relevant node')
+    p_add.add_argument(
+        "--trigger", required=True, help='"If/when ..." condition -- required, even a couple words beats none'
+    )
     p_add.add_argument(
         "--system-level",
         dest="system_level",

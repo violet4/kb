@@ -469,12 +469,15 @@ class Instruction(Base, HasContextOrTag, HasEmbedding):
     (another Instruction, or a Note/Goal/Todo/etc.) via any other relation label -- roots()/
     children() only ever look at "parent-of" edges, the rest of the graph is free-form.
 
-    trigger is the whole loading mechanism: null means the node is unconditionally relevant to
-    anyone who reaches it by tree traversal (its body loads automatically). Non-null means only the
-    short trigger string surfaces by default when the node is reached -- the full body is a separate,
-    deliberate fetch, made only once the trigger's condition actually matches what's being worked on.
-    There is no separate "trigger tree" -- a trigger-worded node's children ARE topic-tree navigation,
-    just phrased as conditions ("whenever doing a merge") instead of topic names ("merge").
+    trigger is required on every node (enforced by `kb i add`, even a null-DB value on old rows is a
+    retrofit gap, not a valid state to create new): it's the short condition shown in a parent's
+    children listing that lets an agent decide whether to bother fetching this node's full body at
+    all, without reading the body first. A node whose relevance genuinely can't be narrowed still
+    gets a trigger -- even a couple words ("engineering work in general") beats none, because an
+    unstated trigger is exactly the gap that let nodes go unread: a session skips a child it can't
+    yet tell is relevant, and a body-only node gives it nothing to make that call with. There is no
+    separate "trigger tree" -- a trigger-worded node's children ARE topic-tree navigation, just
+    phrased as conditions ("whenever doing a merge") instead of topic names ("merge").
 
     Intended navigation is root-to-leaf, one level at a time, judgment-based (which of this level's
     handful of children is obviously relevant), not a search/similarity operation -- keep each node's

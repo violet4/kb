@@ -22,6 +22,7 @@ from fastapi import FastAPI
 from api.archivebox_router import router as archivebox_router
 from api.core_router import router as core_router
 from api.dailies_router import router as dailies_router
+from api.usage_router import router as usage_router
 from embed import _local_embed as embed, model_name
 from kb_cli.archivebox import resolve_or_push
 from models import ArchivedLink, SessionFactory
@@ -77,6 +78,7 @@ app = FastAPI(title="kb server", lifespan=_lifespan)
 app.include_router(core_router)
 app.include_router(dailies_router)
 app.include_router(archivebox_router)
+app.include_router(usage_router)
 
 
 def main() -> None:

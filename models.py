@@ -566,7 +566,7 @@ class Instruction(Base, HasContextOrTag, HasEmbedding):
 
     def __repr__(self) -> str:
         trigger_note = f" trigger={self.trigger!r}" if self.trigger else ""
-        return f"<Instruction #{self.id} {self.title!r}{trigger_note}>"
+        return f"<Instruction #{self.id} {self.title!r}{trigger_note}{self.age_marker()}>"
 
 
 class Settings(Base):
@@ -671,7 +671,7 @@ class Person(Base):
         return [p for p, _ in overdue]
 
     def __repr__(self) -> str:
-        return f"<Person {self.name!r} [{self.tier.value}] closeness={self.closeness}>"
+        return f"<Person {self.name!r} [{self.tier.value}] closeness={self.closeness}{self.age_marker()}>"
 
 
 # ---------------------------------------------------------------------------
@@ -763,7 +763,7 @@ class Goal(Base, HasContextOrTag, HasEmbedding):
 
     def __repr__(self) -> str:
         size = len(self.title) + len(self.description or "") + len(self.notes or "")
-        return f"<Goal #{self.id} {self.title!r} [{self.status.value}] {size}b>"
+        return f"<Goal #{self.id} {self.title!r} [{self.status.value}] {size}b{self.age_marker()}>"
 
 
 # ---------------------------------------------------------------------------
@@ -881,7 +881,7 @@ class Todo(Base, HasContextOrTag, HasEmbedding):
         urgent_str = " !URGENT!" if self.urgent else ""
         return (
             f"<Todo #{self.id} {self.title!r} [{self.status.value}]{effort_str}{defer_str}"
-            f"{context_str}{tag_str}{urgent_str}>"
+            f"{context_str}{tag_str}{urgent_str}{self.age_marker()}>"
         )
 
 
@@ -1115,7 +1115,7 @@ class Daily(Base, HasContextOrTag, HasEmbedding):
             self.next_due_date = self._compute_next_due(session, self.next_due_date)
 
     def __repr__(self) -> str:
-        return f"<Daily #{self.id} {self.description!r}>"
+        return f"<Daily #{self.id} {self.description!r}{self.age_marker()}>"
 
 
 # ---------------------------------------------------------------------------
@@ -1152,7 +1152,7 @@ class Item(Base, HasEmbedding):
         return session.scalars(select(cls).filter_by(game=game)).all()
 
     def __repr__(self) -> str:
-        return f"<Item #{self.id} {self.name!r} [{self.game}]>"
+        return f"<Item #{self.id} {self.name!r} [{self.game}]{self.age_marker()}>"
 
 
 class IrlItem(Item, HasWeight):
@@ -1193,7 +1193,7 @@ class Vendor(Base, HasEmbedding):
         return f"{self.name}\n\n{self.notes}" if self.notes else self.name
 
     def __repr__(self) -> str:
-        return f"<Vendor {self.name!r} [{self.domain}]>"
+        return f"<Vendor {self.name!r} [{self.domain}]{self.age_marker()}>"
 
 
 class VendorItem(Base):
@@ -1440,7 +1440,7 @@ class Reference(Base):
         return ref
 
     def __repr__(self) -> str:
-        return f"<Reference {self.title!r}>"
+        return f"<Reference {self.title!r}{self.age_marker()}>"
 
 
 # ---------------------------------------------------------------------------
@@ -1483,7 +1483,7 @@ class WorkingMemory(Base):
 
     def __repr__(self) -> str:
         domain_str = f" [{self.domain}]" if self.domain else ""
-        return f"<WorkingMemory {self.topic!r}{domain_str}>"
+        return f"<WorkingMemory {self.topic!r}{domain_str}{self.age_marker()}>"
 
 
 # ---------------------------------------------------------------------------
@@ -1816,7 +1816,7 @@ class Note(Base, HasEmbedding):
 
     def __repr__(self) -> str:
         tags_str = f" #{self.tags}" if self.tags else ""
-        return f"<Note #{self.id} {self.collection.value}/{self.title!r}{tags_str}>"
+        return f"<Note #{self.id} {self.collection.value}/{self.title!r}{tags_str}{self.age_marker()}>"
 
 
 # ---------------------------------------------------------------------------
@@ -1879,7 +1879,7 @@ class Wishlist(Base):
             price = f" {lo}–{hi}" if lo and hi else f" {lo or hi}"
         priority_str = f" priority={self.priority}" if self.priority is not None else f" score={self.score}"
         pin = " pinned" if self.pinned else ""
-        return f"<Wishlist #{self.id} {self.title!r}{price} effort={self.effort.value}{priority_str}{pin}>"
+        return f"<Wishlist #{self.id} {self.title!r}{price} effort={self.effort.value}{priority_str}{pin}{self.age_marker()}>"
 
 
 class Idea(Base, HasContextOrTag, HasEmbedding):
@@ -1960,7 +1960,7 @@ class Idea(Base, HasContextOrTag, HasEmbedding):
         return idea
 
     def __repr__(self) -> str:
-        return f"<Idea #{self.id} {self.title!r} [{self.status.value}]>"
+        return f"<Idea #{self.id} {self.title!r} [{self.status.value}]{self.age_marker()}>"
 
 
 # ---------------------------------------------------------------------------

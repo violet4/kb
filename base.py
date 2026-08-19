@@ -26,3 +26,18 @@ class Base(DeclarativeBase):
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
+
+    def age_marker(self) -> str:
+        """Renders as " (Nd old)"/" (Nw old)" from updated_at, or "" if updated within the last day --
+        every __repr__ appends this, so age is visible in `search`/`list` output (a plain
+        substring/id scan, not just `show`), not just the full created_at/updated_at lines
+        `show` commands print via kb_cli._util.print_timestamps. This is what lets a kb record's
+        age be weighed at the point a claim is actually read/relayed (temporal-record-skepticism,
+        kb Instruction #81), rather than requiring a separate deliberate date lookup."""
+        delta = _now() - self.updated_at.replace(tzinfo=timezone.utc)
+        days = delta.days
+        if days < 1:
+            return ""
+        if days < 14:
+            return f" ({days}d old)"
+        return f" ({days // 7}w old)"

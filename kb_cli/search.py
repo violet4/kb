@@ -163,16 +163,16 @@ def _fmt_result(item: Any, dist: float, truncate: bool = True) -> str:
     label = "substring" if dist == _SUBSTRING_DIST else f"dist={dist:.3f}"
     if isinstance(item, Note):
         tags = f" #{item.tags}" if item.tags else ""
-        return f"#{item.id} {item.title!r} [Note/{item.collection.value}]{tags} ({label})"
+        return f"#{item.id} {item.title!r} [Note/{item.collection.value}]{tags}{item.age_marker()} ({label})"
     if isinstance(item, Todo):
-        return f"#{item.id} {item.title!r} [Todo/{item.status.value}] ({label})"
+        return f"#{item.id} {item.title!r} [Todo/{item.status.value}]{item.age_marker()} ({label})"
     if isinstance(item, Goal):
-        return f"#{item.id} {item.title!r} [Goal/{item.status.value}] ({label})"
+        return f"#{item.id} {item.title!r} [Goal/{item.status.value}]{item.age_marker()} ({label})"
     if isinstance(item, Instruction):
         trigger = f" trigger={item.trigger!r}" if item.trigger else ""
-        return f"#{item.id} {item.title!r} [Instruction]{trigger} ({label})"
+        return f"#{item.id} {item.title!r} [Instruction]{trigger}{item.age_marker()} ({label})"
     if isinstance(item, Idea):
-        return f"#{item.id} {item.title!r} [Idea/{item.status.value}] ({label})"
+        return f"#{item.id} {item.title!r} [Idea/{item.status.value}]{item.age_marker()} ({label})"
     if isinstance(item, Daily):
         return f"#{item.id} {item.description!r} [Daily] ({label})"
     if isinstance(item, LogEntry):
@@ -184,9 +184,9 @@ def _fmt_result(item: Any, dist: float, truncate: bool = True) -> str:
         content = item.content_status.value if item.content_status.value != "not_attempted" else "title+reason only"
         return f"AB{item.id} {item.title!r} [{content}] ({label})"
     if isinstance(item, Vendor):
-        return f"#{item.id} {item.name!r} [Vendor/{item.domain}] ({label})"
+        return f"#{item.id} {item.name!r} [Vendor/{item.domain}]{item.age_marker()} ({label})"
     if isinstance(item, Item):
-        return f"#{item.id} {item.name!r} [Item/{item.game}] ({label})"
+        return f"#{item.id} {item.name!r} [Item/{item.game}]{item.age_marker()} ({label})"
     if isinstance(item, Purchase):
         name = item.vendor_item.item.name if item.vendor_item and item.vendor_item.item else "?"
         return f"#{item.id} {item.quantity}x {name!r} [Purchase] ({label})"

@@ -81,7 +81,7 @@ def _print_node(
         print()
         print("children:")
         for c in children:
-            print(f"  {c.title} #{c.id}{_trigger_marker(c)}")
+            print(f"  {c.title} #{c.id}{_trigger_marker(c)}{c.age_marker()}")
     if show_body:
         print_links(session, "Instruction", node.id, other_filter=_link_filter(session, instructions_only, system_only))
 

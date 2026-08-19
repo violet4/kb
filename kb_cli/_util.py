@@ -101,8 +101,53 @@ def apply_text_edit(current: str, entity_label: str, append: Optional[str], repl
                 file=sys.stderr,
             )
             sys.exit(1)
+        print(f"--replace: replaced {len(old)} chars with {len(new)} chars")
         return current.replace(old, new)
     return current
+
+
+def apply_replace_range(current: str, entity_label: str, replace_range: Optional[tuple[str, str, str]]) -> str:
+    """Like apply_text_edit's replace, but the span to replace is given as two short,
+    unique anchor snippets (start, end) instead of the whole blob to replace -- the
+    sed-style "from,to" idea. Replaces everything from the start of the start anchor's
+    match through the end of the end anchor's match, inclusive, with new. Each anchor
+    must independently be unique in current (same error style as apply_text_edit's
+    replace), and start's match must begin at or before end's match begins (rejects an
+    end anchor that actually occurs earlier in the text than start)."""
+    if replace_range is None:
+        return current
+    start, end, new = replace_range
+    new = resolve_text_arg(new)
+    start_count = current.count(start)
+    if start_count == 0:
+        print(f"--replace-range: start anchor not found in {entity_label}", file=sys.stderr)
+        sys.exit(1)
+    if start_count > 1:
+        print(
+            f"--replace-range: start anchor appears {start_count} times in {entity_label} -- "
+            "make it unique (more surrounding context) before replacing",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    end_count = current.count(end)
+    if end_count == 0:
+        print(f"--replace-range: end anchor not found in {entity_label}", file=sys.stderr)
+        sys.exit(1)
+    if end_count > 1:
+        print(
+            f"--replace-range: end anchor appears {end_count} times in {entity_label} -- "
+            "make it unique (more surrounding context) before replacing",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    start_pos = current.index(start)
+    end_pos = current.index(end) + len(end)
+    if current.index(end) < start_pos:
+        print(f"--replace-range: end anchor occurs before start anchor in {entity_label}", file=sys.stderr)
+        sys.exit(1)
+    replaced_len = end_pos - start_pos
+    print(f"--replace-range: replaced {replaced_len} chars with {len(new)} chars")
+    return current[:start_pos] + new + current[end_pos:]
 
 
 def apply_updates(session: Session, model: Type[E], entity_id: int, entity_label: str, fields: dict[str, Any]) -> E:

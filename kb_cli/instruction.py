@@ -21,7 +21,14 @@ from sqlalchemy.orm import Session
 
 from models import EntityLink, Instruction
 
-from kb_cli._util import apply_text_edit, check_no_links, print_links, print_timestamps, resolve_text_arg
+from kb_cli._util import (
+    apply_replace_range,
+    apply_text_edit,
+    check_no_links,
+    print_links,
+    print_timestamps,
+    resolve_text_arg,
+)
 from kb_cli.search import cmd_search_one
 
 
@@ -65,7 +72,12 @@ def _link_filter(session: Session, instructions_only: bool, system_only: bool) -
 
 
 def _print_node(
-    session: Session, node: Instruction, show_body: bool, instructions_only: bool = False, system_only: bool = False
+    session: Session,
+    node: Instruction,
+    show_body: bool,
+    instructions_only: bool = False,
+    system_only: bool = False,
+    show_links: bool = False,
 ) -> None:
     trigger_line = f"\ntrigger: {node.trigger}" if node.trigger else ""
     print(f"#{node.id} {node.title}{trigger_line}")
@@ -82,7 +94,7 @@ def _print_node(
         print("children:")
         for c in children:
             print(f"  {c.title} #{c.id}{_trigger_marker(c)}{c.age_marker()}")
-    if show_body:
+    if show_body and show_links:
         print_links(session, "Instruction", node.id, other_filter=_link_filter(session, instructions_only, system_only))
 
 
@@ -163,6 +175,7 @@ def cmd_show(args: argparse.Namespace) -> None:
                 show_body=True,
                 instructions_only=args.instructions_only,
                 system_only=args.system_only,
+                show_links=args.links,
             )
     if len(nodes) > 1:
         _print_merged_children(args.session, nodes)
@@ -264,6 +277,8 @@ def cmd_edit(args: argparse.Namespace) -> None:
     if args.append is not None or args.replace is not None:
         replace = tuple(args.replace) if args.replace is not None else None
         node.body = apply_text_edit(node.body, f"body of {node.title!r}", args.append, replace)
+    if args.replace_range is not None:
+        node.body = apply_replace_range(node.body, f"body of {node.title!r}", tuple(args.replace_range))
     if args.trigger is not None:
         node.trigger = None if args.trigger == "" else args.trigger
     if args.system_level is not None:
@@ -339,14 +354,19 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         help="One or more node titles or ids ('#' prefix optional); 'root' shows the entry point",
     )
     p_show.add_argument(
+        "--links",
+        action="store_true",
+        help="Also print the node's links section (hidden by default -- links are cheap to reach via `kb link show Instruction:ID` when actually needed)",
+    )
+    p_show.add_argument(
         "--instructions-only",
         action="store_true",
-        help="In the printed links section, only show links to other Instruction nodes (hide links to Notes/Goals/etc.)",
+        help="With --links, only show links to other Instruction nodes (hide links to Notes/Goals/etc.)",
     )
     p_show.add_argument(
         "--system-only",
         action="store_true",
-        help="In the printed links section, only show links to system_level Instruction nodes (implies --instructions-only)",
+        help="With --links, only show links to system_level Instruction nodes (implies --instructions-only)",
     )
     p_show.set_defaults(func=cmd_show)
 
@@ -380,6 +400,13 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         nargs=2,
         metavar=("OLD", "NEW"),
         help="Replace one occurrence of OLD with NEW in the body -- errors if OLD is missing or not unique",
+    )
+    p_edit.add_argument(
+        "--replace-range",
+        nargs=3,
+        metavar=("START_SNIPPET", "END_SNIPPET", "NEW"),
+        help="Replace everything from START_SNIPPET through END_SNIPPET (inclusive) with NEW -- "
+        "give short, unique anchors rather than the whole span, e.g. to delete/shrink a paragraph",
     )
     p_edit.add_argument("--trigger", help='New "if/when ..." condition; pass "" to clear it')
     system_level_group = p_edit.add_mutually_exclusive_group()

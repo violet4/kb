@@ -7,7 +7,7 @@ from typing import Optional
 from sqlalchemy import select
 
 from client import KBClient
-from kb_cli._util import apply_text_edit, print_links, resolve_body_args, resolve_text_arg
+from kb_cli._util import apply_text_edit, print_links, print_timestamps, resolve_body_args, resolve_text_arg
 from kb_cli.search import cmd_search_all
 from models import Collection, Note
 
@@ -22,6 +22,7 @@ def cmd_show(args: argparse.Namespace) -> None:
     print(f"collection: {note.collection.value}")
     if note.tags:
         print(f"tags: {note.tags}")
+    print_timestamps(note)
     print(f"body: {note.body}")
     print_links(args.session, "Note", note.id)
 

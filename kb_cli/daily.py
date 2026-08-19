@@ -2,7 +2,7 @@
 
 import argparse
 import sys
-from datetime import date
+from datetime import date, timezone
 from typing import Sequence
 
 from sqlalchemy import select
@@ -35,6 +35,8 @@ def _daily_fields(daily: Daily) -> list[tuple[str, object]]:
         ("context", daily.context.name if daily.context else None),
         ("location", daily.location),
         ("notes", daily.notes),
+        ("created_at", daily.created_at.replace(tzinfo=timezone.utc)),
+        ("updated_at", daily.updated_at.replace(tzinfo=timezone.utc)),
     ]
 
 

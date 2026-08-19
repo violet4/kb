@@ -16,6 +16,7 @@ from kb_cli._util import (
     apply_updates,
     print_journal_history,
     print_links,
+    print_timestamps,
     resolve_text_arg,
     scope_to_context,
 )
@@ -68,6 +69,7 @@ def cmd_show(args: argparse.Namespace) -> None:
             print(f"context: {goal.context.name}")
         if goal.notes:
             print(f"notes: {goal.notes}")
+        print_timestamps(goal)
 
         print_journal_history(
             args.session,

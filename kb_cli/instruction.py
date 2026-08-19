@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from models import EntityLink, Instruction
 
-from kb_cli._util import apply_text_edit, check_no_links, print_links, resolve_text_arg
+from kb_cli._util import apply_text_edit, check_no_links, print_links, print_timestamps, resolve_text_arg
 from kb_cli.search import cmd_search_one
 
 
@@ -73,6 +73,7 @@ def _print_node(
         print("system_level: true")
     print(_size_line(node))
     if show_body:
+        print_timestamps(node)
         print()
         print(node.body)
     children = Instruction.children(session, node.id)

@@ -7,6 +7,7 @@ dependencies flow one way, from command modules down to here.
 
 import argparse
 import sys
+from datetime import timezone
 from typing import Any, Callable, Iterable, Optional, Sequence, Type, TypeVar
 
 from sqlalchemy import select
@@ -214,6 +215,17 @@ def print_fields(fields: Iterable[tuple[str, object]]) -> None:
     for label, value in fields:
         if value is not None and value != "":
             print(f"{label}: {value}")
+
+
+def print_timestamps(entity: Any) -> None:
+    """Print created_at/updated_at, every `show` command's shared signal for how much
+    weight to give a record -- a kb record's own claims should be trusted less the older
+    they are, per root's temporal-record-skepticism guidance, and that judgment is only
+    possible if the date is actually on screen. SQLite drops tzinfo on read-back (see
+    CLAUDE.md's DateTime(timezone=True) note), so replace(tzinfo=utc) before printing --
+    every writer goes through Base's _now(), always UTC, so this is always correct."""
+    print(f"created_at: {entity.created_at.replace(tzinfo=timezone.utc)}")
+    print(f"updated_at: {entity.updated_at.replace(tzinfo=timezone.utc)}")
 
 
 def add_history_arg(parser: argparse.ArgumentParser) -> None:

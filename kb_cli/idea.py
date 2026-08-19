@@ -14,6 +14,7 @@ from kb_cli._util import (
     apply_updates,
     print_journal_history,
     print_links,
+    print_timestamps,
     scope_to_context,
 )
 from kb_cli.search import cmd_search_one
@@ -61,6 +62,7 @@ def cmd_show(args: argparse.Namespace) -> None:
             print(f"context: {idea.context.name}")
         if idea.notes:
             print(f"notes: {idea.notes}")
+        print_timestamps(idea)
 
         print_journal_history(
             args.session,

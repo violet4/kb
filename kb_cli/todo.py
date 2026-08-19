@@ -15,6 +15,7 @@ from kb_cli._util import (
     get_by_name,
     print_journal_history,
     print_links,
+    print_timestamps,
     resolve_text_arg,
     scope_to_context,
 )
@@ -65,8 +66,7 @@ def cmd_show(args: argparse.Namespace) -> None:
             print("urgent: yes")
         if todo.defer_until:
             print(f"defer_until: {todo.defer_until.replace(tzinfo=timezone.utc)}")
-        print(f"created_at: {todo.created_at.replace(tzinfo=timezone.utc)}")
-        print(f"updated_at: {todo.updated_at.replace(tzinfo=timezone.utc)}")
+        print_timestamps(todo)
 
         print_journal_history(
             args.session,

@@ -13,7 +13,9 @@ found-or-not-found lookup, never an ambiguous-match situation.
 """
 
 import argparse
+import io
 import sys
+from contextlib import redirect_stdout
 from typing import Callable, Optional
 
 from sqlalchemy import select
@@ -271,6 +273,19 @@ def cmd_set_parent(args: argparse.Namespace) -> None:
     _print_node(args.session, node, show_body=False)
 
 
+_SHOW_OUTPUT_WARN_CHARS = 30_000
+
+
+def _rendered_show_output(session: Session, node: Instruction) -> str:
+    """Renders exactly what `kb i show` would print for this single node (full body,
+    children, timestamps -- the same call `_print_node` makes for `cmd_show`), captured to a
+    string instead of stdout, so callers can measure its size without users seeing it twice."""
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        _print_node(session, node, show_body=True)
+    return buf.getvalue()
+
+
 def cmd_edit(args: argparse.Namespace) -> None:
     node = _resolve_or_exit(args.session, args.ref)
     if args.title is not None:
@@ -292,7 +307,14 @@ def cmd_edit(args: argparse.Namespace) -> None:
     if args.system_level is not None:
         node.system_level = args.system_level
     args.session.commit()
-    _print_node(args.session, node, show_body=False)
+    show_output = _rendered_show_output(args.session, node)
+    print(show_output, end="")
+    if len(show_output) > _SHOW_OUTPUT_WARN_CHARS:
+        print(
+            "claude-code harness bash tool will truncate this node's output! "
+            "you must ensure that you are following instructions editing guidance!",
+            file=sys.stderr,
+        )
 
 
 def cmd_delete(args: argparse.Namespace) -> None:

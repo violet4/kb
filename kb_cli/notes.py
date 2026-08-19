@@ -7,7 +7,7 @@ from typing import Optional
 from sqlalchemy import select
 
 from client import KBClient
-from kb_cli._util import apply_text_edit, print_links, resolve_text_arg
+from kb_cli._util import apply_text_edit, print_links, resolve_body_args, resolve_text_arg
 from kb_cli.search import cmd_search_all
 from models import Collection, Note
 
@@ -46,7 +46,7 @@ def cmd_add(args: argparse.Namespace) -> None:
     client = KBClient()
     result = client.note_create(
         title=resolve_text_arg(args.title),
-        body=resolve_text_arg(args.body),
+        body=resolve_body_args(args.body, args.body_file),
         collection=collection.value,
         tags=args.tags,
     )
@@ -106,7 +106,18 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
 
     p_add = sub.add_parser("add", help="Add a note")
     p_add.add_argument("title")
-    p_add.add_argument("body")
+    p_add.add_argument(
+        "body",
+        nargs="?",
+        default=None,
+        help="Note body -- provide this OR --body-file, not both. '-' reads from stdin.",
+    )
+    p_add.add_argument(
+        "--body-file",
+        metavar="FILE",
+        help="Read the note body from FILE instead of the BODY positional -- provide this OR BODY, not both. "
+        "'-' reads from stdin. Prefer this for long/multiline bodies over shell-quoting BODY directly.",
+    )
     p_add.add_argument("--tags", default=None, help="Comma-separated tags")
     p_add.add_argument(
         "--collection",

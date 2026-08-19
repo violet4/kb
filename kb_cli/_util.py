@@ -178,6 +178,25 @@ def print_links(
         print(f"  {arrow} {describe_entity_ref(session, other_type, other_id)}")
 
 
+def resolve_body_args(body: Optional[str], body_file: Optional[str]) -> str:
+    """Resolve a free-text body from either the positional BODY or --body-file, exactly one
+    of which must be given -- the shared logic behind every `add`/`update` command offering
+    both (e.g. `kb notes add`). BODY still supports the resolve_text_arg "-" stdin convention;
+    --body-file reads an actual file (also accepting "-" for stdin, so a caller reaching for
+    --body-file out of habit isn't punished for it). Exits with an error if both or neither
+    are given, rather than guessing which was meant."""
+    if (body is None) == (body_file is None):
+        print("provide either BODY or --body-file, not both/neither", file=sys.stderr)
+        sys.exit(1)
+    if body_file is not None:
+        if body_file == "-":
+            return sys.stdin.read()
+        with open(body_file) as f:
+            return f.read()
+    assert body is not None
+    return resolve_text_arg(body)
+
+
 def resolve_text_arg(value: str) -> str:
     """A free-text CLI arg (Note.body, Todo.title, a journal note, ...) whose value is the
     literal string "-" is read from stdin instead -- the standard Unix convention, so any long

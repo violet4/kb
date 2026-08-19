@@ -887,7 +887,7 @@ class Todo(Base, HasContextOrTag, HasEmbedding):
 # ---------------------------------------------------------------------------
 
 
-class Daily(Base, HasContextOrTag):
+class Daily(Base, HasContextOrTag, HasEmbedding):
     """A recurring/optional item — distinct from Goal (a purpose/end-state) and Todo (a step toward one).
 
     domain ("irl"/"pg", mirrors Vendor.domain) separates life-maintenance dailies from game dailies.
@@ -945,6 +945,13 @@ class Daily(Base, HasContextOrTag):
 
     context: Mapped[Optional[Context]] = relationship("Context")
     tag: Mapped[Optional[Tag]] = relationship("Tag")
+
+    @staticmethod
+    def _embed_fields() -> set[str]:
+        return {"description", "notes"}
+
+    def _embed_source_text(self) -> str:
+        return f"{self.description}\n\n{self.notes}" if self.notes else self.description
 
     _WEEKDAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
 
@@ -1054,6 +1061,7 @@ class Daily(Base, HasContextOrTag):
         # -- that only lands on "already due" for the daily cadence; every:N>1/
         # weekly/monthly would land a full period in the future.
         daily.next_due_date = daily._current_day(session, _now())
+        daily.reembed()
         session.add(daily)
         session.flush()
         return daily

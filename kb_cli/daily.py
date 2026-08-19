@@ -2,6 +2,7 @@
 
 import argparse
 import sys
+from datetime import date
 from typing import Sequence
 
 from sqlalchemy import select
@@ -17,6 +18,7 @@ from kb_cli._util import (
     print_table,
     resolve_text_arg,
 )
+from kb_cli.search import cmd_search_one
 
 
 def _daily_fields(daily: Daily) -> list[tuple[str, object]]:
@@ -102,9 +104,23 @@ def cmd_catch_up(args: argparse.Namespace) -> None:
 
 
 def cmd_add(args: argparse.Namespace) -> None:
+    description = resolve_text_arg(args.description)
+
+    # Always show the nearest existing active Daily plus its distance -- a purely
+    # informational note, no threshold and nothing blocked. A high distance/unrelated
+    # text says "safe to ignore"; a low distance and similar-sounding text is the
+    # signal to go double check, e.g. "Flea treatment for cats" vs "Give kitty babies
+    # flea drops" ending up as two separate Dailies for the same real-world action.
+    # Uses Daily.search (HasEmbedding) rather than the not-yet-created row, so nothing
+    # can match itself.
+    nearest = [(dist, d) for d, dist in Daily.search(args.session, description, limit=1) if d.is_active]
+    if nearest:
+        dist, d = nearest[0]
+        print(f"Nearest existing Daily: #{d.id} {d.description!r} (dist={dist:.3f})", file=sys.stderr)
+
     daily = Daily.create(
         args.session,
-        resolve_text_arg(args.description),
+        description,
         context=creation_context(args),
         domain=args.domain,
         tier=DailyTier(args.tier),
@@ -133,6 +149,7 @@ def cmd_add(args: argparse.Namespace) -> None:
 
 
 def cmd_update(args: argparse.Namespace) -> None:
+    next_due_date = date.fromisoformat(args.next_due_date) if args.next_due_date else None
     daily = apply_updates(
         args.session,
         Daily,
@@ -147,11 +164,45 @@ def cmd_update(args: argparse.Namespace) -> None:
             "location": args.location,
             "remind_days_before": args.remind_days_before,
             "notes": args.notes,
+            "next_due_date": next_due_date,
         },
     )
     apply_context_or_tag_update(args.session, daily, args.new_context, args.new_tag)
     args.session.commit()
     print(daily)
+
+
+def cmd_delete(args: argparse.Namespace) -> None:
+    """Two-stage confirm (--yes required) rather than an interactive y/n prompt -- an
+    interactive prompt has no reliable stdin to answer it when run from an agent harness
+    like Claude Code, so it either hangs or silently fails. Printing what would be deleted,
+    then requiring the caller to re-run the identical command with --yes, gives a human (or
+    an agent acting on a human's behalf) a real chance to notice a mistake before it's
+    permanent, without depending on an interactive TTY."""
+    dailies = []
+    missing = []
+    for daily_id in args.ids:
+        daily = args.session.get(Daily, daily_id)
+        if daily is None:
+            missing.append(daily_id)
+        else:
+            dailies.append(daily)
+    for daily_id in missing:
+        print(f"Daily #{daily_id}: not found", file=sys.stderr)
+    if not dailies:
+        return
+    if not args.yes:
+        print("This would permanently delete:")
+        for daily in dailies:
+            print(
+                f"  #{daily.id} {daily.description!r} ({daily.recurrence}, next due {daily.next_due_date.isoformat()})"
+            )
+        print("\nRe-run this same command with --yes to actually delete.")
+        return
+    for daily in dailies:
+        print(f"Deleted Daily #{daily.id} {daily.description!r}")
+        args.session.delete(daily)
+    args.session.commit()
 
 
 def cmd_activate(args: argparse.Namespace) -> None:
@@ -174,6 +225,21 @@ def cmd_deactivate(args: argparse.Namespace) -> None:
         daily.is_active = False
         print(f"Daily #{daily_id}: {daily.description!r} -> inactive")
     args.session.commit()
+
+
+def cmd_reembed(args: argparse.Namespace) -> None:
+    from embed import model_name
+
+    dailies = args.session.scalars(select(Daily)).all()
+    if not dailies:
+        print("No dailies to reembed.")
+        return
+    print(f"Reembedding {len(dailies)} dailies with model '{model_name()}'...")
+    for i, daily in enumerate(dailies, 1):
+        daily.reembed()
+        print(f"  [{i}/{len(dailies)}] {daily.description!r}")
+    args.session.commit()
+    print("Done.")
 
 
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
@@ -234,6 +300,13 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_update.add_argument("--notes")
     p_update.add_argument("--context", dest="new_context", metavar="NAME")
     p_update.add_argument("--tag", dest="new_tag", metavar="NAME", help="Address by Tag instead of context")
+    p_update.add_argument(
+        "--next-due-date",
+        dest="next_due_date",
+        metavar="YYYY-MM-DD",
+        help="Directly reschedule next_due_date (e.g. to push a Daily out without faking a completion). "
+        "Normally next_due_date only advances via `complete`/`catch-up` -- use this to set it explicitly instead.",
+    )
     p_update.set_defaults(func=cmd_update)
 
     p_complete = sub.add_parser("complete", help="Mark Daily(s) completed for the current day-boundary window")
@@ -253,3 +326,25 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_deactivate = sub.add_parser("deactivate", help="Mark Daily(s) inactive")
     p_deactivate.add_argument("ids", nargs="+", type=int)
     p_deactivate.set_defaults(func=cmd_deactivate)
+
+    p_delete = sub.add_parser(
+        "delete", help="Permanently delete Daily(s) (e.g. an accidental duplicate) -- requires --yes to confirm"
+    )
+    p_delete.add_argument("ids", nargs="+", type=int)
+    p_delete.add_argument(
+        "--yes",
+        action="store_true",
+        help="Actually perform the delete. Without this, prints what would be deleted and exits -- "
+        "re-run the identical command with --yes once you've confirmed. Prefer `deactivate` over this "
+        "for anything that isn't a genuine mistake (e.g. no-longer-relevant but historically real).",
+    )
+    p_delete.set_defaults(func=cmd_delete)
+
+    p_search = sub.add_parser("search", help="Substring plus semantic search over Daily descriptions/notes")
+    p_search.add_argument("query")
+    p_search.add_argument("--all", action="store_true", help="Also include inactive dailies (excluded by default)")
+    p_search.add_argument("--limit", type=int, default=10)
+    p_search.set_defaults(func=cmd_search_one, model=Daily)
+
+    p_reembed = sub.add_parser("reembed", help="Recompute embeddings for all dailies")
+    p_reembed.set_defaults(func=cmd_reembed)

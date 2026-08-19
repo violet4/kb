@@ -201,9 +201,16 @@ def _read_lines(source: str) -> list[str]:
 
 
 def _read_text(source: str) -> str:
+    """'-' reads stdin; an existing file path is read from disk; anything else is
+    treated as literal text -- lets `kb text semsearch compare` take ad hoc inline
+    strings directly (e.g. testing whether two Daily descriptions would collide)
+    without needing a throwaway file."""
     if source == "-":
         return sys.stdin.read()
-    return Path(source).read_text()
+    path = Path(source)
+    if path.is_file():
+        return path.read_text()
+    return source
 
 
 def cmd_semsearch_rank(args: argparse.Namespace) -> None:
@@ -250,6 +257,6 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_rank.set_defaults(func=cmd_semsearch_rank)
 
     p_compare = semsearch_sub.add_parser("compare", help="Cosine similarity between two texts")
-    p_compare.add_argument("a", help="File path or - for stdin")
-    p_compare.add_argument("b", help="File path or - for stdin")
+    p_compare.add_argument("a", help="Literal text, a file path, or - for stdin")
+    p_compare.add_argument("b", help="Literal text, a file path, or - for stdin")
     p_compare.set_defaults(func=cmd_semsearch_compare)

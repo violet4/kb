@@ -215,6 +215,8 @@ def _semantic_hits(
         terminal = TERMINAL_STATUSES.get(model)
         if terminal is not None:
             hits = [(obj, dist) for obj, dist in hits if obj.status not in terminal]
+        elif model is Daily:
+            hits = [(obj, dist) for obj, dist in hits if obj.is_active]
     if since is not None:
         hits = [(obj, dist) for obj, dist in hits if _row_date(obj) >= since]
     return hits
@@ -228,6 +230,7 @@ SEMANTIC_SEARCHABLE: tuple[type[HasEmbedding], ...] = (
     Goal,
     Instruction,
     Idea,
+    Daily,
     LogEntry,
     ArchivedLink,
     Vendor,

@@ -150,6 +150,44 @@ def apply_replace_range(current: str, entity_label: str, replace_range: Optional
     return current[:start_pos] + new + current[end_pos:]
 
 
+def extract_range(current: str, entity_label: str, extract: Optional[tuple[str, str]]) -> Optional[str]:
+    """Like apply_replace_range, but read-only: returns the substring from the start of the
+    start anchor's match through the end of the end anchor's match, inclusive, instead of
+    replacing it. Same anchor uniqueness/ordering rules and error style as apply_replace_range,
+    since it's answering the same "where is this span" question without the write."""
+    if extract is None:
+        return None
+    start, end = extract
+    start_count = current.count(start)
+    if start_count == 0:
+        print(f"--extract: start anchor not found in {entity_label}", file=sys.stderr)
+        sys.exit(1)
+    if start_count > 1:
+        print(
+            f"--extract: start anchor appears {start_count} times in {entity_label} -- "
+            "make it unique (more surrounding context) before extracting",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    end_count = current.count(end)
+    if end_count == 0:
+        print(f"--extract: end anchor not found in {entity_label}", file=sys.stderr)
+        sys.exit(1)
+    if end_count > 1:
+        print(
+            f"--extract: end anchor appears {end_count} times in {entity_label} -- "
+            "make it unique (more surrounding context) before extracting",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    start_pos = current.index(start)
+    end_pos = current.index(end) + len(end)
+    if current.index(end) < start_pos:
+        print(f"--extract: end anchor occurs before start anchor in {entity_label}", file=sys.stderr)
+        sys.exit(1)
+    return current[start_pos:end_pos]
+
+
 def apply_updates(session: Session, model: Type[E], entity_id: int, entity_label: str, fields: dict[str, Any]) -> E:
     """The one `cmd_update` body shared by every entity's update command: look up
     the row by id (exit with an error if missing) and set each attr whose new value

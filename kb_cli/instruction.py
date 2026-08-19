@@ -25,6 +25,7 @@ from kb_cli._util import (
     apply_replace_range,
     apply_text_edit,
     check_no_links,
+    extract_range,
     print_links,
     print_timestamps,
     resolve_text_arg,
@@ -157,6 +158,13 @@ def _resolve_or_exit(session: Session, ref: str) -> Instruction:
 
 
 def cmd_show(args: argparse.Namespace) -> None:
+    if args.extract is not None:
+        if len(args.refs) != 1:
+            print("--extract: pass exactly one node", file=sys.stderr)
+            sys.exit(1)
+        target = _resolve_or_exit(args.session, args.refs[0])
+        print(extract_range(target.body, f"body of {target.title!r}", tuple(args.extract)))
+        return
     any_failed = False
     nodes: list[Instruction] = []
     for i, ref in enumerate(args.refs):
@@ -367,6 +375,14 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         "--system-only",
         action="store_true",
         help="With --links, only show links to system_level Instruction nodes (implies --instructions-only)",
+    )
+    p_show.add_argument(
+        "--extract",
+        nargs=2,
+        metavar=("BEGIN", "END"),
+        help="Print only the span from the start of BEGIN's match through the end of END's match "
+        "(inclusive), instead of the full body -- same anchor rules as edit --replace-range, "
+        "read-only. Requires exactly one ref.",
     )
     p_show.set_defaults(func=cmd_show)
 

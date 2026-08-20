@@ -71,6 +71,30 @@ See `kb hooks --help` / `kb_cli/hooks.py` for what this detects and what it says
 
 Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/violet/kb/kb`).
 
+## post-commit-check (harness-agnostic detector)
+
+See `kb hooks --help` / `kb_cli/hooks.py` for what this detects and why (points at `kb i show claude-code-session-persistence-review`). This section is only the Claude Code wiring: on `PostToolUse` for `Bash`, pipes `.tool_response.exit_code` and `.tool_input.command` through (exit code first, newline, then the command) so the detector can gate on the Bash tool's own exit status, not just the command text. Wired into `~/.claude/settings.json` (user-global), so it fires for a `git commit` in any project, not just this repo.
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hint=$(jq -r '(.tool_response.exit_code // \"\" | tostring) + \"\\n\" + (.tool_input.command // \"\")' | /path/to/kb hooks post-commit-check 2>/dev/null); if [ -n \"$hint\" ]; then jq -n --arg h \"$hint\" '{hookSpecificOutput: {hookEventName: \"PostToolUse\", additionalContext: $h}}'; else printf '{}'; fi"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/violet/kb/kb`).
+
 ## find-root-check (harness-agnostic detector, blocking)
 
 See `kb hooks --help` / `kb_cli/hooks.py` for what this detects and why (a root-scoped `find`). This section is only the Claude Code wiring: pipes a `Bash` command's `.tool_input.command` through on `PreToolUse`, and — unlike `mypy-check`/`tree-reminder`, which only ever add context — the adapter emits `permissionDecision: "deny"` when the detector's stdout is non-empty, instead of always emitting `additionalContext`/`{}`.

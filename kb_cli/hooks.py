@@ -29,6 +29,25 @@ _MYPY_HINT = (
 )
 
 
+_GIT_COMMIT_RE = re.compile(r"(?<![\w.-])git\s+(?:[^&|;]*\s)?commit(?:\s|$)")
+
+_POST_COMMIT_HINT = (
+    "A commit just succeeded. Run `kb i show claude-code-session-persistence-review` and follow it now -- "
+    "committing is part of that pass, not a separate step, and it must run after every successful commit."
+)
+
+
+def cmd_post_commit_check(args: argparse.Namespace) -> None:
+    """Read "<exit_code>\\n<command>" on stdin (the Bash tool's own exit code, then the
+    command string); if the command was a `git commit` and it exited 0, print a reminder
+    to run the session-persistence-review pass. Prints nothing (exit 0) otherwise, so a
+    harness adapter can pipe any Bash command through unconditionally and only act on
+    non-empty output."""
+    exit_code, _, command = sys.stdin.read().partition("\n")
+    if exit_code.strip() == "0" and _GIT_COMMIT_RE.search(command):
+        print(_POST_COMMIT_HINT)
+
+
 def cmd_mypy_check(args: argparse.Namespace) -> None:
     """Read command output on stdin; if it looks like a failed mypy run, print a
     reminder to stdout. Prints nothing (exit 0) otherwise, so a harness adapter
@@ -369,6 +388,13 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         "mypy-check", help="Detect a failed mypy run on stdin; print a type-safety reminder if it matches"
     )
     p_mypy.set_defaults(func=cmd_mypy_check)
+
+    p_post_commit = sub.add_parser(
+        "post-commit-check",
+        help='Detect a successful `git commit` ("<exit_code>\\n<command>" on stdin); '
+        "print a session-persistence-review reminder if it matches",
+    )
+    p_post_commit.set_defaults(func=cmd_post_commit_check)
 
     p_find_root = sub.add_parser(
         "find-root-check",

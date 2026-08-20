@@ -13,5 +13,7 @@ export const tokens = {
     danger: '#e2574c',
     overdue: '#e2574c',
     due: '#e0a94c',
+    barTrack: '#3a3f47',
+    barFill: '#7c5cff',
   },
 };

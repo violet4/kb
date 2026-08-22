@@ -127,6 +127,10 @@ Read the newest engineering note on `batch_alter_table` column renames before re
 
 `kb anki run` mirrors `kb_repl.py`'s interface (one-shot expression, `-f` script file, `-i` interactive REPL) but pre-loads `col` (the open `Collection`) instead of `sess`+models — Anki auto-saves most mutations itself, so there's no commit step, just `col.close()` on exit.
 
+## Browser automation
+
+The `chrome-devtools` MCP server (`.mcp.json`) drives a real, visible browser for interactive frontend exploration -- one action at a time, inspecting the result before deciding the next, via `new_page`/`navigate_page`/`take_snapshot`/`click`/`fill`. Requires a session (re)start after `.mcp.json` changes to pick up the server. `take_snapshot`'s element `uid`s key off accessible names (kb Instruction #70 -- design-for-testability), so no pixel-coordinate or selector guessing is needed. For a reusable script (CI, a regression check meant to run again later) rather than one-off exploration, use `npx playwright` instead -- browsers are cached at `~/.cache/ms-playwright/`, no install step needed. Same split and same `.mcp.json` shape as `~/synth` (see its `docs/browser-automation.md` for the full reasoning) and `~/img`/`~/text`.
+
 ## Commits
 
 Use `with:<model>` instead of `Co-Authored-By:`.

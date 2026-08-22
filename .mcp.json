@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "chrome-devtools": {
+      "command": "npx",
+      "args": [
+        "chrome-devtools-mcp@latest",
+        "--executablePath",
+        "/var/lib/flatpak/exports/bin/io.github.ungoogled_software.ungoogled_chromium",
+        "--chromeArg=--no-sandbox",
+        "--isolated"
+      ]
+    }
+  }
+}

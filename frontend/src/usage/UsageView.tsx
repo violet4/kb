@@ -5,6 +5,9 @@ import UsageBar from './components/UsageBar';
 import { useBackgroundImage } from './hooks/useBackgroundImage';
 import { useUsage } from './hooks/useUsage';
 
+const SESSION_PERIOD_MS = 5 * 60 * 60 * 1000;
+const WEEK_PERIOD_MS = 7 * 24 * 60 * 60 * 1000;
+
 // A bare filesystem path (no scheme) is loaded as file:// -- a URL is used as-is.
 function resolveBackgroundUrl(backgroundImage: string): string | null {
   if (!backgroundImage) return null;
@@ -50,8 +53,18 @@ export default function UsageView() {
           )}
           {usage && !loading && !error && (
             <>
-              <UsageBar label="Current session" pct={usage.session_pct} resets={usage.session_resets} />
-              <UsageBar label="Current week (all models)" pct={usage.week_pct} resets={usage.week_resets} />
+              <UsageBar
+                label="Current session"
+                pct={usage.session_pct}
+                resetsAt={usage.session_resets_at}
+                periodMs={SESSION_PERIOD_MS}
+              />
+              <UsageBar
+                label="Current week (all models)"
+                pct={usage.week_pct}
+                resetsAt={usage.week_resets_at}
+                periodMs={WEEK_PERIOD_MS}
+              />
             </>
           )}
         </div>

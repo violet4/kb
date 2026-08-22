@@ -1,5 +1,6 @@
 import { tokens } from '../shared/tokens';
 import BackgroundImagePicker from './components/BackgroundImagePicker';
+import PendingIndicator from './components/PendingIndicator';
 import RefreshControl from './components/RefreshControl';
 import UsageBar from './components/UsageBar';
 import { useBackgroundImage } from './hooks/useBackgroundImage';
@@ -15,7 +16,7 @@ function resolveBackgroundUrl(backgroundImage: string): string | null {
 }
 
 export default function UsageView() {
-  const { usage, loading, error, lastUpdatedAt, nextRefreshAt, refresh } = useUsage();
+  const { usage, loading, error, lastUpdatedAt, nextRefreshAt, requestStartedAt, refresh } = useUsage();
   const { backgroundImage, setBackgroundImage } = useBackgroundImage();
   const backgroundUrl = resolveBackgroundUrl(backgroundImage);
 
@@ -45,7 +46,7 @@ export default function UsageView() {
             borderRadius: 8,
           }}
         >
-          {loading && <p style={{ margin: 0, color: tokens.color.textMuted }}>Loading...</p>}
+          {requestStartedAt !== null && <PendingIndicator requestStartedAt={requestStartedAt} />}
           {error && (
             <p style={{ margin: 0, color: tokens.color.danger }}>
               {error}

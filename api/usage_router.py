@@ -2,6 +2,8 @@
 (see that module for `claude -p /usage` shelling-out details), returned as JSON
 for the frontend's ambient usage page."""
 
+import asyncio
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -22,7 +24,10 @@ class UsageOut(BaseModel):
 @router.get("", response_model=UsageOut)
 async def get_usage() -> UsageOut:
     try:
-        usage = fetch_usage()
+        # fetch_usage() shells out and blocks for the claude CLI's response (multiple
+        # seconds) -- run it in a thread so it doesn't stall the asyncio event loop, which
+        # would otherwise hang every other concurrent request behind this one.
+        usage = await asyncio.to_thread(fetch_usage)
     except UsageFetchError as e:
         raise HTTPException(status_code=502, detail=str(e))
 

@@ -10,6 +10,7 @@ interface UseUsageResult {
   error: string | null;
   lastUpdatedAt: number | null;
   nextRefreshAt: number | null;
+  requestStartedAt: number | null;
   refresh: () => void;
 }
 
@@ -19,11 +20,13 @@ export function useUsage(): UseUsageResult {
   const [error, setError] = useState<string | null>(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
   const [nextRefreshAt, setNextRefreshAt] = useState<number | null>(null);
+  const [requestStartedAt, setRequestStartedAt] = useState<number | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async (showSpinner: boolean) => {
     if (showSpinner) setLoading(true);
     setError(null);
+    setRequestStartedAt(Date.now());
     try {
       setUsage(await fetchUsage());
       setLastUpdatedAt(Date.now());
@@ -31,6 +34,7 @@ export function useUsage(): UseUsageResult {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       if (showSpinner) setLoading(false);
+      setRequestStartedAt(null);
     }
   }, []);
 
@@ -58,5 +62,5 @@ export function useUsage(): UseUsageResult {
 
   const refresh = useCallback(() => schedule(false), [schedule]);
 
-  return { usage, loading, error, lastUpdatedAt, nextRefreshAt, refresh };
+  return { usage, loading, error, lastUpdatedAt, nextRefreshAt, requestStartedAt, refresh };
 }

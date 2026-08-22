@@ -129,7 +129,7 @@ Read the newest engineering note on `batch_alter_table` column renames before re
 
 ## Browser automation
 
-The `chrome-devtools` MCP server (`.mcp.json`) drives a real, visible browser for interactive frontend exploration -- one action at a time, inspecting the result before deciding the next, via `new_page`/`navigate_page`/`take_snapshot`/`click`/`fill`. Requires a session (re)start after `.mcp.json` changes to pick up the server. `take_snapshot`'s element `uid`s key off accessible names (kb Instruction #70 -- design-for-testability), so no pixel-coordinate or selector guessing is needed. For a reusable script (CI, a regression check meant to run again later) rather than one-off exploration, use `npx playwright` instead -- browsers are cached at `~/.cache/ms-playwright/`, no install step needed. Same split and same `.mcp.json` shape as `~/synth` (see its `docs/browser-automation.md` for the full reasoning) and `~/img`/`~/text`.
+The `chrome-devtools` MCP server (`.mcp.json`) drives a real browser interactively -- one action at a time via `navigate_page`/`take_snapshot`/`click`/`fill` (uid's key off accessible names, kb Instruction #70). Use `npx playwright` instead for a reusable script (CI, a regression check meant to run again later).
 
 ## Commits
 

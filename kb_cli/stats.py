@@ -17,6 +17,7 @@ from models import CliInvocation
 
 from kb_cli import instruction
 from kb_cli.bare_text import BARE_INSTRUCTIONS
+from kb_cli.usage import add_usage_subparser
 
 # Anthropic publishes no offline tokenizer (unlike OpenAI's tiktoken) -- the only accurate
 # token count is the live count_tokens API endpoint, which this command deliberately does not
@@ -120,3 +121,5 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         help=f"$/1M input tokens (default: today's Sonnet 5 intro snapshot, ${_DEFAULT_INPUT_PRICE_PER_M:.2f})",
     )
     p_header.set_defaults(func=cmd_session_header_cost)
+
+    add_usage_subparser(sub)

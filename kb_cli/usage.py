@@ -3,11 +3,14 @@
 the two never drift on how the CLI's plain-text output is parsed."""
 
 import argparse
+import fcntl
 import json
 import re
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 _SESSION_RE = re.compile(r"Current session:\s*(\d+)%\s*used\s*.*?resets\s*(.+)")
@@ -16,6 +19,18 @@ _RESETS_RE = re.compile(r"^(.+?)\s*\(([^)]+)\)\s*$")
 
 SESSION_PERIOD = timedelta(hours=5)
 WEEK_PERIOD = timedelta(days=7)
+
+# A fixed path (not per-process) so every caller -- concurrent web requests within the
+# server, and separate `kb stats usage` CLI invocations -- converges on the same lock/cache
+# file. A caller arriving while another is already mid-fetch blocks on the flock, then reads
+# whatever the winner just wrote, instead of shelling out to `claude -p /usage` a second time.
+_CACHE_PATH = Path(tempfile.gettempdir()) / "kb-usage-fetch.json"
+_LOCK_PATH = Path(tempfile.gettempdir()) / "kb-usage-fetch.lock"
+
+# A result already in flight counts as fresh for any caller that arrives while the flock is
+# held; this only guards the short window after the lock is released, in case two callers
+# start close enough together that the second acquires the lock just after the first wrote.
+_CACHE_MAX_AGE = timedelta(seconds=5)
 
 
 class UsageFetchError(RuntimeError):
@@ -30,6 +45,30 @@ class Usage:
     week_pct: int
     week_resets: str
     week_resets_at: datetime
+
+    def to_json(self) -> str:
+        return json.dumps(
+            {
+                "session_pct": self.session_pct,
+                "session_resets": self.session_resets,
+                "session_resets_at": self.session_resets_at.isoformat(),
+                "week_pct": self.week_pct,
+                "week_resets": self.week_resets,
+                "week_resets_at": self.week_resets_at.isoformat(),
+            }
+        )
+
+    @classmethod
+    def from_json(cls, raw: str) -> "Usage":
+        data = json.loads(raw)
+        return cls(
+            session_pct=data["session_pct"],
+            session_resets=data["session_resets"],
+            session_resets_at=datetime.fromisoformat(data["session_resets_at"]),
+            week_pct=data["week_pct"],
+            week_resets=data["week_resets"],
+            week_resets_at=datetime.fromisoformat(data["week_resets_at"]),
+        )
 
 
 def _parse_resets_at(resets: str) -> datetime:
@@ -50,7 +89,7 @@ def _parse_resets_at(resets: str) -> datetime:
     return parsed.astimezone(ZoneInfo("UTC"))
 
 
-def fetch_usage() -> Usage:
+def _fetch_usage_uncached() -> Usage:
     try:
         result = subprocess.run(
             ["claude", "-p", "/usage", "--output-format", "json"],
@@ -88,6 +127,27 @@ def fetch_usage() -> Usage:
         week_resets=week_resets,
         week_resets_at=week_resets_at,
     )
+
+
+def fetch_usage() -> Usage:
+    """Single-flighted across every caller (any thread/process on this machine): holds an
+    flock for the duration of the underlying `claude -p /usage` call, so a caller that arrives
+    while one is already in flight blocks on the lock rather than starting a second redundant
+    subprocess, then reads the result the first caller just wrote instead of re-fetching."""
+    _LOCK_PATH.touch(exist_ok=True)
+    with open(_LOCK_PATH) as lock_file:
+        fcntl.flock(lock_file, fcntl.LOCK_EX)
+        try:
+            if _CACHE_PATH.exists():
+                age = datetime.now().timestamp() - _CACHE_PATH.stat().st_mtime
+                if age <= _CACHE_MAX_AGE.total_seconds():
+                    return Usage.from_json(_CACHE_PATH.read_text())
+
+            usage = _fetch_usage_uncached()
+            _CACHE_PATH.write_text(usage.to_json())
+            return usage
+        finally:
+            fcntl.flock(lock_file, fcntl.LOCK_UN)
 
 
 def _format_bar(label: str, pct: int, resets_at: datetime, period: timedelta, width: int = 30) -> str:

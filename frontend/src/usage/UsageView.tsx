@@ -52,22 +52,42 @@ export default function UsageView() {
               {error}
             </p>
           )}
-          {usage && !loading && !error && (
-            <>
-              <UsageBar
-                label="Current session"
-                pct={usage.session_pct}
-                resetsAt={usage.session_resets_at}
-                periodMs={SESSION_PERIOD_MS}
-              />
-              <UsageBar
-                label="Current week (all models)"
-                pct={usage.week_pct}
-                resetsAt={usage.week_resets_at}
-                periodMs={WEEK_PERIOD_MS}
-              />
-            </>
+          {usage && !loading && !error && usage.raw_text !== null && (
+            <pre
+              style={{
+                margin: 0,
+                whiteSpace: 'pre-wrap',
+                fontFamily: 'inherit',
+                fontSize: 14,
+                color: tokens.color.text,
+              }}
+            >
+              {usage.raw_text}
+            </pre>
           )}
+          {usage &&
+            !loading &&
+            !error &&
+            usage.raw_text === null &&
+            usage.session_pct !== null &&
+            usage.session_resets_at !== null &&
+            usage.week_pct !== null &&
+            usage.week_resets_at !== null && (
+              <>
+                <UsageBar
+                  label="Current session"
+                  pct={usage.session_pct}
+                  resetsAt={usage.session_resets_at}
+                  periodMs={SESSION_PERIOD_MS}
+                />
+                <UsageBar
+                  label="Current week (all models)"
+                  pct={usage.week_pct}
+                  resetsAt={usage.week_resets_at}
+                  periodMs={WEEK_PERIOD_MS}
+                />
+              </>
+            )}
         </div>
       </div>
     </div>

@@ -39,22 +39,29 @@ class UsageFetchError(RuntimeError):
 
 @dataclass
 class Usage:
-    session_pct: int
-    session_resets: str
-    session_resets_at: datetime
-    week_pct: int
-    week_resets: str
-    week_resets_at: datetime
+    """`raw_text` is set instead of the bar fields when `claude -p /usage`'s output doesn't
+    match the session/week bar format this module knows how to parse (e.g. the no-usage-yet
+    "behaviors contributing to your limits" summary) -- callers render that text as-is rather
+    than erroring out, since the underlying data is still meaningful, just shaped differently."""
+
+    session_pct: int | None = None
+    session_resets: str | None = None
+    session_resets_at: datetime | None = None
+    week_pct: int | None = None
+    week_resets: str | None = None
+    week_resets_at: datetime | None = None
+    raw_text: str | None = None
 
     def to_json(self) -> str:
         return json.dumps(
             {
                 "session_pct": self.session_pct,
                 "session_resets": self.session_resets,
-                "session_resets_at": self.session_resets_at.isoformat(),
+                "session_resets_at": self.session_resets_at.isoformat() if self.session_resets_at else None,
                 "week_pct": self.week_pct,
                 "week_resets": self.week_resets,
-                "week_resets_at": self.week_resets_at.isoformat(),
+                "week_resets_at": self.week_resets_at.isoformat() if self.week_resets_at else None,
+                "raw_text": self.raw_text,
             }
         )
 
@@ -64,10 +71,13 @@ class Usage:
         return cls(
             session_pct=data["session_pct"],
             session_resets=data["session_resets"],
-            session_resets_at=datetime.fromisoformat(data["session_resets_at"]),
+            session_resets_at=(
+                datetime.fromisoformat(data["session_resets_at"]) if data["session_resets_at"] else None
+            ),
             week_pct=data["week_pct"],
             week_resets=data["week_resets"],
-            week_resets_at=datetime.fromisoformat(data["week_resets_at"]),
+            week_resets_at=datetime.fromisoformat(data["week_resets_at"]) if data["week_resets_at"] else None,
+            raw_text=data.get("raw_text"),
         )
 
 
@@ -109,7 +119,11 @@ def _fetch_usage_uncached() -> Usage:
     session_match = _SESSION_RE.search(output)
     week_match = _WEEK_RE.search(output)
     if not session_match or not week_match:
-        raise UsageFetchError(f"could not parse claude /usage output: {output!r}")
+        # No usage yet (or some other unrecognized shape) makes `claude -p /usage` print a
+        # different summary (subscription blurb + "behaviors contributing to your limits")
+        # instead of the session/week bar lines -- pass that text through as-is rather than
+        # treating an unfamiliar format as a hard failure.
+        return Usage(raw_text=output)
 
     session_resets = session_match.group(2).strip()
     week_resets = week_match.group(2).strip()
@@ -180,12 +194,54 @@ def _format_bar(label: str, pct: int, resets_at: datetime, period: timedelta, wi
     )
 
 
+# A real sample of `claude -p /usage`'s no-usage-yet output (see kb_cli/usage.py's raw_text
+# docstring) -- used by `kb stats usage --sample-passthrough` to exercise the raw_text
+# passthrough path on demand, since triggering it for real requires an empty 5-hour session
+# window, which is impractical to wait for while testing.
+_SAMPLE_PASSTHROUGH_TEXT = """\
+You are currently using your subscription to power your Claude Code usage
+
+What's contributing to your limits usage?
+Approximate, based on local sessions on this machine -- does not include other devices or claude.ai. Behaviors are independent characteristics, not a breakdown.
+
+Last 24h · 1031 requests · 7 sessions
+  96% of your usage came from subagent-heavy sessions
+  87% of your usage was at >150k context
+  Top subagents: fork 5%, general-purpose 1%
+  Top MCP servers: chrome-devtools 13%
+
+Last 7d · 7996 requests · 78 sessions
+  67% of your usage came from subagent-heavy sessions
+  66% of your usage was at >150k context
+  11% of your usage came from sessions active for 8+ hours
+  Top subagents: general-purpose 9%, fork 5%, claude 1%
+  Top MCP servers: chrome-devtools 11%
+"""
+
+
 def cmd_usage(args: argparse.Namespace) -> None:
+    if args.sample_passthrough:
+        # Written through the same cache file fetch_usage() reads, so a concurrent web
+        # request against api/usage_router.py (not just this CLI's own printing) picks it up
+        # too -- the thing actually worth testing is the frontend's raw_text rendering,
+        # which this CLI can't drive directly, but the shared cache file can feed.
+        usage = Usage(raw_text=_SAMPLE_PASSTHROUGH_TEXT)
+        _CACHE_PATH.write_text(usage.to_json())
+        print(usage.raw_text)
+        print(f"\n(written to {_CACHE_PATH} -- the web /usage page will show this until it's overwritten)")
+        return
+
     try:
         usage = fetch_usage()
     except UsageFetchError as e:
         raise SystemExit(str(e))
 
+    if usage.raw_text is not None:
+        print(usage.raw_text)
+        return
+
+    assert usage.session_pct is not None and usage.session_resets_at is not None
+    assert usage.week_pct is not None and usage.week_resets_at is not None
     print(_format_bar("Current session", usage.session_pct, usage.session_resets_at, SESSION_PERIOD))
     print(_format_bar("Current week (all models)", usage.week_pct, usage.week_resets_at, WEEK_PERIOD))
     print("\n`|`/`!` marks estimated pace -- where usage would be if spent evenly across the period.")
@@ -195,4 +251,11 @@ def add_usage_subparser(sub: "argparse._SubParsersAction[argparse.ArgumentParser
     """Registers `usage` onto an existing subparsers group -- called from stats.py's own
     add_subparser so this lives under `kb stats usage`, not as its own top-level noun."""
     parser = sub.add_parser("usage", help="Show Claude usage (mirrors the web /usage page)")
+    parser.add_argument(
+        "--sample-passthrough",
+        action="store_true",
+        help="Print sample no-usage-yet output instead of fetching real usage, to exercise "
+        "the raw_text passthrough path (real API/frontend, not this CLI's own printing) "
+        "without waiting for an actual empty usage window.",
+    )
     parser.set_defaults(func=cmd_usage)

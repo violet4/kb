@@ -13,12 +13,13 @@ router = APIRouter(prefix="/usage")
 
 
 class UsageOut(BaseModel):
-    session_pct: int
-    session_resets: str
-    session_resets_at: str
-    week_pct: int
-    week_resets: str
-    week_resets_at: str
+    session_pct: int | None = None
+    session_resets: str | None = None
+    session_resets_at: str | None = None
+    week_pct: int | None = None
+    week_resets: str | None = None
+    week_resets_at: str | None = None
+    raw_text: str | None = None
 
 
 @router.get("", response_model=UsageOut)
@@ -31,6 +32,11 @@ async def get_usage() -> UsageOut:
     except UsageFetchError as e:
         raise HTTPException(status_code=502, detail=str(e))
 
+    if usage.raw_text is not None:
+        return UsageOut(raw_text=usage.raw_text)
+
+    assert usage.session_pct is not None and usage.session_resets_at is not None
+    assert usage.week_pct is not None and usage.week_resets_at is not None
     return UsageOut(
         session_pct=usage.session_pct,
         session_resets=usage.session_resets,

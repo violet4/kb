@@ -329,7 +329,7 @@ def cmd_session_inbox_check(args: argparse.Namespace) -> None:
     `kb sessions listen` right after the mandatory `kb i show root; kb` first call."""
     from base import _now
     from harness import current_session_id
-    from models import HarnessSession, HarnessSessionStatus, SessionMessage
+    from models import ChannelMessage, ChannelRead, HarnessSession, HarnessSessionStatus
 
     session_id = current_session_id()
     if not session_id:
@@ -339,10 +339,11 @@ def cmd_session_inbox_check(args: argparse.Namespace) -> None:
         row.status = HarnessSessionStatus.INFERRING
         row.last_active_at = _now()
         args.session.commit()
-    messages = SessionMessage.inbox(args.session, session_id, unread_only=True)
+    messages = ChannelMessage.unread(args.session, session_id)
     lines = [f"New message from session {msg.from_session}:\n  {msg.body}" for msg in messages]
-    for msg in messages:
-        msg.mark_read()
+    channel_ids = {msg.channel_id for msg in messages}
+    for channel_id in channel_ids:
+        ChannelRead.record(args.session, channel_id=channel_id, session_id=session_id)
     if messages:
         args.session.commit()
 

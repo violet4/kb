@@ -7,11 +7,12 @@ HarnessSession.register (called from a SessionStart hook) and filtered to pid-al
 parsed from *.jsonl transcripts. That parsing still exists, moved to `history`, for browsing
 past sessions by title/timestamp the way this module always did.
 
-Mailbox is a DM, not a channel -- send/inbox operate on one session at a time, addressed by
-harness session id. See Note #157 for why FileChanged (a filesystem-watch hook) doesn't give
-true idle-session async delivery in Claude Code, and Goal #46 for the resulting two-layer
-delivery design this module's `inbox` (checked from UserPromptSubmit) and `listen` (an optional
-foreground poll loop) implement.
+Every message lives in a Channel (models.py) -- a DM is a nameless two-subscriber channel
+(Channel.find_or_create_dm), broadcast is the channel named "broadcast" every session
+auto-subscribes to at registration. See Note #157 for why FileChanged (a filesystem-watch
+hook) doesn't give true idle-session async delivery in Claude Code, and Goal #46 for the
+resulting two-layer delivery design this module's `inbox` (checked from UserPromptSubmit) and
+`listen` (an optional foreground poll loop) implement.
 """
 
 import argparse
@@ -21,16 +22,20 @@ import signal
 import sys
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Sequence
 
 import psutil
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from harness import current_session_id
-from models import HarnessSession, SessionMessage
+from models import Channel, ChannelMessage, ChannelRead, ChannelSubscription, HarnessSession
 
 from kb_cli._util import print_table, resolve_text_arg
 
 _PROJECTS_DIR = Path.home() / ".claude" / "projects"
+
+_BROADCAST_CHANNEL_NAME = "broadcast"
 
 _LISTEN_POLL_SECONDS = 5
 
@@ -138,6 +143,8 @@ def cmd_register(args: argparse.Namespace) -> None:
     HarnessSession.register(
         args.session, session_id, cwd=os.getcwd(), pid=_find_claude_ancestor_pid(), title=args.title
     )
+    broadcast = Channel.get_or_create_named(args.session, _BROADCAST_CHANNEL_NAME)
+    ChannelSubscription.subscribe(args.session, channel_id=broadcast.id, session_id=session_id)
     args.session.commit()
 
 
@@ -257,11 +264,12 @@ def cmd_send(args: argparse.Namespace) -> None:
     if recipient is None:
         print(f"kb sessions send: {args.to!r} is not a known session id (see `kb sessions list`)")
         raise SystemExit(1)
-    msg = SessionMessage.send(
-        args.session, from_session=from_session, to_session=args.to, body=resolve_text_arg(args.body)
+    channel = Channel.find_or_create_dm(args.session, from_session, args.to)
+    msg = ChannelMessage.post(
+        args.session, channel_id=channel.id, from_session=from_session, body=resolve_text_arg(args.body)
     )
     args.session.commit()
-    print(msg)
+    print(f"<ChannelMessage #{msg.id} {from_session}->{args.to}>")
 
     if not recipient.is_alive():
         print(
@@ -270,22 +278,89 @@ def cmd_send(args: argparse.Namespace) -> None:
         )
 
 
+def cmd_broadcast(args: argparse.Namespace) -> None:
+    """Sends one message into the "broadcast" Channel, which every session auto-subscribes to
+    at registration (cmd_register) -- one ChannelMessage row, not a fan-out into one row per
+    recipient; who receives it is just whoever is subscribed and live, the same as any other
+    channel. Recipients see it tagged [BROADCAST] in inbox/listen output (the reader side
+    applies that tag from the channel's own name, not something baked into the stored body).
+
+    --dry-run prints exactly who would receive it (the live, subscribed session list) without
+    writing anything -- added after a live mistake where a broadcast meant as a test of the
+    feature itself was sent for real and reached every other session unintentionally."""
+    from_session = _require_session_id()
+    broadcast = Channel.get_or_create_named(args.session, _BROADCAST_CHANNEL_NAME)
+    subscriber_ids = set(
+        args.session.scalars(
+            select(ChannelSubscription.session_id).where(ChannelSubscription.channel_id == broadcast.id)
+        ).all()
+    )
+    live = [row for row in HarnessSession.live(args.session) if row.id != from_session and row.id in subscriber_ids]
+    if not live:
+        print("kb sessions broadcast: no other live sessions to send to.")
+        return
+    body = resolve_text_arg(args.body)
+    if args.dry_run:
+        print(f"kb sessions broadcast --dry-run: would send to {len(live)} session(s), nothing sent:")
+        for row in live:
+            print(f"  {row.id}  ({row.cwd})")
+        print(f"Body: {body}")
+        return
+    msg = ChannelMessage.post(args.session, channel_id=broadcast.id, from_session=from_session, body=body)
+    args.session.commit()
+    print(f"<ChannelMessage #{msg.id} {from_session}->[broadcast]>")
+    print(f"Delivered to {len(live)} live session(s):")
+    for row in live:
+        print(f"  {row.id}  ({row.cwd})")
+
+
+def _channel_tag(session: Session, channel_id: int) -> str:
+    """[NAME] for a named channel (e.g. [BROADCAST]), blank for a DM (nameless channel) --
+    generalizes what used to be a single is_broadcast boolean special case."""
+    channel = session.get(Channel, channel_id)
+    if channel is None or channel.name is None:
+        return ""
+    return f"[{channel.name.upper()}] "
+
+
 def cmd_inbox(args: argparse.Namespace) -> None:
     """Called both by a person checking their own session's mail and by the
-    UserPromptSubmit hook adapter (see kb Goal #46 Layer 1) -- unread messages are
-    printed and marked read in the same call, matching this design's read_at-only
-    state (no separate archive/dismiss step)."""
+    UserPromptSubmit hook adapter (see kb Goal #46 Layer 1) -- unread messages are printed and
+    a ChannelRead row is recorded per affected channel in the same call, matching this design's
+    read-event-log state (no separate archive/dismiss step)."""
     to_session = _require_session_id()
-    messages = SessionMessage.inbox(args.session, to_session, unread_only=not args.all)
+    messages = (
+        ChannelMessage.unread(args.session, to_session) if not args.all else _all_messages(args.session, to_session)
+    )
     if not messages:
         if not args.quiet:
             print("No new messages.")
         return
+    channel_ids = set()
     for msg in messages:
-        print(f"From {msg.from_session} at {msg.created_at.isoformat()}:\n  {msg.body}\n")
-        if not args.all:
-            msg.mark_read()
+        tag = _channel_tag(args.session, msg.channel_id)
+        print(f"From {msg.from_session} at {msg.created_at.isoformat()}:\n  {tag}{msg.body}\n")
+        channel_ids.add(msg.channel_id)
+    if not args.all:
+        for channel_id in channel_ids:
+            ChannelRead.record(args.session, channel_id=channel_id, session_id=to_session)
     args.session.commit()
+
+
+def _all_messages(session: Session, to_session: str) -> Sequence[ChannelMessage]:
+    """--all support: every message (read or not) in every channel to_session is subscribed
+    to, newest-filtering-agnostic -- unlike ChannelMessage.unread this ignores read cursors
+    entirely, matching the old --all's "show everything, mark nothing" behavior."""
+    channel_ids = session.scalars(
+        select(ChannelSubscription.channel_id).where(ChannelSubscription.session_id == to_session)
+    ).all()
+    if not channel_ids:
+        return []
+    return session.scalars(
+        select(ChannelMessage)
+        .where(ChannelMessage.channel_id.in_(channel_ids), ChannelMessage.from_session != to_session)
+        .order_by(ChannelMessage.created_at)
+    ).all()
 
 
 def cmd_listen(args: argparse.Namespace) -> None:
@@ -371,30 +446,31 @@ def cmd_listen(args: argparse.Namespace) -> None:
     sys.stdout.flush()
     try:
         while True:
-            messages = SessionMessage.inbox(args.session, to_session, unread_only=True)
+            messages = ChannelMessage.unread(args.session, to_session)
             if messages:
-                # Deliberately not calling msg.mark_read() here -- this print is a best-effort
+                # Deliberately not calling ChannelRead.record() here -- this print is a best-effort
                 # preview whose actual delivery into the agent's context depends on the harness
                 # notification firing and being read, neither of which listen can confirm. If it
-                # marked read anyway, a failed/missed delivery would make `kb sessions inbox`
+                # recorded a read anyway, a failed/missed delivery would make `kb sessions inbox`
                 # (the one deterministic fallback) come back empty too, hiding a message that was
                 # never really seen (hit live, 2026-08-17 -- an agent explicitly ran `kb sessions
                 # inbox` right after a listen completion and got "No new messages" because listen
-                # had already marked it read). Marking read only happens in cmd_inbox now, at the
-                # point of actual confirmed consumption.
+                # had already marked it read). Recording a read only happens in cmd_inbox now, at
+                # the point of actual confirmed consumption.
                 for msg in messages:
+                    tag = _channel_tag(args.session, msg.channel_id)
                     body = msg.body
                     if len(body) > _LISTEN_PREVIEW_CHARS:
                         preview = body[:_LISTEN_PREVIEW_CHARS] + "..."
                         print(
                             f"From {msg.from_session} at {msg.created_at.isoformat()} "
-                            f"({len(body)} chars):\n  {preview}\n"
+                            f"({len(body)} chars):\n  {tag}{preview}\n"
                             f"  (run `kb sessions inbox` to see the full message)\n"
                         )
                     else:
                         print(
                             f"From {msg.from_session} at {msg.created_at.isoformat()} "
-                            f"({len(body)} chars):\n  {body}\n"
+                            f"({len(body)} chars):\n  {tag}{body}\n"
                         )
                 # stdout is fully buffered (not line-buffered) once it's not a TTY, which is
                 # always true for a run_in_background process -- an explicit flush here is
@@ -455,6 +531,15 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     send_parser.add_argument("to", help="Recipient's harness session id (see `kb sessions list`)")
     send_parser.add_argument("body", help="Message text, or - to read from stdin")
     send_parser.set_defaults(func=cmd_send)
+
+    broadcast_parser = sub.add_parser(
+        "broadcast", help="Send a message to every other live session (never to self), marked [BROADCAST]"
+    )
+    broadcast_parser.add_argument("body", help="Message text, or - to read from stdin")
+    broadcast_parser.add_argument(
+        "--dry-run", action="store_true", help="Print who would receive it without sending anything"
+    )
+    broadcast_parser.set_defaults(func=cmd_broadcast)
 
     inbox_parser = sub.add_parser("inbox", help="Show and mark-read this session's own new messages")
     inbox_parser.add_argument(

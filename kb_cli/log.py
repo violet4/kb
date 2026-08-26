@@ -89,4 +89,10 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     )
     p_search.add_argument("query")
     p_search.add_argument("--limit", type=int, default=10)
+    p_search.add_argument(
+        "--flags",
+        dest="flags_only",
+        action="store_true",
+        help="Only search entries created via `kb flag` (domain=claude-behavior), instead of all log entries",
+    )
     p_search.set_defaults(func=cmd_search_one, model=LogEntry, has_substring=False)

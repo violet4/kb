@@ -101,6 +101,7 @@ def search_entities(
     include_done: bool = False,
     context: Optional[Context] = None,
     since: Optional[datetime] = None,
+    **filters: Any,
 ) -> list[Any]:
     """Case-insensitive substring search over each model's title/description/notes columns.
 
@@ -113,7 +114,11 @@ def search_entities(
 
     `since`, when given, additionally restricts to rows at or after that timestamp,
     compared against `occurred_at` for LogEntry (a fact about the world, not row-insert
-    time) or `created_at` for everything else."""
+    time) or `created_at` for everything else.
+
+    `filters` are extra `column=value` equality clauses (e.g. domain="claude-behavior"),
+    applied only to models that actually have the named column -- mirrors HasEmbedding.search's
+    own `**filters` so both search passes accept the same filter shape."""
     pattern = f"%{query}%"
     in_scope = scope_to_context(session, context) if context is not None else None
     results: list[Any] = []
@@ -125,6 +130,9 @@ def search_entities(
             q = q.where(match | (model.context_id.is_(None) & model.tag_id.is_(None)))
         if since is not None:
             q = q.where(_date_column(model) >= since)
+        for col, value in filters.items():
+            if hasattr(model, col):
+                q = q.where(getattr(model, col) == value)
         rows = session.scalars(q).all()
         if not include_done:
             terminal = TERMINAL_STATUSES.get(model)
@@ -202,6 +210,7 @@ def _semantic_hits(
     vec: bytes,
     include_done: bool,
     since: Optional[datetime] = None,
+    **filters: Any,
 ) -> list[tuple[Any, float]]:
     """One model's semantic pass: fetch, then drop terminal-status rows (done/dropped/
     promoted/...) unless include_done -- the same filter TERMINAL_STATUSES.get(model)
@@ -209,8 +218,9 @@ def _semantic_hits(
     what counts as "no longer open" for models that track status. `since` is likewise a
     post-fetch filter (model.search's SQL only supports equality filters), dropping rows
     older than the cutoff -- fine at this scale since semantic fetch_limit is already
-    capped at 200."""
-    hits = model.search(session, query, limit=limit, context=context, vec=vec)
+    capped at 200. `filters` are extra column=value equality clauses forwarded straight
+    to HasEmbedding.search (e.g. domain="claude-behavior" to scope to flagged entries)."""
+    hits = model.search(session, query, limit=limit, context=context, vec=vec, **filters)
     if not include_done:
         terminal = TERMINAL_STATUSES.get(model)
         if terminal is not None:
@@ -269,11 +279,12 @@ def cmd_search_one(args: argparse.Namespace) -> None:
     include_done = getattr(args, "all", False)
     context = args.context if args.context_explicit else None
     since = parse_since(args.since) if getattr(args, "since", None) else None
+    filters: dict[str, Any] = {"domain": "claude-behavior"} if getattr(args, "flags_only", False) else {}
 
     scored: list[tuple[Any, float]] = []
     if getattr(args, "has_substring", True):
         substring_hits = search_entities(
-            args.session, (model,), args.query, include_done=include_done, context=context, since=since
+            args.session, (model,), args.query, include_done=include_done, context=context, since=since, **filters
         )
         scored.extend((item, _SUBSTRING_DIST) for item in substring_hits)
 
@@ -282,7 +293,9 @@ def cmd_search_one(args: argparse.Namespace) -> None:
 
     raw = embed(args.query)
     vec = struct.pack(f"{len(raw)}f", *raw)
-    scored.extend(_semantic_hits(model, args.session, args.query, args.limit, context, vec, include_done, since))
+    scored.extend(
+        _semantic_hits(model, args.session, args.query, args.limit, context, vec, include_done, since, **filters)
+    )
 
     # A single-model search view (e.g. `kb log search`) can afford to show full text --
     # only the multi-model aggregate (`kb search`) needs the 60-char LogEntry truncation.

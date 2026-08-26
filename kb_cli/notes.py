@@ -62,7 +62,7 @@ def cmd_update(args: argparse.Namespace) -> None:
     if note is None:
         print("Note not found.", file=sys.stderr)
         sys.exit(1)
-    body = args.body
+    body = resolve_text_arg(args.body) if args.body is not None else None
     if args.append is not None or args.replace is not None:
         replace = tuple(args.replace) if args.replace is not None else None
         body = apply_text_edit(note.body, f"body of {note.title!r}", args.append, replace)

@@ -158,14 +158,14 @@ def cmd_update(args: argparse.Namespace) -> None:
         args.id,
         "Daily",
         {
-            "description": args.description,
+            "description": resolve_text_arg(args.description) if args.description else args.description,
             "domain": args.domain,
             "tier": DailyTier(args.tier) if args.tier else None,
             "recurrence": args.recurrence,
             "show_after_hour": args.show_after_hour,
             "location": args.location,
             "remind_days_before": args.remind_days_before,
-            "notes": args.notes,
+            "notes": resolve_text_arg(args.notes) if args.notes else args.notes,
             "next_due_date": next_due_date,
         },
     )

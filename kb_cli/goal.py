@@ -43,8 +43,8 @@ def cmd_update(args: argparse.Namespace) -> None:
         "Goal",
         {
             "title": args.title,
-            "description": args.description,
-            "notes": args.notes,
+            "description": resolve_text_arg(args.description) if args.description else args.description,
+            "notes": resolve_text_arg(args.notes) if args.notes else args.notes,
         },
     )
     apply_context_or_tag_update(args.session, goal, args.new_context, args.new_tag)

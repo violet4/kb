@@ -15,6 +15,7 @@ from kb_cli._util import (
     print_journal_history,
     print_links,
     print_timestamps,
+    resolve_text_arg,
     scope_to_context,
 )
 from kb_cli.search import cmd_search_one
@@ -22,7 +23,11 @@ from kb_cli.search import cmd_search_one
 
 def cmd_add(args: argparse.Namespace) -> None:
     idea = Idea.create(
-        args.session, args.title, description=args.description, context=creation_context(args), notes=args.notes
+        args.session,
+        args.title,
+        description=resolve_text_arg(args.description) if args.description else args.description,
+        context=creation_context(args),
+        notes=resolve_text_arg(args.notes) if args.notes else args.notes,
     )
     args.session.commit()
     print(idea)
@@ -36,8 +41,8 @@ def cmd_update(args: argparse.Namespace) -> None:
         "Idea",
         {
             "title": args.title,
-            "description": args.description,
-            "notes": args.notes,
+            "description": resolve_text_arg(args.description) if args.description else args.description,
+            "notes": resolve_text_arg(args.notes) if args.notes else args.notes,
         },
     )
     apply_context_or_tag_update(args.session, idea, args.new_context, args.new_tag)

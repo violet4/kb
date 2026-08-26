@@ -14,4 +14,5 @@ export interface Daily {
   tag_name: string | null;
   is_due_now: boolean;
   is_overdue: boolean;
+  catch_up_would_stay_due: boolean;
 }

@@ -56,10 +56,10 @@ function DailyRowActions({ daily, onComplete, onCatchUp }: DailyRowProps) {
     <div style={{ display: 'flex', gap: 8 }}>
       {daily.is_overdue && (
         <RowActionButton
-          label="Catch up"
+          label={daily.catch_up_would_stay_due ? 'Catch up (stays due)' : 'Catch up'}
           background={tokens.color.surface}
-          foreground={tokens.color.overdue}
-          border={tokens.color.overdue}
+          foreground={daily.catch_up_would_stay_due ? tokens.color.due : tokens.color.overdue}
+          border={daily.catch_up_would_stay_due ? tokens.color.due : tokens.color.overdue}
           onClick={() => onCatchUp(daily.id)}
         />
       )}

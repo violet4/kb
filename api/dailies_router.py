@@ -32,6 +32,7 @@ class DailyOut(BaseModel):
     tag_name: Optional[str]
     is_due_now: bool
     is_overdue: bool
+    catch_up_would_stay_due: bool
 
 
 def _to_out(daily: Daily, session: Session) -> DailyOut:
@@ -50,6 +51,7 @@ def _to_out(daily: Daily, session: Session) -> DailyOut:
         tag_name=daily.tag.name if daily.tag else None,
         is_due_now=daily.is_due_now(session),
         is_overdue=daily.is_overdue(session),
+        catch_up_would_stay_due=daily.catch_up_would_stay_due(session),
     )
 
 

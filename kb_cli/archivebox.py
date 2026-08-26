@@ -262,6 +262,22 @@ def cmd_add(args: argparse.Namespace) -> None:
         time.sleep(poll_interval)
 
 
+def _page_title(session: Session, link: ArchivedLink) -> Optional[str]:
+    """Live ArchiveBox-reported page title for an already-pushed link, or None if unavailable
+    (title not yet scraped, config/credential error, backend doesn't support get()) -- callers
+    fall back to the URL itself rather than surface this as a hard failure, since `kb ab url`'s
+    whole point is a fast round trip that shouldn't block on ArchiveBox's own scrape timing."""
+    if link.ab_id is None:
+        return None
+    try:
+        config = _load_config(session)
+        client = get_client(config)
+        snapshot = client.get(link.ab_id)
+    except (ArchiveBoxConfigError, CredentialUnavailableError, NotImplementedError):
+        return None
+    return snapshot.title if snapshot else None
+
+
 def cmd_url(args: argparse.Namespace) -> None:
     """Raw URL(s) in, archivebox.internal URL(s) out -- one call, no bash loop, no manual
     AB-id round trip. For a URL never seen before this creates an ArchivedLink with an
@@ -299,7 +315,10 @@ def cmd_url(args: argparse.Namespace) -> None:
                 continue
             if args.singlefile:
                 ab_url = ab_url.rstrip("/") + "/singlefile.html"
-            print(ab_url)
+            if args.viewing:
+                print(f"{ab_url} | {url} | {_page_title(args.session, link) or url}")
+            else:
+                print(ab_url)
         else:
             print(f"{url}: failed -- {link.push_error}", file=sys.stderr)
             any_failed = True
@@ -517,6 +536,14 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         "--singlefile",
         action="store_true",
         help="Point each ab_url at the singlefile.html capture instead of the archive index page",
+    )
+    p_url.add_argument(
+        "--viewing",
+        action="store_true",
+        help=(
+            "Print 'ab_url | original_url | page_title' instead of just ab_url -- page_title "
+            "falls back to original_url again if ArchiveBox hasn't reported a title yet"
+        ),
     )
     p_url.set_defaults(func=cmd_url)
 

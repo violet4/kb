@@ -1,11 +1,17 @@
+import { useState } from 'react';
 import { tokens } from '../../shared/tokens';
-import type { EntityDetail } from '../types';
+import { rowToEntityDetail } from '../rowToEntityDetail';
+import type { ColumnSchema, EntityDetail } from '../types';
+import EditableFieldControl from './renderers/EditableFieldControl';
 
 interface EntityHeaderProps {
   entity: EntityDetail;
+  titleSchema?: ColumnSchema;
+  onFieldSaved: (entity: EntityDetail) => void;
 }
 
-export default function EntityHeader({ entity }: EntityHeaderProps) {
+export default function EntityHeader({ entity, titleSchema, onFieldSaved }: EntityHeaderProps) {
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
       <p style={{ margin: 0, fontSize: 13, color: tokens.color.textMuted }}>
@@ -13,7 +19,27 @@ export default function EntityHeader({ entity }: EntityHeaderProps) {
         {entity.context_name ? ` · ${entity.context_name}` : ''}
       </p>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <h1 style={{ margin: 0, fontSize: 20 }}>{entity.label}</h1>
+        {titleSchema && isEditingTitle ? (
+          <EditableFieldControl
+            type={entity.type}
+            id={entity.id}
+            schema={titleSchema}
+            initialValue={entity.label}
+            onSaved={(row) => {
+              setIsEditingTitle(false);
+              onFieldSaved(rowToEntityDetail(row));
+            }}
+            onCancel={() => setIsEditingTitle(false)}
+          />
+        ) : (
+          <h1
+            style={{ margin: 0, fontSize: 20, cursor: titleSchema ? 'pointer' : undefined }}
+            onClick={titleSchema ? () => setIsEditingTitle(true) : undefined}
+            title={titleSchema ? 'Click to edit' : undefined}
+          >
+            {entity.label}
+          </h1>
+        )}
         {entity.status && (
           <span
             style={{

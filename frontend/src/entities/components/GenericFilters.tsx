@@ -1,5 +1,6 @@
 import { tokens } from '../../shared/tokens';
 import type { ColumnSchema } from '../types';
+import EnumMultiSelectFilter from './EnumMultiSelectFilter';
 
 interface GenericFiltersProps {
   columns: ColumnSchema[];
@@ -7,15 +8,15 @@ interface GenericFiltersProps {
   onChange: (column: string, value: string) => void;
 }
 
-// One filter control per shown, filterable column -- an enum column gets a dropdown
-// (its choices come straight from the schema, same as EnumFieldSelect), everything
-// else a text input. No per-type filter code: a new column added to a type's
-// DEFAULT_COLUMNS just gets a filter automatically.
+// One filter control per shown, filterable column -- an enum column gets a
+// multi-select checkbox group (its choices come straight from the schema, same as
+// EnumFieldSelect), everything else a text input. No per-type filter code: a new
+// column added to a type's DEFAULT_COLUMNS just gets a filter automatically.
 export default function GenericFilters({ columns, values, onChange }: GenericFiltersProps) {
   const filterable = columns.filter((c) => c.kind !== 'reference');
   if (filterable.length === 0) return null;
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
       {filterable.map((column) => (
         <ColumnFilter key={column.name} column={column} value={values[column.name] ?? ''} onChange={onChange} />
       ))}
@@ -31,25 +32,16 @@ interface ColumnFilterProps {
 
 function ColumnFilter({ column, value, onChange }: ColumnFilterProps) {
   return (
-    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: tokens.color.textMuted }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: tokens.color.textMuted }}>
       {column.name}
       <FilterControl column={column} value={value} onChange={onChange} />
-    </label>
+    </div>
   );
 }
 
 function FilterControl({ column, value, onChange }: ColumnFilterProps) {
   if (column.kind === 'enum') {
-    return (
-      <select value={value} onChange={(e) => onChange(column.name, e.target.value)} style={controlStyle}>
-        <option value="">(any)</option>
-        {(column.choices ?? []).map((choice) => (
-          <option key={choice} value={choice}>
-            {choice}
-          </option>
-        ))}
-      </select>
-    );
+    return <EnumMultiSelectFilter column={column} value={value} onChange={onChange} />;
   }
   return (
     <input

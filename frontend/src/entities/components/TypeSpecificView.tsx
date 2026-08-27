@@ -1,6 +1,5 @@
 import { tokens } from '../../shared/tokens';
-import { useColumns } from '../hooks/useColumns';
-import type { EntityDetail } from '../types';
+import type { ColumnSchema, EntityDetail } from '../types';
 import ArchivedLinkView from './renderers/ArchivedLinkView';
 import DailyView from './renderers/DailyView';
 import GoalView from './renderers/GoalView';
@@ -12,15 +11,15 @@ import WishlistView from './renderers/WishlistView';
 
 interface TypeSpecificViewProps {
   entity: EntityDetail;
+  schemas: Record<string, ColumnSchema>;
   onFieldSaved: (entity: EntityDetail) => void;
 }
 
 // One renderer per entity type -- open for extension (add a new type + case here)
-// without modifying the existing renderers. Column schemas are fetched once here
-// (one request per entity view, not per field) and passed to whichever renderer
-// matches, so every renderer shares the same schema lookup.
-export default function TypeSpecificView({ entity, onFieldSaved }: TypeSpecificViewProps) {
-  const schemas = useColumns(entity.type);
+// without modifying the existing renderers. Column schemas are fetched once by
+// EntityView (shared with EntityHeader's title editing) and passed down here, so
+// every renderer shares the same schema lookup rather than each fetching its own.
+export default function TypeSpecificView({ entity, schemas, onFieldSaved }: TypeSpecificViewProps) {
   switch (entity.type) {
     case 'Todo':
       return <TodoView entity={entity} schemas={schemas} onFieldSaved={onFieldSaved} />;

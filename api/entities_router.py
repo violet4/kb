@@ -224,11 +224,14 @@ def _apply_column_filter(q: Any, model: type[Any], entity_type: str, column: Col
     if db_column is None:
         raise HTTPException(status_code=400, detail=f"{entity_type} has no filterable column {column.name!r}")
     if column.kind == "enum":
+        # Comma-separated -- lets a multi-select filter (e.g. status=active,on_hold)
+        # match any of several values via IN, not just one via equality.
         enum_cls = db_column.property.columns[0].type.enum_class
         try:
-            return q.where(db_column == enum_cls(value))
+            members = [enum_cls(v) for v in value.split(",") if v]
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Unknown {column.name}: {value!r}")
+        return q.where(db_column.in_(members))
     if column.kind == "bool":
         return q.where(db_column.is_(value.lower() in ("1", "true", "yes")))
     if column.kind == "number":

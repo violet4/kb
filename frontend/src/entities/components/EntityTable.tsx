@@ -13,6 +13,7 @@ import NumberFieldControl from './renderers/NumberFieldControl';
 interface EntityTableProps {
   entities: EntityRow[];
   columns: ColumnSchema[];
+  titleSchema?: ColumnSchema;
   onFieldSaved: (entity: EntityRow) => void;
 }
 
@@ -20,7 +21,7 @@ interface EntityTableProps {
 // a live editable dropdown all come from `columns` (introspected once by BrowseView)
 // -- adding a column to a type's DEFAULT_COLUMNS on the backend is the only change
 // needed for it to appear here, no frontend edit.
-export default function EntityTable({ entities, columns, onFieldSaved }: EntityTableProps) {
+export default function EntityTable({ entities, columns, titleSchema, onFieldSaved }: EntityTableProps) {
   if (entities.length === 0) return <p style={{ color: tokens.color.textMuted }}>Nothing here.</p>;
   return (
     <div style={{ overflowX: 'auto' }}>
@@ -37,7 +38,13 @@ export default function EntityTable({ entities, columns, onFieldSaved }: EntityT
         </thead>
         <tbody>
           {entities.map((entity) => (
-            <EntityTableRow key={`${entity.type}:${entity.id}`} entity={entity} columns={columns} onFieldSaved={onFieldSaved} />
+            <EntityTableRow
+              key={`${entity.type}:${entity.id}`}
+              entity={entity}
+              columns={columns}
+              titleSchema={titleSchema}
+              onFieldSaved={onFieldSaved}
+            />
           ))}
         </tbody>
       </table>
@@ -48,16 +55,15 @@ export default function EntityTable({ entities, columns, onFieldSaved }: EntityT
 interface EntityTableRowProps {
   entity: EntityRow;
   columns: ColumnSchema[];
+  titleSchema?: ColumnSchema;
   onFieldSaved: (entity: EntityRow) => void;
 }
 
-function EntityTableRow({ entity, columns, onFieldSaved }: EntityTableRowProps) {
+function EntityTableRow({ entity, columns, titleSchema, onFieldSaved }: EntityTableRowProps) {
   return (
     <tr style={{ borderTop: `1px solid ${tokens.color.border}` }}>
       <td style={cellStyle}>
-        <Link to={entityPath(entity.type, entity.id)} style={{ color: tokens.color.text, textDecoration: 'none' }}>
-          {entity.label}
-        </Link>
+        <TitleCell entity={entity} titleSchema={titleSchema} onFieldSaved={onFieldSaved} />
       </td>
       {columns.map((column) => (
         <td key={column.name} style={cellStyle}>
@@ -65,6 +71,60 @@ function EntityTableRow({ entity, columns, onFieldSaved }: EntityTableRowProps) 
         </td>
       ))}
     </tr>
+  );
+}
+
+interface TitleCellProps {
+  entity: EntityRow;
+  titleSchema?: ColumnSchema;
+  onFieldSaved: (entity: EntityRow) => void;
+}
+
+// The one cell that's both a navigation link and (when titleSchema is editable) an
+// editable field -- competing interactions, so editing is a separate explicit
+// affordance (a small pencil button) rather than overloading a click on the link
+// itself, which always navigates.
+function TitleCell({ entity, titleSchema, onFieldSaved }: TitleCellProps) {
+  const [isEditing, setIsEditing] = useState(false);
+
+  if (titleSchema?.editable && isEditing) {
+    return (
+      <EditableFieldControl
+        type={entity.type}
+        id={entity.id}
+        schema={titleSchema}
+        initialValue={entity.label}
+        onSaved={(row) => {
+          setIsEditing(false);
+          onFieldSaved(row);
+        }}
+        onCancel={() => setIsEditing(false)}
+      />
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <Link to={entityPath(entity.type, entity.id)} style={{ color: tokens.color.text, textDecoration: 'none' }}>
+        {entity.label}
+      </Link>
+      {titleSchema?.editable && (
+        <button
+          onClick={() => setIsEditing(true)}
+          title="Edit title"
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: tokens.color.textMuted,
+            cursor: 'pointer',
+            fontSize: 12,
+            padding: 0,
+          }}
+        >
+          ✎
+        </button>
+      )}
+    </div>
   );
 }
 

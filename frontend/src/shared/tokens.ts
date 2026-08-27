@@ -16,4 +16,11 @@ export const tokens = {
     barTrack: '#3a3f47',
     barFill: '#7c5cff',
   },
+  // Shared style for any clickable text link (entity title links, external URLs,
+  // nav items) -- no underline (distracting at this density), accent color instead
+  // to distinguish it from plain body text.
+  link: {
+    color: '#5b9dff',
+    textDecoration: 'none',
+  } as const,
 };

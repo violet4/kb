@@ -32,8 +32,7 @@ function SearchResultRow({ hit }: { hit: SearchHit }) {
     padding: '8px 10px',
     borderRadius: 4,
     border: `1px solid ${tokens.color.border}`,
-    color: tokens.color.text,
-    textDecoration: 'none',
+    ...(hit.drilldown ? tokens.link : { color: tokens.color.text, textDecoration: 'none' }),
   } as const;
 
   const body = hit.drilldown ? (
@@ -57,12 +56,12 @@ function ArchivedLinkUrls({ originalUrl, archiveboxUrl }: { originalUrl: string 
   return (
     <div style={{ display: 'flex', gap: 12, padding: '4px 10px', fontSize: 12 }}>
       {originalUrl && (
-        <a href={originalUrl} target="_blank" rel="noreferrer" style={{ color: tokens.color.accent }}>
+        <a href={originalUrl} target="_blank" rel="noreferrer" style={tokens.link}>
           original source
         </a>
       )}
       {archiveboxUrl && (
-        <a href={archiveboxUrl} target="_blank" rel="noreferrer" style={{ color: tokens.color.accent }}>
+        <a href={archiveboxUrl} target="_blank" rel="noreferrer" style={tokens.link}>
           archivebox
         </a>
       )}

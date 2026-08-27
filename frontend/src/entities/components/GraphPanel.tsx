@@ -32,10 +32,7 @@ function GraphNeighborRow({ neighbor }: { neighbor: GraphNeighbor }) {
     );
   }
   return (
-    <Link
-      to={entityPath(neighbor.other_type as never, neighbor.other_id)}
-      style={{ fontSize: 13, color: tokens.color.text, textDecoration: 'none' }}
-    >
+    <Link to={entityPath(neighbor.other_type as never, neighbor.other_id)} style={{ fontSize: 13, ...tokens.link }}>
       {label}
     </Link>
   );

@@ -105,7 +105,7 @@ function TitleCell({ entity, titleSchema, onFieldSaved }: TitleCellProps) {
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-      <Link to={entityPath(entity.type, entity.id)} style={{ color: tokens.color.text, textDecoration: 'none' }}>
+      <Link to={entityPath(entity.type, entity.id)} style={tokens.link}>
         {entity.label}
       </Link>
       {titleSchema?.editable && (

@@ -11,7 +11,7 @@ export default function ArchivedLinkView(props: RendererProps) {
       {url && (
         <div style={{ display: 'flex', gap: 8, fontSize: 13 }}>
           <span style={{ color: tokens.color.textMuted, minWidth: 90 }}>URL</span>
-          <a href={url} target="_blank" rel="noreferrer" style={{ color: tokens.color.accent }}>
+          <a href={url} target="_blank" rel="noreferrer" style={tokens.link}>
             {url}
           </a>
         </div>

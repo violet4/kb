@@ -9,8 +9,15 @@ import { useColumns } from './hooks/useColumns';
 import { useEntityList } from './hooks/useEntityList';
 import type { EntityType } from './types';
 
-const TABS = ['Todo', 'Bugs', 'Goal', 'Note', 'Idea', 'Wishlist'] as const;
+const TABS = ['Todo', 'Bugs', 'Goal', 'Note', 'Idea', 'Wishlist', 'Instruction', 'Daily', 'ArchivedLink'] as const;
 type Tab = (typeof TABS)[number];
+
+// Types with no "title" column of their own -- api/entities_router.py's _label falls
+// back to their "description" (or "name") column instead, so that column is already
+// shown via the table's leading link and would be redundant as its own column too.
+// Types that DO have "title" never fall back, so their "description" (Goal, Wishlist,
+// Idea) stays a genuinely separate, useful column.
+const TITLELESS_TYPES = new Set<Tab>(['Daily']);
 
 // "Bugs" isn't a real entity type -- it's Todo with kind=bug (same table/lifecycle
 // as Todo, see CLAUDE.md) -- so its tab resolves to Todo's own type + a fixed extra
@@ -32,9 +39,11 @@ export default function BrowseView() {
   const columns = useColumns(entityType);
   const columnList = Object.values(columns);
   const shownColumns = columnList.filter((c) => c.shown);
-  // "title" is always shown via the table's fixed leading link column -- an extra
-  // "Title" column would just repeat it.
-  const shownTableColumns = shownColumns.filter((c) => c.name !== 'title');
+  // "title" is always shown via the table's fixed leading link column; for a type
+  // with no title column, "name"/"description" fills that role instead (see
+  // TITLELESS_TYPES) and would be just as redundant as its own column.
+  const labelColumns = TITLELESS_TYPES.has(tab) ? new Set(['name', 'description']) : new Set(['title']);
+  const shownTableColumns = shownColumns.filter((c) => !labelColumns.has(c.name));
   const { entities, loading, error, applyFieldSave } = useEntityList(entityType, { ...filters, ...fixedFilters });
 
   const handleFilterChange = (column: string, value: string) => {

@@ -4,6 +4,7 @@ import { tokens } from '../../shared/tokens';
 import { entityPath } from '../navigation';
 import { useFieldEdit } from '../hooks/useFieldEdit';
 import type { ColumnSchema, EntityRow } from '../types';
+import BoolFieldToggle from './renderers/BoolFieldToggle';
 import EditableFieldControl from './renderers/EditableFieldControl';
 import EnumFieldSelect from './renderers/EnumFieldSelect';
 import NullableFieldWrapper from './renderers/NullableFieldWrapper';
@@ -81,6 +82,10 @@ function EntityTableCell({ entity, column, onFieldSaved }: EntityTableCellProps)
 
   if (column.editable && column.kind === 'enum' && !isEmpty) {
     return <EnumFieldSelect type={entity.type} id={entity.id} schema={column} value={String(value)} onSaved={onFieldSaved} />;
+  }
+
+  if (column.editable && column.kind === 'bool') {
+    return <BoolFieldToggle type={entity.type} id={entity.id} schema={column} value={Boolean(value)} onSaved={onFieldSaved} />;
   }
 
   // A comma-joined list (e.g. Note.tags) has no natural wrap point as one string --

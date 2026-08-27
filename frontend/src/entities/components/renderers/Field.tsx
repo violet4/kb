@@ -3,6 +3,7 @@ import { tokens } from '../../../shared/tokens';
 import { useFieldEdit } from '../../hooks/useFieldEdit';
 import { rowToEntityDetail } from '../../rowToEntityDetail';
 import type { ColumnSchema, EntityDetail, EntityRow, EntityType } from '../../types';
+import BoolFieldToggle from './BoolFieldToggle';
 import EditableFieldControl from './EditableFieldControl';
 import EnumFieldSelect from './EnumFieldSelect';
 import NullableFieldWrapper from './NullableFieldWrapper';
@@ -86,6 +87,18 @@ function EditableControl({ editable, value, isEditing, setIsEditing }: EditableC
         id={editable.id}
         schema={editable.schema}
         value={String(value ?? '')}
+        onSaved={(row) => editable.onSaved(rowToEntityDetail(row))}
+      />
+    );
+  }
+
+  if (editable?.schema.kind === 'bool') {
+    return (
+      <BoolFieldToggle
+        type={editable.type}
+        id={editable.id}
+        schema={editable.schema}
+        value={Boolean(value)}
         onSaved={(row) => editable.onSaved(rowToEntityDetail(row))}
       />
     );

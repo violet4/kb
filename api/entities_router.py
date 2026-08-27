@@ -21,7 +21,7 @@ from sqlalchemy import inspect, select
 from sqlalchemy.orm import Session
 
 from api.deps import get_session
-from models import EntityLink, Goal, Idea, Journal, Note, Todo, Wishlist
+from models import ArchivedLink, Daily, EntityLink, Goal, Idea, Instruction, Journal, Note, Todo, Wishlist
 
 router = APIRouter(prefix="/entities")
 
@@ -31,6 +31,9 @@ ENTITY_TYPES: dict[str, type[Any]] = {
     "Note": Note,
     "Idea": Idea,
     "Wishlist": Wishlist,
+    "Instruction": Instruction,
+    "Daily": Daily,
+    "ArchivedLink": ArchivedLink,
 }
 
 # Columns hidden from every introspected view (internal bookkeeping, never a useful
@@ -47,6 +50,9 @@ DEFAULT_COLUMNS: dict[str, tuple[str, ...]] = {
     "Note": ("title", "collection", "tags", "updated_at"),
     "Idea": ("title", "status", "context", "updated_at"),
     "Wishlist": ("title", "status", "priority", "context", "updated_at"),
+    "Instruction": ("title", "trigger", "system_level", "context", "updated_at"),
+    "Daily": ("description", "domain", "tier", "recurrence", "context", "updated_at"),
+    "ArchivedLink": ("title", "url", "push_status", "content_status", "updated_at"),
 }
 
 # Columns editable via PATCH, per type -- a further-restricted subset of what's
@@ -58,6 +64,9 @@ EDITABLE_COLUMNS: dict[str, tuple[str, ...]] = {
     "Note": ("title", "collection", "tags", "body"),
     "Idea": ("title", "status", "description", "notes"),
     "Wishlist": ("title", "status", "priority", "notes"),
+    "Instruction": ("title", "body", "trigger", "system_level"),
+    "Daily": ("description", "domain", "tier", "recurrence", "location", "notes", "is_active"),
+    "ArchivedLink": ("title", "reason"),
 }
 
 # Columns whose value may be cleared back to NULL via PATCH (see FieldUpdateIn.is_null)
@@ -69,6 +78,8 @@ NULLABLE_COLUMNS: dict[str, tuple[str, ...]] = {
     "Note": ("tags",),
     "Idea": ("description", "notes"),
     "Wishlist": ("priority", "notes"),
+    "Instruction": ("trigger",),
+    "Daily": ("location", "notes"),
 }
 
 
@@ -292,6 +303,8 @@ async def update_entity_field(
             new_value = int(body.value) if "." not in body.value else float(body.value)
         except ValueError:
             raise HTTPException(status_code=400, detail=f"{body.field} must be a number, got {body.value!r}")
+    elif column.kind == "bool":
+        new_value = body.value.lower() in ("1", "true", "yes")
     else:
         new_value = body.value
     setattr(row, body.field, new_value)

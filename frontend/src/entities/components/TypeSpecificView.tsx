@@ -1,8 +1,11 @@
 import { tokens } from '../../shared/tokens';
 import { useColumns } from '../hooks/useColumns';
 import type { EntityDetail } from '../types';
+import ArchivedLinkView from './renderers/ArchivedLinkView';
+import DailyView from './renderers/DailyView';
 import GoalView from './renderers/GoalView';
 import IdeaView from './renderers/IdeaView';
+import InstructionView from './renderers/InstructionView';
 import NoteView from './renderers/NoteView';
 import TodoView from './renderers/TodoView';
 import WishlistView from './renderers/WishlistView';
@@ -29,6 +32,12 @@ export default function TypeSpecificView({ entity, onFieldSaved }: TypeSpecificV
       return <IdeaView entity={entity} schemas={schemas} onFieldSaved={onFieldSaved} />;
     case 'Wishlist':
       return <WishlistView entity={entity} schemas={schemas} onFieldSaved={onFieldSaved} />;
+    case 'Instruction':
+      return <InstructionView entity={entity} schemas={schemas} onFieldSaved={onFieldSaved} />;
+    case 'Daily':
+      return <DailyView entity={entity} schemas={schemas} onFieldSaved={onFieldSaved} />;
+    case 'ArchivedLink':
+      return <ArchivedLinkView entity={entity} schemas={schemas} onFieldSaved={onFieldSaved} />;
     default:
       return <p style={{ color: tokens.color.textMuted }}>No renderer for {entity.type}.</p>;
   }

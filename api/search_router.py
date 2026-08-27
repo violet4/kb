@@ -25,11 +25,10 @@ from models import ArchivedLink
 
 router = APIRouter(prefix="/search-all")
 
-# Maps a searchable model to the (entity_type, EntitySummary-compatible) identity the
-# frontend's entity drilldown understands -- only models entities_router.ENTITY_TYPES
-# also knows how to render get a type name here; others (Instruction, Context, Daily,
-# ArchivedLink, Vendor, Item, LogEntry) are shown as plain search hits with no drilldown link.
-_DRILLDOWN_TYPES = {"Goal", "Todo", "Wishlist", "Idea", "Note"}
+# Type names entities_router.ENTITY_TYPES also knows how to render -- a search hit of
+# one of these gets a drilldown link into /entities/{type}/{id}; others (Context,
+# Vendor, Item, LogEntry) are shown as plain search hits with no drilldown link.
+_DRILLDOWN_TYPES = {"Goal", "Todo", "Wishlist", "Idea", "Note", "Instruction", "Daily", "ArchivedLink"}
 
 
 class SearchHit(BaseModel):

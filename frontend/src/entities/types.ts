@@ -1,5 +1,5 @@
 // Mirrors api/entities_router.py's Pydantic models.
-export type EntityType = 'Todo' | 'Goal' | 'Note' | 'Idea' | 'Wishlist';
+export type EntityType = 'Todo' | 'Goal' | 'Note' | 'Idea' | 'Wishlist' | 'Instruction' | 'Daily' | 'ArchivedLink';
 
 // A raw row from GET /entities/{type} or /entities/{type}/{id} -- type/id/label
 // are always present, everything else is whatever columns that type actually has

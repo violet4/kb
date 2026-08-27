@@ -21,11 +21,12 @@ import os
 import signal
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Sequence
 
 import psutil
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from harness import current_session_id
@@ -45,6 +46,36 @@ _LISTEN_POLL_SECONDS = 5
 # the completion notification's own <summary> line never carries message content, only a
 # pointer to the output file, so this preview is what actually needs to be self-sufficient).
 _LISTEN_PREVIEW_CHARS = 200
+
+
+def _humanize_age(delta_seconds: float) -> str:
+    """Renders a duration as e.g. "3m", "2h", "5d" -- coarsest unit that keeps at least one
+    significant digit, matching age_marker's own d/w granularity style (base.py) but finer
+    since session ages/message gaps are commonly under a day, unlike record age."""
+    seconds = int(delta_seconds)
+    if seconds < 60:
+        return f"{seconds}s"
+    minutes = seconds // 60
+    if minutes < 60:
+        return f"{minutes}m"
+    hours = minutes // 60
+    if hours < 24:
+        return f"{hours}h"
+    days = hours // 24
+    return f"{days}d"
+
+
+def _last_message_at(session: Session, session_id: str) -> Optional[datetime]:
+    """Most recent ChannelMessage either sent by session_id or posted into any channel it
+    subscribes to -- covers both directions (something it said, something it was told)
+    rather than only inbound mail, since "time since most recent message" should reflect
+    the session's own last activity in a channel either way."""
+    channel_ids = session.scalars(
+        select(ChannelSubscription.channel_id).where(ChannelSubscription.session_id == session_id)
+    ).all()
+    if not channel_ids:
+        return None
+    return session.scalar(select(func.max(ChannelMessage.created_at)).where(ChannelMessage.channel_id.in_(channel_ids)))
 
 
 def _session_info(path: Path) -> dict[str, str] | None:
@@ -165,7 +196,8 @@ def cmd_list(args: argparse.Namespace) -> None:
         print("No live sessions.")
         return
     self_id = current_session_id()
-    headers = ["Session", "You?", "Status", "Listening", "Cwd", "Title"]
+    now = datetime.now(timezone.utc)
+    headers = ["Session", "You?", "Status", "Listening", "Age", "Last Msg", "Cwd", "Title"]
     rows = []
     for row in live:
         if row.is_listening_live():
@@ -179,6 +211,16 @@ def cmd_list(args: argparse.Namespace) -> None:
             listening = "stale"
         else:
             listening = ""
+        # created_at is set once at first registration (HarnessSession.register upserts, never
+        # re-inserts on a resumed/restarted `kb sessions listen`), so this is genuinely "when
+        # the session was created," not reset by listen's own exit-and-restart cycle.
+        age = _humanize_age((now - row.created_at.replace(tzinfo=timezone.utc)).total_seconds())
+        last_msg_at = _last_message_at(args.session, row.id)
+        last_msg = (
+            _humanize_age((now - last_msg_at.replace(tzinfo=timezone.utc)).total_seconds())
+            if last_msg_at is not None
+            else ""
+        )
         rows.append(
             [
                 # Full id, not truncated -- kb sessions send needs to copy-paste this
@@ -187,6 +229,8 @@ def cmd_list(args: argparse.Namespace) -> None:
                 "yes" if row.id == self_id else "",
                 row.status.value,
                 listening,
+                age,
+                last_msg,
                 row.cwd,
                 row.title or "",
             ]

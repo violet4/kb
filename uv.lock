@@ -331,6 +331,11 @@ wheels = [
 ]
 
 [[package]]
+name = "cli-instrumentation"
+version = "0.0.8"
+source = { git = "file:///home/violet/dev/cli_instrumentation?tag=0.0.8#26fbd07aeb3f79b2ec38434dd6a362f43e80a56a" }
+
+[[package]]
 name = "click"
 version = "8.4.2"
 source = { registry = "https://pypi.org/simple" }
@@ -855,6 +860,7 @@ dependencies = [
     { name = "alembic" },
     { name = "anki" },
     { name = "beautifulsoup4" },
+    { name = "cli-instrumentation" },
     { name = "fastapi" },
     { name = "httpx" },
     { name = "keyring" },
@@ -885,6 +891,7 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.18.5" },
     { name = "anki", specifier = ">=25.0" },
     { name = "beautifulsoup4", specifier = ">=4.15.0" },
+    { name = "cli-instrumentation", git = "file:///home/violet/dev/cli_instrumentation?tag=0.0.8" },
     { name = "fastapi", specifier = ">=0.141.1" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "keyring", specifier = ">=25.7.0" },

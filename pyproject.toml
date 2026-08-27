@@ -7,6 +7,7 @@ dependencies = [
     "alembic>=1.18.5",
     "anki>=25.0",
     "beautifulsoup4>=4.15.0",
+    "cli-instrumentation",
     "fastapi>=0.141.1",
     "httpx>=0.28.1",
     "keyring>=25.7.0",
@@ -53,3 +54,6 @@ omit = ["tests/*", ".venv/*", "alembic/*"]
 line-length = 120
 target-version = ["py312"]
 extend-exclude = "alembic/versions/"
+
+[tool.uv.sources]
+cli-instrumentation = { git = "file:///home/violet/dev/cli_instrumentation", tag = "0.0.8" }

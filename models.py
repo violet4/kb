@@ -2479,21 +2479,33 @@ class ChannelRead(Base):
 
 
 class CliInvocation(Base):
-    """One record per top-level `kb` CLI invocation -- command text, whether it succeeded,
-    and the error message if it didn't. Written by kb's own top-level dispatch (see the `kb`
-    script), independent of any one subcommand knowing about it, so every invocation is
-    covered without each kb_cli/*.py module having to opt in. The point is to make CLI
-    friction (a confusing error, a command that fails the same way repeatedly) queryable
-    (`kb stats`) instead of relying on it being reported by hand each time it's hit --
-    see kb Instruction root, "the tree's own re-check mechanisms... exist for exactly this:
-    surfacing friction proactively, not after the fact," applied to the CLI's own errors."""
+    """One record per top-level `kb` CLI invocation -- command text, resolved subcommand
+    path, timing, whether it succeeded, the error message if it didn't, and a size-capped
+    snapshot of parsed args. Written by the shared `cli_instrumentation` library (see
+    ~/dev/cli_instrumentation) via the `kb` script's own entry point, independent of any one
+    subcommand knowing about it, so every invocation is covered without each kb_cli/*.py
+    module having to opt in. The point is to make CLI friction (a confusing error, a command
+    that fails the same way repeatedly) and CLI usage patterns (unused commands, commonly
+    used flags) queryable (`kb stats`) instead of relying on friction being reported by hand
+    each time it's hit -- see kb Instruction root, "the tree's own re-check mechanisms...
+    exist for exactly this: surfacing friction proactively, not after the fact," applied to
+    the CLI's own errors and usage.
+
+    `args_json` stores cli_instrumentation's already-truncated args snapshot verbatim, as a
+    single JSON column rather than normalized per-arg columns/rows -- its shape varies by
+    subcommand and is expected to change as instrumentation needs evolve, and decomposing it
+    is a decision to make later, driven by an actual query or storage-size need that shows up
+    in practice, not up front."""
 
     __tablename__ = "cli_invocation"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     command: Mapped[str] = mapped_column(Text, nullable=False)
+    subcommand: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     success: Mapped[bool] = mapped_column(Boolean, nullable=False)
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    duration_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    args_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     def __repr__(self) -> str:
         status = "ok" if self.success else "error"

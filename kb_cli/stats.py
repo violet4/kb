@@ -6,14 +6,17 @@ import argparse
 import io
 from collections import Counter
 from contextlib import redirect_stdout
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from cli_instrumentation.stats import add_stats_subparser
+
 from base import _now
-from models import CliInvocation
+from models import CliInvocation, SessionFactory
 
 from kb_cli import instruction
 from kb_cli.bare_text import BARE_INSTRUCTIONS
@@ -60,6 +63,35 @@ def cmd_errors(args: argparse.Namespace) -> None:
     for msg, count in error_counts.most_common(args.top):
         short = msg if len(msg) <= 100 else msg[:97] + "..."
         print(f"  {count:>3}  {short}")
+
+
+def _rows_from_session(session: Session, since: datetime) -> list[dict[str, Any]]:
+    """Query logic split out from _fetch_instrumentation_rows so it's testable against
+    tests/conftest.py's in-memory db_session fixture, without needing the real on-disk DB
+    _fetch_instrumentation_rows itself talks to via SessionFactory."""
+    rows = session.scalars(select(CliInvocation).where(CliInvocation.created_at >= since)).all()
+    return [
+        {
+            "command": r.command,
+            "subcommand": r.subcommand,
+            "success": r.success,
+            "error": r.error,
+            "duration_ms": r.duration_ms,
+        }
+        for r in rows
+    ]
+
+
+def _fetch_instrumentation_rows(since: datetime) -> list[dict[str, Any]]:
+    """cli_instrumentation.stats.add_stats_subparser's fetch_rows callback -- a fresh,
+    short-lived session, same rationale as _record_invocation in the `kb` script itself:
+    an unrelated failed command elsewhere shouldn't leave a stale transaction for this
+    read-only report to inherit."""
+    session = SessionFactory()
+    try:
+        return _rows_from_session(session, since)
+    finally:
+        session.close()
 
 
 def _session_header_text(session: Session) -> str:
@@ -123,3 +155,4 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_header.set_defaults(func=cmd_session_header_cost)
 
     add_usage_subparser(sub)
+    add_stats_subparser(sub, fetch_rows=_fetch_instrumentation_rows)

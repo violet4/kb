@@ -50,6 +50,9 @@ import subprocess
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
+
+from cli_instrumentation import InstrumentedArgumentParser, attach_recording, instrumented_run
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -136,7 +139,7 @@ Run bare `kb` (no arguments) for a short, task-oriented routing guide instead of
 reference. See also: kb instructions root.
 """
 
-parser = argparse.ArgumentParser(
+parser = InstrumentedArgumentParser(
     prog="kb",
     description="Global kb CLI",
     epilog=_HELP_EPILOG,
@@ -180,38 +183,28 @@ archivebox.add_subparser(subparsers)
 si.add_subparser(subparsers)
 
 
-def _log_invocation(success: bool, error: str | None) -> None:
-    """Record one row per top-level `kb` invocation (see CliInvocation in models.py) --
-    a fresh, short-lived session, since a failed command may have left args.session's
-    transaction in a state that shouldn't be reused for this. Logging itself must never
-    be the reason a command fails, so any error here is swallowed, not raised."""
-    try:
-        from models import CliInvocation
+def _record_invocation(payload: dict[str, Any]) -> None:
+    """Write one CliInvocation row (see models.py) via a fresh, short-lived session, since a
+    failed command may have left args.session's transaction in a state that shouldn't be
+    reused for this. cli_instrumentation already guarantees this is never allowed to raise
+    into the wrapped command, so no try/except is needed here. should_record/invocation_kwargs
+    both live in kb_cli.cli_instrumentation_sink, independently testable against
+    tests/conftest.py's in-memory db_session fixture."""
+    from kb_cli.cli_instrumentation_sink import invocation_kwargs, should_record
+    from models import CliInvocation
 
-        log_session = SessionFactory()
-        log_session.add(CliInvocation(command=" ".join(sys.argv[1:]), success=success, error=error))
-        log_session.commit()
-        log_session.close()
-    except Exception:
-        pass
+    if not should_record(payload):
+        return
 
-
-_original_error = argparse.ArgumentParser.error
-
-
-def _error_and_log(self: argparse.ArgumentParser, message: str) -> None:
-    """Overridden at the class level, not just on the top-level `parser` instance, since
-    every subparser (`todo add`, `context tree`, ...) has its own bound .error() that a
-    top-level-only override would never intercept -- a bad flag several levels deep
-    (e.g. `todo add` with no title) needs the same audit-log row as a bad top-level
-    subcommand name."""
-    _log_invocation(success=False, error=message)
-    print("(see `kb stats errors` for recent CLI error patterns)", file=sys.stderr)
-    _original_error(self, message)  # always raises SystemExit(2)
+    log_session = SessionFactory()
+    log_session.add(CliInvocation(**invocation_kwargs(payload)))
+    log_session.commit()
+    log_session.close()
+    if not payload["success"]:
+        print("(see `kb stats errors` for recent CLI error patterns)", file=sys.stderr)
 
 
-argparse.ArgumentParser.error = _error_and_log  # type: ignore[method-assign]
-
+attach_recording(parser, record=_record_invocation)
 args = parser.parse_args()
 if args.command is None:
     print(f"This routing guide is printed by {Path(__file__).resolve()} (bare `kb`, no subcommand).\n")
@@ -221,7 +214,7 @@ args.session = SessionFactory()
 args.context_explicit = args.context is not None
 args.context = resolve_context(args.session, args.context)
 
-try:
+with instrumented_run(parser, args, record=_record_invocation):
     if args.as_of:
         import time_machine
 
@@ -230,11 +223,3 @@ try:
             args.func(args)
     else:
         args.func(args)
-except SystemExit:
-    raise
-except Exception as e:
-    _log_invocation(success=False, error=f"{type(e).__name__}: {e}")
-    print("(see `kb stats errors` for recent CLI error patterns)", file=sys.stderr)
-    raise
-else:
-    _log_invocation(success=True, error=None)

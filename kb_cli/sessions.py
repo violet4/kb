@@ -23,7 +23,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Any, NamedTuple, Optional, Sequence
 
 import psutil
 from sqlalchemy import func, select
@@ -179,26 +179,29 @@ def cmd_register(args: argparse.Namespace) -> None:
     args.session.commit()
 
 
-def cmd_list(args: argparse.Namespace) -> None:
-    if args.all:
-        cmd_history(args)
-        return
-    cleared = HarnessSession.clear_stale_listeners(args.session)
-    if cleared:
-        args.session.commit()
-        print(
-            f"(cleared {len(cleared)} stale listener flag{'s' if len(cleared) != 1 else ''} -- "
-            f"dead process{'es' if len(cleared) != 1 else ''}, DB bookkeeping only, "
-            "see `kb sessions cleanup --help`)"
-        )
-    live = HarnessSession.live(args.session)
-    if not live:
-        print("No live sessions.")
-        return
+class LiveSessionInfo(NamedTuple):
+    """One row of `kb sessions list`'s live-session view, independent of how it's rendered --
+    shared by the CLI table and the frontend's JSON API (api/sessions_router.py) so the two
+    surfaces can never drift on what "listening"/"age"/"last message" mean."""
+
+    id: str
+    is_self: bool
+    status: str
+    listening: str  # "", "stale", or "yes (pid N)"
+    age_seconds: float
+    last_message_seconds: Optional[float]
+    cwd: str
+    title: str
+
+
+def list_live_sessions(session: Session) -> tuple[list[LiveSessionInfo], int]:
+    """Clears stale listener flags as a side effect (matching `kb sessions list`'s prior
+    behavior) and returns (one LiveSessionInfo per currently-live session, count cleared)."""
+    cleared = HarnessSession.clear_stale_listeners(session)
+    live = HarnessSession.live(session)
     self_id = current_session_id()
     now = datetime.now(timezone.utc)
-    headers = ["Session", "You?", "Status", "Listening", "Age", "Last Msg", "Cwd", "Title"]
-    rows = []
+    infos = []
     for row in live:
         if row.is_listening_live():
             listening = f"yes (pid {row.listener_pid})"
@@ -214,27 +217,57 @@ def cmd_list(args: argparse.Namespace) -> None:
         # created_at is set once at first registration (HarnessSession.register upserts, never
         # re-inserts on a resumed/restarted `kb sessions listen`), so this is genuinely "when
         # the session was created," not reset by listen's own exit-and-restart cycle.
-        age = _humanize_age((now - row.created_at.replace(tzinfo=timezone.utc)).total_seconds())
-        last_msg_at = _last_message_at(args.session, row.id)
-        last_msg = (
-            _humanize_age((now - last_msg_at.replace(tzinfo=timezone.utc)).total_seconds())
-            if last_msg_at is not None
-            else ""
+        age_seconds = (now - row.created_at.replace(tzinfo=timezone.utc)).total_seconds()
+        last_msg_at = _last_message_at(session, row.id)
+        last_message_seconds = (
+            (now - last_msg_at.replace(tzinfo=timezone.utc)).total_seconds() if last_msg_at is not None else None
         )
-        rows.append(
-            [
-                # Full id, not truncated -- kb sessions send needs to copy-paste this
-                # directly, and a shortened id here is a broken id there.
-                row.id,
-                "yes" if row.id == self_id else "",
-                row.status.value,
-                listening,
-                age,
-                last_msg,
-                row.cwd,
-                row.title or "",
-            ]
+        infos.append(
+            LiveSessionInfo(
+                id=row.id,
+                is_self=row.id == self_id,
+                status=row.status.value,
+                listening=listening,
+                age_seconds=age_seconds,
+                last_message_seconds=last_message_seconds,
+                cwd=row.cwd,
+                title=row.title or "",
+            )
         )
+    return infos, len(cleared)
+
+
+def cmd_list(args: argparse.Namespace) -> None:
+    if args.all:
+        cmd_history(args)
+        return
+    infos, cleared_count = list_live_sessions(args.session)
+    args.session.commit()  # persists clear_stale_listeners' cleanup
+    if cleared_count:
+        print(
+            f"(cleared {cleared_count} stale listener flag{'s' if cleared_count != 1 else ''} -- "
+            f"dead process{'es' if cleared_count != 1 else ''}, DB bookkeeping only, "
+            "see `kb sessions cleanup --help`)"
+        )
+    if not infos:
+        print("No live sessions.")
+        return
+    headers = ["Session", "You?", "Status", "Listening", "Age", "Last Msg", "Cwd", "Title"]
+    rows = [
+        [
+            # Full id, not truncated -- kb sessions send needs to copy-paste this
+            # directly, and a shortened id here is a broken id there.
+            info.id,
+            "yes" if info.is_self else "",
+            info.status,
+            info.listening,
+            _humanize_age(info.age_seconds),
+            _humanize_age(info.last_message_seconds) if info.last_message_seconds is not None else "",
+            info.cwd,
+            info.title,
+        ]
+        for info in infos
+    ]
     print_table(headers, rows)
 
 
@@ -270,6 +303,190 @@ def cmd_history(args: argparse.Namespace) -> None:
     headers = ["Date", "Directory", "Title"]
     rows = [[s["timestamp"][:16].replace("T", " "), s["project"], s["title"]] for s in sessions]
     print_table(headers, rows)
+
+
+class ChatBlock(NamedTuple):
+    """One piece of a chat message's content -- a text block, a tool call, or a tool
+    result -- kept separate from ChatMessage since a single message commonly carries several
+    (e.g. one assistant turn with a text block followed by a tool_use block).
+
+    `kind` is the most specific shape this parser recognizes today ("text", "tool_use",
+    "tool_result", or "unknown" for a future content-block type it doesn't -- see
+    _extract_blocks). `tags` is deliberately open-ended metadata about this block and its
+    parent message (every scalar field the raw JSONL carries, flattened -- see
+    _flatten_tags) -- the frontend legend/filter panel is built entirely from whatever keys
+    and values actually occur in `tags` across a session, so a new Claude Code JSONL field
+    (a new `stop_reason`, a new hook type, a future MCP server) becomes filterable the moment
+    it appears in a transcript, with no parser change required."""
+
+    kind: str  # "text", "tool_use", "tool_result", or "unknown"
+    text: Optional[str] = None  # for kind == "text"
+    tool_name: Optional[str] = None  # for kind == "tool_use"
+    tool_input: Optional[dict[str, Any]] = None  # for kind == "tool_use"
+    tool_output: Optional[str] = None  # for kind == "tool_result"
+    is_error: bool = False  # for kind == "tool_result"
+    tags: dict[str, str] = {}
+
+
+class ChatMessage(NamedTuple):
+    """One line of real chat content from a session transcript -- a `type: "user"` or
+    `type: "assistant"` JSONL record, in file order. Every other JSONL line (hook output,
+    tool-listing deltas, mode/permission-mode bookkeeping) is not a message and is dropped
+    entirely, not summarized -- this is the same content a viewer scrolling the raw
+    transcript would call "the conversation," nothing added or condensed."""
+
+    role: str  # "user" or "assistant"
+    timestamp: str
+    blocks: list[ChatBlock]
+
+
+# Keys whose value is either the large content this parser already surfaces structurally
+# (message.content itself, a tool_result's content, a tool_use's input) or pure recursion
+# plumbing -- flattening into these would either duplicate `text`/`tool_output`/`tool_input`
+# as noisy tags or blow up into hundreds of near-unique per-message keys (uuid, requestId)
+# that would never usefully group two blocks together in a filter panel.
+_TAG_EXCLUDE_KEYS = frozenset(
+    {
+        "content",
+        "input",
+        "message",
+        "uuid",
+        "parentUuid",
+        "sourceToolAssistantUUID",
+        "requestId",
+        "id",
+        "tool_use_id",
+        "toolUseID",
+        "sessionId",
+        "session_id",
+        "promptId",
+        "type",  # already exposed unambiguously as ChatBlock.kind; raw JSONL overloads
+        # this key at both message level ("user"/"assistant") and block level
+        # ("text"/"tool_use"/...), so flattening it verbatim would silently let one
+        # overwrite the other in the merged tag map.
+        "usage",  # per-call token accounting -- effectively unique per message, never a
+        # useful group-by facet, and large enough (a dozen+ nested numbers) to drown out
+        # the tags that are.
+        "toolUseResult",  # duplicates bulk tool output already surfaced as tool_output.
+        "stdout",
+        "stderr",
+    }
+)
+
+
+def _flatten_tags(obj: object, prefix: str = "") -> dict[str, str]:
+    """Recursively collects every scalar (str/bool/int/float) leaf in obj into a flat
+    {dotted.path: str(value)} map -- the generic enrichment this whole module's tags-based
+    filtering rests on. Deliberately has no notion of which fields are "interesting"; that
+    judgment is left entirely to the frontend legend, which only ever shows keys/values that
+    actually occurred. See _TAG_EXCLUDE_KEYS for the few keys skipped to keep this from
+    surfacing bulk content or single-use identifiers as if they were filterable facets."""
+    tags: dict[str, str] = {}
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            # Excluded only at this call's own top level (prefix == ""), not by bare key
+            # name at any depth -- a nested field that happens to share a name with an
+            # excluded top-level key (e.g. caller.type vs. the message/block-level `type`
+            # this module overloads) is a distinct, real facet and must survive.
+            if not prefix and key in _TAG_EXCLUDE_KEYS:
+                continue
+            child_prefix = f"{prefix}.{key}" if prefix else key
+            tags.update(_flatten_tags(value, child_prefix))
+    elif isinstance(obj, list):
+        # Lists of dicts (e.g. multiple attachments) aren't indexed into the key path --
+        # a list is walked for its scalar/dict members but never appears as its own tag,
+        # since "index 2 of some list" is not a meaningful filter facet.
+        for item in obj:
+            tags.update(_flatten_tags(item, prefix))
+    elif isinstance(obj, bool):
+        if prefix:
+            tags[prefix] = "true" if obj else "false"
+    elif isinstance(obj, (str, int, float)):
+        if prefix and obj != "":
+            tags[prefix] = str(obj)
+    return tags
+
+
+def _extract_blocks(content: object, message_tags: dict[str, str]) -> list[ChatBlock]:
+    """Parses message.content into ChatBlocks as specifically as this function recognizes
+    (text/tool_use/tool_result), falling back to kind="unknown" with the block's own raw
+    scalar fields flattened into tags for anything else -- a future content-block type this
+    parser has never seen renders as a generic block instead of being silently dropped."""
+    if isinstance(content, str):
+        return [ChatBlock(kind="text", text=content, tags=message_tags)] if content else []
+    if not isinstance(content, list):
+        return []
+    blocks = []
+    for item in content:
+        if not isinstance(item, dict):
+            continue
+        item_type = item.get("type")
+        block_tags = {**message_tags, **_flatten_tags(item)}
+        if item_type == "text":
+            blocks.append(ChatBlock(kind="text", text=item.get("text", ""), tags=block_tags))
+        elif item_type == "tool_use":
+            tool_name = item.get("name")
+            if isinstance(tool_name, str) and tool_name.startswith("mcp__"):
+                # mcp__<server>__<tool> is Claude Code's own naming convention for every MCP
+                # tool -- splitting it out gives the legend an "MCP server"/"MCP tool" facet
+                # without hardcoding which servers/tools exist.
+                parts = tool_name.split("__", 2)
+                if len(parts) == 3:
+                    block_tags = {**block_tags, "mcp.server": parts[1], "mcp.tool": parts[2]}
+            blocks.append(
+                ChatBlock(kind="tool_use", tool_name=tool_name, tool_input=item.get("input"), tags=block_tags)
+            )
+        elif item_type == "tool_result":
+            result_content = item.get("content")
+            if isinstance(result_content, list):
+                result_text = "\n".join(
+                    c.get("text", "") for c in result_content if isinstance(c, dict) and c.get("type") == "text"
+                )
+            else:
+                result_text = str(result_content) if result_content is not None else ""
+            blocks.append(
+                ChatBlock(
+                    kind="tool_result", tool_output=result_text, is_error=bool(item.get("is_error")), tags=block_tags
+                )
+            )
+        else:
+            blocks.append(ChatBlock(kind="unknown", tags=block_tags))
+    return blocks
+
+
+def list_chat_messages(path: Path) -> list[ChatMessage]:
+    """Every real chat message in a session transcript, in file order, with nothing
+    compacted or summarized -- backs both a future `kb sessions show --chat` and the
+    frontend's session-viewer page. See ChatMessage's own docstring for what counts as
+    a message versus dropped bookkeeping, and ChatBlock's for the generic tags this attaches
+    to every block for frontend-driven filtering."""
+    messages = []
+    with path.open() as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                d = json.loads(line)
+            except ValueError:
+                continue
+            if d.get("type") not in ("user", "assistant"):
+                continue
+            message = d.get("message")
+            if not isinstance(message, dict):
+                continue
+            # Flattened once per line (top-level record fields like isSidechain/stop_reason/
+            # effort/model/origin/promptSource, plus message's own non-content fields like
+            # role/model/usage) and inherited by every block on that line -- these describe
+            # the whole message, not any one block, so every block should carry them as tags.
+            message_tags = {**_flatten_tags(d), **_flatten_tags(message)}
+            blocks = _extract_blocks(message.get("content"), message_tags)
+            if not blocks:
+                continue
+            messages.append(
+                ChatMessage(role=message.get("role", d["type"]), timestamp=d.get("timestamp", ""), blocks=blocks)
+            )
+    return messages
 
 
 def cmd_show(args: argparse.Namespace) -> None:

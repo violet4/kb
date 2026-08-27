@@ -67,6 +67,7 @@ from context import resolve_context
 from kb_cli import (
     anki,
     archivebox,
+    bug,
     context_cmd,
     daily,
     goal,
@@ -156,6 +157,7 @@ subparsers = parser.add_subparsers(dest="command", required=False)
 goal.add_subparser(subparsers)
 idea.add_subparser(subparsers)
 todo.add_subparser(subparsers)
+bug.add_subparser(subparsers)
 tag.add_subparser(subparsers)
 daily.add_subparser(subparsers)
 hooks.add_subparser(subparsers)

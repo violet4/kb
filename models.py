@@ -157,6 +157,19 @@ class TodoStatus(enum.Enum):
     DROPPED = "dropped"
 
 
+class TodoKind(enum.Enum):
+    """What kind of work a Todo represents -- Redmine's "Tracker"/Jira's "Issue Type"
+    field, orthogonal to TodoStatus (lifecycle) and urgent (priority). BUG marks a
+    defect/regression (existing behavior is wrong), distinct from TASK (unfinished
+    work with no prior-correct-behavior claim) -- `kb bug` presets this value so a
+    bug's kind is never left to default silently."""
+
+    BUG = "bug"
+    FEATURE = "feature"
+    TASK = "task"
+    CHORE = "chore"
+
+
 class WishlistStatus(enum.Enum):
     ACTIVE = "active"
     ACQUIRED = "acquired"
@@ -781,6 +794,9 @@ class Todo(Base, HasContextOrTag, HasEmbedding):
     status: Mapped[TodoStatus] = tracked_column(
         Enum(TodoStatus, create_constraint=True, validate_strings=True), nullable=False, default=TodoStatus.PENDING
     )
+    kind: Mapped[TodoKind] = mapped_column(
+        Enum(TodoKind, create_constraint=True, validate_strings=True), nullable=False, default=TodoKind.TASK
+    )
     goal_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("goal.id"), nullable=True)
     context_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("context.id"), nullable=True)
     blocked_by_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("todo.id"), nullable=True)
@@ -811,6 +827,7 @@ class Todo(Base, HasContextOrTag, HasEmbedding):
         contexts: Optional[Sequence[Context]] = None,
         include_no_context: bool = False,
         effort: Optional[WishlistEffort] = None,
+        kind: Optional[TodoKind] = None,
         include_deferred: bool = False,
     ) -> Sequence[Todo]:
         """`context` matches that single context exactly; `contexts` (e.g. from
@@ -833,6 +850,8 @@ class Todo(Base, HasContextOrTag, HasEmbedding):
             )
         if effort is not None:
             q = q.where(cls.effort == effort)
+        if kind is not None:
+            q = q.where(cls.kind == kind)
         if not include_deferred:
             q = q.where((cls.defer_until.is_(None)) | (cls.defer_until <= _now()))
         return session.scalars(q).all()
@@ -856,6 +875,7 @@ class Todo(Base, HasContextOrTag, HasEmbedding):
         notes: Optional[str] = None,
         blocked_by: Optional[Todo] = None,
         effort: Optional[WishlistEffort] = None,
+        kind: TodoKind = TodoKind.TASK,
         defer_until: Optional[datetime] = None,
         urgent: bool = False,
     ) -> Todo:
@@ -867,6 +887,7 @@ class Todo(Base, HasContextOrTag, HasEmbedding):
             notes=notes,
             blocked_by_id=blocked_by.id if blocked_by else None,
             effort=effort,
+            kind=kind,
             defer_until=defer_until,
             urgent=urgent,
         )
@@ -876,13 +897,14 @@ class Todo(Base, HasContextOrTag, HasEmbedding):
         return todo
 
     def __repr__(self) -> str:
+        kind_str = f" <{self.kind.value}>" if self.kind != TodoKind.TASK else ""
         effort_str = f" ({self.effort.value})" if self.effort else ""
         defer_str = f" defer_until={self.defer_until.strftime('%Y-%m-%d %H:%M')}" if self.defer_until else ""
         context_str = f" [{self.context.name}]" if self.context else ""
         tag_str = f" @{self.tag.name}" if self.tag else ""
         urgent_str = " !URGENT!" if self.urgent else ""
         return (
-            f"<Todo #{self.id} {self.title!r} [{self.status.value}]{effort_str}{defer_str}"
+            f"<Todo #{self.id} {self.title!r} [{self.status.value}]{kind_str}{effort_str}{defer_str}"
             f"{context_str}{tag_str}{urgent_str}{self.age_marker()}>"
         )
 

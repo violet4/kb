@@ -13,6 +13,9 @@ Routing a plain statement to the right subcommand (the noun -- which table):
   A stated fact/observation about the world -> log
   Claude used a phrase or showed a habit worth flagging for later analysis -> flag NOTE (see kb Goal #41)
   A stated need/intent, not yet done -> todo
+  Existing behavior that's wrong (a defect/regression, not just unfinished work) -> bug
+    (same table/lifecycle as todo, just kind=bug -- `kb bug add/list/pending/...` mirrors
+    every `kb todo` subcommand with --kind fixed to bug; `kb todo add --kind bug` also works)
   A bigger purpose/end-goal, or multi-step work -> goal
   A decision/change to an existing record -> journal ENTITY_TYPE ID NOTE
   Durable reference knowledge (not tied to a task) -> notes add TITLE BODY

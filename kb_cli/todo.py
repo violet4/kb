@@ -3,10 +3,11 @@
 import argparse
 import sys
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 from context import creation_context
 from kb_cli.context_cmd import render_tree
-from models import Journal, Tag, Todo, TodoStatus, WishlistEffort
+from models import Journal, Tag, Todo, TodoKind, TodoStatus, WishlistEffort
 
 from kb_cli._util import (
     add_history_arg,
@@ -50,6 +51,7 @@ def cmd_show(args: argparse.Namespace) -> None:
         print(f"id: {todo.id}")
         print(f"title: {todo.title}")
         print(f"status: {todo.status.value}")
+        print(f"kind: {todo.kind.value}")
         if todo.effort:
             print(f"effort: {todo.effort.value}")
         if todo.goal:
@@ -84,13 +86,15 @@ def cmd_add(args: argparse.Namespace) -> None:
         print("--tag and --context are mutually exclusive", file=sys.stderr)
         sys.exit(2)
     effort = WishlistEffort(args.effort) if args.effort else None
+    kind = TodoKind(args.kind) if args.kind else TodoKind.TASK
     defer_until = _parse_defer_until(args.defer_until) if args.defer_until else None
     tag = get_by_name(args.session, Tag, args.tag) if args.tag else None
     todo = Todo.create(
         args.session,
-        args.title,
+        resolve_text_arg(args.title),
         notes=resolve_text_arg(args.notes) if args.notes else args.notes,
         effort=effort,
+        kind=kind,
         defer_until=defer_until,
         context=None if tag else creation_context(args),
         tag=tag,
@@ -107,8 +111,9 @@ def cmd_update(args: argparse.Namespace) -> None:
         args.id,
         "Todo",
         {
-            "title": args.title,
+            "title": resolve_text_arg(args.title) if args.title else args.title,
             "effort": WishlistEffort(args.effort) if args.effort else None,
+            "kind": TodoKind(args.kind) if args.kind else None,
             "defer_until": _parse_defer_until(args.defer_until) if args.defer_until else None,
             "notes": resolve_text_arg(args.notes) if args.notes else args.notes,
             "goal_id": args.goal,
@@ -136,7 +141,8 @@ def cmd_complete(args: argparse.Namespace) -> None:
 
 def cmd_pending(args: argparse.Namespace) -> None:
     effort = WishlistEffort(args.effort) if args.effort else None
-    todos = Todo.active(args.session, effort=effort, include_deferred=args.all)
+    kind = TodoKind(args.kind) if args.kind else None
+    todos = Todo.active(args.session, effort=effort, kind=kind, include_deferred=args.all)
     if not todos:
         print("No pending todos.")
         return
@@ -152,8 +158,9 @@ def cmd_pending(args: argparse.Namespace) -> None:
 
 def cmd_list(args: argparse.Namespace) -> None:
     effort = WishlistEffort(args.effort) if args.effort else None
+    kind = TodoKind(args.kind) if args.kind else None
     if args.all:
-        todos = Todo.active(args.session, effort=effort, include_deferred=args.include_deferred)
+        todos = Todo.active(args.session, effort=effort, kind=kind, include_deferred=args.include_deferred)
     else:
         in_scope = scope_to_context(args.session, args.context)
         todos = Todo.active(
@@ -161,6 +168,7 @@ def cmd_list(args: argparse.Namespace) -> None:
             contexts=in_scope,
             include_no_context=True,
             effort=effort,
+            kind=kind,
             include_deferred=args.include_deferred,
         )
     if not todos:
@@ -188,22 +196,41 @@ def cmd_tree(args: argparse.Namespace) -> None:
     )
 
 
-def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
-    parser = subparsers.add_parser("todo", aliases=["t"], help="Todo operations")
+def add_subparser(
+    subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]",
+    name: str = "todo",
+    aliases: "Optional[list[str]]" = None,
+    help_prefix: str = "Todo",
+    locked_kind: "Optional[TodoKind]" = None,
+) -> None:
+    """Builds the full Todo CLI tree under `name` (default "todo"). `locked_kind`
+    (used by kb_cli/bug.py to build `kb bug` as "kb todo with kind=bug baked in")
+    drops the --kind flag entirely and fixes every add/read to that one kind, so
+    a bug can never be filed as -- or silently read back as -- some other kind."""
+    parser = subparsers.add_parser(
+        name, aliases=aliases if aliases is not None else ["t"], help=f"{help_prefix} operations"
+    )
     sub = parser.add_subparsers(dest="cmd", required=True)
+    kind_choices = [k.value for k in TodoKind]
 
-    p_show = sub.add_parser("show", help="Show Todo details")
+    p_show = sub.add_parser("show", help=f"Show {help_prefix} details")
     p_show.add_argument("ids", nargs="+", type=int)
     add_history_arg(p_show)
     p_show.set_defaults(func=cmd_show)
 
-    p_add = sub.add_parser("add", help="Add a Todo")
+    p_add = sub.add_parser("add", help=f"Add a {help_prefix}")
     p_add.add_argument("title")
     p_add.add_argument(
         "--effort",
         choices=[e.value for e in WishlistEffort],
         help="grab = quick/batchable, research = needs investigation, project = multi-step",
     )
+    if locked_kind is None:
+        p_add.add_argument(
+            "--kind",
+            choices=kind_choices,
+            help="What kind of work this is (default: task) -- bug = existing behavior is wrong",
+        )
     p_add.add_argument(
         "--defer-until",
         metavar="WHEN",
@@ -217,12 +244,17 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         action="store_true",
         help="Show unconditionally in `kb summary`'s URGENT section, ignoring context scope and defer_until",
     )
-    p_add.set_defaults(func=cmd_add)
+    if locked_kind is not None:
+        p_add.set_defaults(func=cmd_add, kind=locked_kind.value)
+    else:
+        p_add.set_defaults(func=cmd_add)
 
-    p_update = sub.add_parser("update", help="Update fields on an existing Todo")
+    p_update = sub.add_parser("update", help=f"Update fields on an existing {help_prefix}")
     p_update.add_argument("id", type=int)
     p_update.add_argument("--title")
     p_update.add_argument("--effort", choices=[e.value for e in WishlistEffort])
+    if locked_kind is None:
+        p_update.add_argument("--kind", choices=kind_choices)
     p_update.add_argument(
         "--defer-until",
         metavar="WHEN",
@@ -236,29 +268,44 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_update_urgent = p_update.add_mutually_exclusive_group()
     p_update_urgent.add_argument("--urgent", action="store_true", help="Mark urgent")
     p_update_urgent.add_argument("--no-urgent", action="store_true", help="Unmark urgent")
-    p_update.set_defaults(func=cmd_update)
+    if locked_kind is not None:
+        p_update.set_defaults(func=cmd_update, kind=None)
+    else:
+        p_update.set_defaults(func=cmd_update)
 
-    p_complete = sub.add_parser("complete", help="Mark Todo(s) done")
+    p_complete = sub.add_parser("complete", help=f"Mark {help_prefix}(s) done")
     p_complete.add_argument("ids", nargs="+", type=int)
     p_complete.set_defaults(func=cmd_complete)
 
-    p_pending = sub.add_parser("pending", help="List pending Todos, optionally filtered by effort")
+    p_pending = sub.add_parser("pending", help=f"List pending {help_prefix}s, optionally filtered by effort")
     p_pending.add_argument("--effort", choices=[e.value for e in WishlistEffort])
+    if locked_kind is None:
+        p_pending.add_argument("--kind", choices=kind_choices)
     p_pending.add_argument("--all", action="store_true", help="Also include deferred Todos not yet due")
-    p_pending.set_defaults(func=cmd_pending)
+    if locked_kind is not None:
+        p_pending.set_defaults(func=cmd_pending, kind=locked_kind.value)
+    else:
+        p_pending.set_defaults(func=cmd_pending)
 
     p_list = sub.add_parser(
-        "list", help="List pending Todos, everywhere by default (or scoped to --context, plus descendants/no-context)"
+        "list",
+        help=f"List pending {help_prefix}s, everywhere by default (or scoped to --context, plus descendants/no-context)",
     )
     p_list.add_argument("--effort", choices=[e.value for e in WishlistEffort])
+    if locked_kind is None:
+        p_list.add_argument("--kind", choices=kind_choices)
     p_list.add_argument(
         "--all", action="store_true", help="Ignore an active --context and show Todos from every context"
     )
     p_list.add_argument("--include-deferred", action="store_true", help="Also include deferred Todos not yet due")
-    p_list.set_defaults(func=cmd_list)
+    if locked_kind is not None:
+        p_list.set_defaults(func=cmd_list, kind=locked_kind.value)
+    else:
+        p_list.set_defaults(func=cmd_list)
 
     p_tree = sub.add_parser(
-        "tree", help="Render pending Todos nested under the Context tree (tag-addressed Todos repeat per match)"
+        "tree",
+        help=f"Render pending {help_prefix}s nested under the Context tree (tag-addressed Todos repeat per match)",
     )
     p_tree.add_argument("--all", action="store_true", help="Show the full tree, ignoring an active --context")
     p_tree.add_argument("--include-deferred", action="store_true", help="Also include deferred Todos not yet due")
@@ -266,8 +313,8 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
 
     p_search = sub.add_parser(
         "search",
-        help="Search Todos by text (unscoped by default; pass the global "
-        "`kb --context NAME todo search ...` to restrict to that context's subtree)",
+        help=f"Search {help_prefix}s by text (unscoped by default; pass the global "
+        f"`kb --context NAME {name} search ...` to restrict to that context's subtree)",
     )
     p_search.add_argument("query")
     p_search.add_argument("--all", action="store_true", help="Also include done/dropped Todos (excluded by default)")

@@ -20,6 +20,7 @@ import uvicorn
 from fastapi import FastAPI
 
 from api.archivebox_router import router as archivebox_router
+from api.channels_router import router as channels_router
 from api.core_router import router as core_router
 from api.dailies_router import router as dailies_router
 from api.entities_router import router as entities_router
@@ -85,6 +86,7 @@ app.include_router(search_router)
 app.include_router(archivebox_router)
 app.include_router(usage_router)
 app.include_router(sessions_router)
+app.include_router(channels_router)
 
 
 def main() -> None:

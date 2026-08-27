@@ -187,27 +187,34 @@ export default function SessionChatView() {
       {!loading && !error && messages.length === 0 && (
         <p style={{ margin: 0, color: tokens.color.textMuted, fontSize: 13 }}>No chat messages found.</p>
       )}
-      {allBlocks.length > 0 && (
-        <LegendPanel
-          allBlocks={allBlocks}
-          visibleBlocks={visibleBlocks}
-          filter={filter}
-          onToggleFilterValue={toggleFilterValue}
-          onClearFilter={() => setFilter(new Map())}
-          onCollapseVisible={() => collapseMatching(visibleBlocks)}
-          onExpandVisible={() => expandMatching(visibleBlocks)}
-        />
-      )}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {messages.map((message, i) => (
-          <MessageRow
-            key={i}
-            message={message}
-            addressedBlocks={messageBlockGroups[i]}
-            isCollapsed={isCollapsed}
-            onToggle={toggle}
-          />
-        ))}
+      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {messages.map((message, i) => (
+            <MessageRow
+              key={i}
+              message={message}
+              addressedBlocks={messageBlockGroups[i]}
+              isCollapsed={isCollapsed}
+              onToggle={toggle}
+            />
+          ))}
+        </div>
+        {allBlocks.length > 0 && (
+          // Fixed width, not flex-grow -- the legend is a filter/navigation aid, not
+          // primary content, so it shouldn't compete with the message list for freed
+          // horizontal space on wide viewports.
+          <div style={{ flex: '0 0 280px' }}>
+            <LegendPanel
+              allBlocks={allBlocks}
+              visibleBlocks={visibleBlocks}
+              filter={filter}
+              onToggleFilterValue={toggleFilterValue}
+              onClearFilter={() => setFilter(new Map())}
+              onCollapseVisible={() => collapseMatching(visibleBlocks)}
+              onExpandVisible={() => expandMatching(visibleBlocks)}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

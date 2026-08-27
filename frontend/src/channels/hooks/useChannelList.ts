@@ -1,17 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
-import { fetchAgentSessions } from '../api';
-import type { AgentSession } from '../types';
+import { fetchChannels } from '../api';
+import type { ChannelSummary } from '../types';
 
-interface UseAgentSessionsResult {
-  sessions: AgentSession[];
+interface UseChannelListResult {
+  channels: ChannelSummary[];
   error: string | null;
 }
 
-// Polls at intervalSeconds on a fixed schedule (not a "wait intervalSeconds after the
-// previous response") so the settings-panel refresh rate reads as the true cadence a viewer
-// sees, matching RefreshControl's countdown model in ../../usage.
-export function useAgentSessions(intervalSeconds: number): UseAgentSessionsResult {
-  const [sessions, setSessions] = useState<AgentSession[]>([]);
+// Same fixed-schedule polling shape as ../../agents/hooks/useAgentSessions -- one poll
+// mechanism pattern reused rather than reinvented per feature.
+export function useChannelList(displayName: string, intervalSeconds: number): UseChannelListResult {
+  const [channels, setChannels] = useState<ChannelSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const inFlight = useRef(false);
 
@@ -22,9 +21,9 @@ export function useAgentSessions(intervalSeconds: number): UseAgentSessionsResul
       if (inFlight.current) return;
       inFlight.current = true;
       try {
-        const result = await fetchAgentSessions();
+        const result = await fetchChannels(displayName);
         if (!cancelled) {
-          setSessions(result);
+          setChannels(result);
           setError(null);
         }
       } catch (e) {
@@ -40,7 +39,7 @@ export function useAgentSessions(intervalSeconds: number): UseAgentSessionsResul
       cancelled = true;
       clearInterval(id);
     };
-  }, [intervalSeconds]);
+  }, [displayName, intervalSeconds]);
 
-  return { sessions, error };
+  return { channels, error };
 }

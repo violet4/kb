@@ -18,9 +18,13 @@ export const tokens = {
   },
   // Shared style for any clickable text link (entity title links, external URLs,
   // nav items) -- no underline (distracting at this density), accent color instead
-  // to distinguish it from plain body text.
+  // to distinguish it from plain body text. Sets both the shorthand and the
+  // longhand textDecorationLine -- Firefox has been observed still showing the
+  // UA-stylesheet underline on <a> with only the shorthand set inline, even though
+  // Chrome honors it; the explicit longhand is what actually suppresses it there.
   link: {
     color: '#5b9dff',
     textDecoration: 'none',
+    textDecorationLine: 'none',
   } as const,
 };

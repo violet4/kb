@@ -13,6 +13,9 @@ export default function NavBar() {
       <Link to="/agents" style={{ color: tokens.color.text, textDecoration: 'none', fontSize: 13 }}>
         Agents
       </Link>
+      <Link to="/channels" style={{ color: tokens.color.text, textDecoration: 'none', fontSize: 13 }}>
+        Channels
+      </Link>
       <Link to="/browse" style={{ color: tokens.color.text, textDecoration: 'none', fontSize: 13 }}>
         Browse
       </Link>

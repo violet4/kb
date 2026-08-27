@@ -8,7 +8,7 @@ export default function DailiesView() {
   const { dailies, loading, error, complete, catchUp } = useDailies(dueOnly);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div style={{ maxWidth: 640, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
       <DailiesHeader dueOnly={dueOnly} onToggleDueOnly={setDueOnly} />
       {loading && <p style={{ color: tokens.color.textMuted }}>Loading...</p>}
       {error && <p style={{ color: tokens.color.danger }}>{error}</p>}

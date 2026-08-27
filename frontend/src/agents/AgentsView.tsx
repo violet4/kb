@@ -45,26 +45,26 @@ function Row({ session }: { session: AgentSession }) {
 }
 
 function SettingsSection({
-  intervalMs,
-  onChangeIntervalMs,
+  intervalSeconds,
+  onChangeIntervalSeconds,
 }: {
-  intervalMs: number;
-  onChangeIntervalMs: (value: number) => void;
+  intervalSeconds: number;
+  onChangeIntervalSeconds: (value: number) => void;
 }) {
   return (
     <details style={{ fontSize: 13, color: tokens.color.textMuted }}>
       <summary style={{ cursor: 'pointer' }}>Settings</summary>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-        <label htmlFor="refresh-interval">Refresh interval (ms)</label>
+        <label htmlFor="refresh-interval">Refresh interval (seconds)</label>
         <input
           id="refresh-interval"
           type="number"
-          min={200}
-          step={100}
-          value={intervalMs}
+          min={1}
+          step={1}
+          value={intervalSeconds}
           onChange={(e) => {
             const value = Number(e.target.value);
-            if (value > 0) onChangeIntervalMs(value);
+            if (value > 0) onChangeIntervalSeconds(value);
           }}
           style={{
             width: 90,
@@ -81,14 +81,14 @@ function SettingsSection({
 }
 
 export default function AgentsView() {
-  const [intervalMs, setIntervalMs] = useRefreshIntervalSetting();
-  const { sessions, error } = useAgentSessions(intervalMs);
+  const [intervalSeconds, setIntervalSeconds] = useRefreshIntervalSetting();
+  const { sessions, error } = useAgentSessions(intervalSeconds);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
         <h1 style={{ margin: 0, fontSize: 20 }}>Agents</h1>
-        <SettingsSection intervalMs={intervalMs} onChangeIntervalMs={setIntervalMs} />
+        <SettingsSection intervalSeconds={intervalSeconds} onChangeIntervalSeconds={setIntervalSeconds} />
       </div>
       {error && <p style={{ margin: 0, color: tokens.color.danger }}>{error}</p>}
       <div style={{ overflowX: 'auto', border: `1px solid ${tokens.color.border}`, borderRadius: 8 }}>

@@ -13,7 +13,7 @@ export default function SearchView() {
   const { hits, loading, error } = useSearch(debouncedQuery);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div style={{ maxWidth: 720, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
       <h1 style={{ margin: 0, fontSize: 20 }}>Search</h1>
       <SearchInput value={query} onChange={setQuery} />
       {loading && <p style={{ color: tokens.color.textMuted }}>Searching...</p>}

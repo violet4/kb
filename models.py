@@ -2110,6 +2110,21 @@ class HarnessSessionStatus(enum.Enum):
     IDLE = "idle"
 
 
+class HarnessSessionKind(enum.Enum):
+    """AGENT (the default) is a real `claude` CLI process, alive/dead by its own pid -- see
+    is_alive(). HUMAN is a person participating in Channel messaging from a non-harness
+    surface (the web UI's chat view) rather than a Claude Code session; it has no OS process
+    of its own, so pid is a meaningless 0 sentinel and is_alive() is unconditionally True for
+    this kind -- a human is reachable by definition, not by a liveness check. This is the
+    schema-honest alternative to either faking a pid for a human row or loosening
+    ChannelMessage.from_session to a nullable FK plus a shadow display-name column: every
+    ChannelMessage.from_session still always resolves to a real, addressable HarnessSession
+    row, agent or human, with no new nullable column and no unattributable message possible."""
+
+    AGENT = "agent"
+    HUMAN = "human"
+
+
 class HarnessSession(Base):
     """One row per live harness session (a `claude` CLI process, or another harness's
     equivalent), registered at SessionStart and read by `kb sessions` for cross-session
@@ -2121,11 +2136,12 @@ class HarnessSession(Base):
     ChannelSubscription.session_id need to reference, the same way source_ref (LogEntry) reuses
     it as a plain string rather than inventing a second id space.
 
-    Liveness is a pid check at read time (psutil.pid_exists(pid)), not a status flag here -- a
-    crashed/killed process self-heals out of `kb sessions` output with no de-registration hook
-    required. Same-machine only for now (pid doesn't resolve across hosts); revisit with a
-    last_active_at-based heartbeat instead of/alongside pid if cross-machine sessions
-    (SSH, Remote Control) become a real use case -- not designed for yet, deliberately.
+    Liveness is a pid check at read time (psutil.pid_exists(pid)) for kind == AGENT, not a
+    status flag here -- a crashed/killed process self-heals out of `kb sessions` output with no
+    de-registration hook required. Same-machine only for now (pid doesn't resolve across
+    hosts); revisit with a last_active_at-based heartbeat instead of/alongside pid if
+    cross-machine sessions (SSH, Remote Control) become a real use case -- not designed for
+    yet, deliberately. kind == HUMAN skips the pid check entirely -- see HarnessSessionKind.
 
     status/last_active_at/last_response_at are populated only by hooks that actually observe
     those transitions (UserPromptSubmit -> INFERRING + bump last_active_at, Stop -> IDLE +
@@ -2147,6 +2163,11 @@ class HarnessSession(Base):
     cwd: Mapped[str] = mapped_column(String, nullable=False)
     title: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     pid: Mapped[int] = mapped_column(Integer, nullable=False)
+    kind: Mapped[HarnessSessionKind] = mapped_column(
+        Enum(HarnessSessionKind, create_constraint=True, validate_strings=True),
+        nullable=False,
+        default=HarnessSessionKind.AGENT,
+    )
     status: Mapped[HarnessSessionStatus] = mapped_column(
         Enum(HarnessSessionStatus, create_constraint=True, validate_strings=True),
         nullable=False,
@@ -2177,7 +2198,24 @@ class HarnessSession(Base):
         session.flush()
         return row
 
+    @classmethod
+    def get_or_create_human(cls, session: Session, display_name: str) -> HarnessSession:
+        """One HarnessSession row per distinct human display name -- id is a stable
+        "human:<display_name>" string (its own id namespace, never collides with a harness's
+        own session id) so the same person sending from the web UI under an unchanged display
+        name always resolves to the same row rather than growing a new one per message."""
+        session_id = f"human:{display_name}"
+        existing = session.get(cls, session_id)
+        if existing is not None:
+            return existing
+        row = cls(id=session_id, cwd="", pid=0, title=display_name, kind=HarnessSessionKind.HUMAN)
+        session.add(row)
+        session.flush()
+        return row
+
     def is_alive(self) -> bool:
+        if self.kind == HarnessSessionKind.HUMAN:
+            return True
         return psutil.pid_exists(self.pid)
 
     def is_listening_live(self) -> bool:
@@ -2194,8 +2232,17 @@ class HarnessSession(Base):
 
     @classmethod
     def live(cls, session: Session) -> list[HarnessSession]:
-        """Every registered session whose pid still resolves -- what `kb sessions` lists."""
-        return [row for row in session.scalars(select(cls)).all() if row.is_alive()]
+        """Every live AGENT session -- what `kb sessions`/the frontend's Agents page lists.
+        Deliberately excludes HUMAN rows even though is_alive() is unconditionally True for
+        them: this method answers "which Claude Code sessions can I message/see the status
+        of," a different question from "who can post in a Channel" (every messaging query
+        that needs to include humans, e.g. Channel membership, goes through HarnessSession
+        directly or ChannelSubscription, never through this method)."""
+        return [
+            row
+            for row in session.scalars(select(cls).where(cls.kind == HarnessSessionKind.AGENT)).all()
+            if row.is_alive()
+        ]
 
     @classmethod
     def stale_listeners(cls, session: Session) -> list[HarnessSession]:
@@ -2346,11 +2393,13 @@ class Channel(Base):
         return row
 
     @classmethod
-    def find_or_create_dm(cls, session: Session, a: str, b: str) -> Channel:
+    def find_dm(cls, session: Session, a: str, b: str) -> Optional[Channel]:
         """A DM is a nameless Channel whose subscriber set is exactly {a, b} -- found by
         looking for a nameless channel both are subscribed to with no third subscriber, not by
         any stored pairing key, since ChannelSubscription is already the one source of truth
-        for membership. Creates the channel and subscribes both sessions if none exists yet."""
+        for membership. Read-only: returns None if no such channel exists yet, the one query
+        both find_or_create_dm (below) and a read-only "does this DM exist" caller (e.g. the
+        web UI listing channels without creating one just by looking) need to share."""
         candidates = session.scalars(
             select(cls.id)
             .join(ChannelSubscription, ChannelSubscription.channel_id == cls.id)
@@ -2361,7 +2410,15 @@ class Channel(Base):
         for channel_id in candidates:
             total = session.scalar(select(func.count()).where(ChannelSubscription.channel_id == channel_id))
             if total == 2:
-                return session.get(cls, channel_id)  # type: ignore[return-value]
+                return session.get(cls, channel_id)
+        return None
+
+    @classmethod
+    def find_or_create_dm(cls, session: Session, a: str, b: str) -> Channel:
+        """Creates the channel and subscribes both sessions if find_dm finds none yet."""
+        existing = cls.find_dm(session, a, b)
+        if existing is not None:
+            return existing
         row = cls(name=None)
         session.add(row)
         session.flush()
@@ -2423,6 +2480,22 @@ class ChannelMessage(Base):
         session.add(msg)
         session.flush()
         return msg
+
+    @classmethod
+    def history(
+        cls, session: Session, channel_id: int, before_id: Optional[int] = None, limit: int = 50
+    ) -> list[ChannelMessage]:
+        """One page of a channel's full message history, newest-first, every sender included
+        (unlike unread(), which excludes the caller's own messages and is scoped to what one
+        session hasn't read yet) -- backs the web UI's scroll-load-older channel view, where
+        "who sent it" is a thing to display, not a thing to filter by. before_id (an id from
+        the oldest message already loaded) pages further back; omitted, this is the most
+        recent `limit` messages in the channel."""
+        q = select(cls).where(cls.channel_id == channel_id)
+        if before_id is not None:
+            q = q.where(cls.id < before_id)
+        rows = session.scalars(q.order_by(cls.id.desc()).limit(limit)).all()
+        return list(rows)
 
     @classmethod
     def unread(cls, session: Session, session_id: str, channel_id: Optional[int] = None) -> Sequence[ChannelMessage]:

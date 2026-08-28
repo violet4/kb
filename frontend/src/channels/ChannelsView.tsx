@@ -129,12 +129,20 @@ export default function ChannelsView() {
   }
 
   return (
-    // Bleeds past App.tsx's page-level 24px left/right padding -- unlike every other route,
-    // this page's whole point is a dense two-pane layout that wants the full viewport width,
-    // not a reading-width-capped column. Negative margin cancels that padding; the smaller
-    // paddingLeft/Right below (8px, not 24px) is just enough breathing room against the
-    // viewport edge, not a re-application of what was just canceled (that was tried and
-    // reverted earlier -- a no-op that didn't reclaim any width at all).
+    // Bleeds past App.tsx's page-level 24px padding on left/right/bottom -- unlike every
+    // other route, this page's whole point is a dense two-pane layout that wants the full
+    // viewport, not a reading-width-capped column with breathing room on every side. Negative
+    // margin cancels that padding with NO compensating padding of its own: an 8px
+    // paddingLeft/Right was tried first as "breathing room," but it visually read as its own
+    // lost strip sitting flush against the legend panel's border on the right (confirmed live
+    // via a high-contrast debug outline overlay, 2026-08-28 -- a bright yellow background made
+    // an 8px gap between the legend's border and the true viewport edge obvious in a
+    // screenshot where it hadn't been visible at normal contrast). marginBottom follows the
+    // same reasoning -- the initial fix only canceled left/right and missed that the same
+    // padding: 24 applies equally to the bottom edge, confirmed live as the same kind of
+    // dead-space band running the full width at the bottom of the viewport. Any breathing
+    // room belongs inside the sidebar/content children themselves, not as page-level padding
+    // that eats into content on a page whose whole point is using the full space.
     //
     // Vertically: flex: 1 + minHeight: 0 against App.tsx's own flex-column + height: 100vh
     // wrapper, not a hardcoded calc(100vh - Npx) -- that calc assumed a top-offset that didn't
@@ -158,8 +166,7 @@ export default function ChannelsView() {
         minHeight: 0,
         marginLeft: -24,
         marginRight: -24,
-        paddingLeft: 8,
-        paddingRight: 8,
+        marginBottom: -24,
         overflow: 'hidden',
       }}
     >

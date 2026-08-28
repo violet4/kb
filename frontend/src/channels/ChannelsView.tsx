@@ -136,10 +136,19 @@ export default function ChannelsView() {
     // viewport edge, not a re-application of what was just canceled (that was tried and
     // reverted earlier -- a no-op that didn't reclaim any width at all).
     //
-    // Vertically: flex: 1 + minHeight: 0 against App.tsx's own flex-column + minHeight: 100vh
+    // Vertically: flex: 1 + minHeight: 0 against App.tsx's own flex-column + height: 100vh
     // wrapper, not a hardcoded calc(100vh - Npx) -- that calc assumed a top-offset that didn't
     // match this page's real chrome height and left ~30px of dead space at the bottom
     // (confirmed live 2026-08-28 via getBoundingClientRect on the rendered page).
+    //
+    // overflow: hidden here (this page's every scroll area is already its own internal
+    // overflowY: auto pane -- the message list, the legend, the left sidebar) stops a
+    // sub-pixel rounding overflow (confirmed live: this root's scrollHeight was 862 against a
+    // clientHeight of 860, a 2px overflow from flex gap/border rounding) from ever reaching
+    // App.tsx's shared ancestor and triggering ITS scrollbar gutter reservation there --
+    // that gutter (~15px) was the actual remaining "gap on the right," confirmed via
+    // getBoundingClientRect showing this root 15px narrower than the viewport despite the
+    // negative-margin fix already being in effect.
     <div
       style={{
         display: 'flex',
@@ -151,6 +160,7 @@ export default function ChannelsView() {
         marginRight: -24,
         paddingLeft: 8,
         paddingRight: 8,
+        overflow: 'hidden',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>

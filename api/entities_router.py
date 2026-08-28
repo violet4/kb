@@ -21,6 +21,8 @@ from sqlalchemy import inspect, select
 from sqlalchemy.orm import Session
 
 from api.deps import get_session
+from archivebox_compat.config import ArchiveBoxConfigError
+from kb_cli.archivebox import archivebox_url
 from models import ArchivedLink, Daily, EntityLink, Goal, Idea, Instruction, Journal, Note, Todo, Wishlist
 
 router = APIRouter(prefix="/entities")
@@ -268,7 +270,15 @@ async def get_entity(entity_type: str, entity_id: int, session: Session = Depend
     model = _model_or_404(entity_type)
     row = _get_or_404(session, entity_type, entity_id)
     columns = _introspect_columns(entity_type, model)
-    return _to_row(entity_type, row, columns)
+    result = _to_row(entity_type, row, columns)
+    if isinstance(row, ArchivedLink) and row.ab_id:
+        try:
+            index_url = archivebox_url(session, f"archive/{row.ab_id}/")
+            result["index_url"] = index_url
+            result["singlefile_url"] = index_url + "singlefile.html"
+        except ArchiveBoxConfigError:
+            pass
+    return result
 
 
 class FieldUpdateIn(BaseModel):

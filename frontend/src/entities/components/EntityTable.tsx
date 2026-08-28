@@ -17,27 +17,71 @@ interface EntityTableProps {
   onFieldSaved: (entity: EntityRow) => void;
 }
 
+// null/undefined sort last regardless of direction -- otherwise every column would
+// need its own "where do missing values go" judgment call each time it's sorted.
+function compareValues(a: unknown, b: unknown): number {
+  const aEmpty = a === null || a === undefined;
+  const bEmpty = b === null || b === undefined;
+  if (aEmpty && bEmpty) return 0;
+  if (aEmpty) return 1;
+  if (bEmpty) return -1;
+  if (typeof a === 'number' && typeof b === 'number') return a - b;
+  if (typeof a === 'boolean' && typeof b === 'boolean') return Number(a) - Number(b);
+  return String(a).localeCompare(String(b));
+}
+
+type SortDirection = 'asc' | 'desc';
+interface SortState {
+  column: string; // column name, or '__label' for the fixed leading Title column
+  direction: SortDirection;
+}
+
 // Fully column-driven: which columns to render, their labels, and whether a cell is
 // a live editable dropdown all come from `columns` (introspected once by BrowseView)
 // -- adding a column to a type's DEFAULT_COLUMNS on the backend is the only change
-// needed for it to appear here, no frontend edit.
+// needed for it to appear here, no frontend edit. Sorting is likewise generic: any
+// column (plus the fixed Title column) is sortable by clicking its header, cycling
+// asc -> desc -> unsorted, sorting whatever value formatCellValue would display for
+// that column rather than needing its own per-kind comparator wired in by hand.
 export default function EntityTable({ entities, columns, titleSchema, onFieldSaved }: EntityTableProps) {
+  const [sort, setSort] = useState<SortState | null>(null);
+
+  const handleHeaderClick = (column: string) => {
+    setSort((prev) => {
+      if (prev?.column !== column) return { column, direction: 'asc' };
+      if (prev.direction === 'asc') return { column, direction: 'desc' };
+      return null;
+    });
+  };
+
+  const sortedEntities = sort
+    ? [...entities].sort((a, b) => {
+        const key = sort.column === '__label' ? 'label' : sort.column;
+        const cmp = compareValues(a[key], b[key]);
+        return sort.direction === 'asc' ? cmp : -cmp;
+      })
+    : entities;
+
   if (entities.length === 0) return <p style={{ color: tokens.color.textMuted }}>Nothing here.</p>;
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
         <thead>
           <tr style={{ textAlign: 'left', color: tokens.color.textMuted }}>
-            <th style={cellStyle}>Title</th>
+            <SortableHeader label="Title" column="__label" sort={sort} onClick={handleHeaderClick} />
             {columns.map((column) => (
-              <th key={column.name} style={cellStyle}>
-                {columnLabel(column.name)}
-              </th>
+              <SortableHeader
+                key={column.name}
+                label={columnLabel(column.name)}
+                column={column.name}
+                sort={sort}
+                onClick={handleHeaderClick}
+              />
             ))}
           </tr>
         </thead>
         <tbody>
-          {entities.map((entity) => (
+          {sortedEntities.map((entity) => (
             <EntityTableRow
               key={`${entity.type}:${entity.id}`}
               entity={entity}
@@ -49,6 +93,24 @@ export default function EntityTable({ entities, columns, titleSchema, onFieldSav
         </tbody>
       </table>
     </div>
+  );
+}
+
+interface SortableHeaderProps {
+  label: string;
+  column: string;
+  sort: SortState | null;
+  onClick: (column: string) => void;
+}
+
+function SortableHeader({ label, column, sort, onClick }: SortableHeaderProps) {
+  const active = sort?.column === column;
+  const indicator = active ? (sort.direction === 'asc' ? ' ▲' : ' ▼') : '';
+  return (
+    <th style={{ ...cellStyle, cursor: 'pointer', userSelect: 'none' }} onClick={() => onClick(column)}>
+      {label}
+      {indicator}
+    </th>
   );
 }
 
@@ -248,7 +310,8 @@ function TagChips({ value }: { value: string }) {
 }
 
 function formatCellValue(value: unknown, kind: ColumnSchema['kind']): string {
-  if (value === null || value === undefined || value === '') return '—';
+  if (value === null || value === undefined) return 'null';
+  if (value === '') return '';
   if (kind === 'date' && typeof value === 'string') return new Date(value).toLocaleDateString();
   if (typeof value === 'boolean') return value ? 'yes' : 'no';
   return String(value);

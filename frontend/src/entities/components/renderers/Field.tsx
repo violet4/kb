@@ -139,7 +139,7 @@ function EditableControl({ editable, value, isEditing, setIsEditing }: EditableC
       onClick={editable ? () => setIsEditing(true) : undefined}
       title={editable ? 'Click to edit' : undefined}
     >
-      {value === null || value === undefined || value === '' ? '—' : String(value)}
+      {value === null || value === undefined ? 'null' : String(value)}
     </span>
   );
 }

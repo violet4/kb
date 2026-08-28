@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { tokens } from '../shared/tokens';
-import AvailableColumns from './components/AvailableColumns';
 import EntityTable from './components/EntityTable';
 import EntityTypeTabs from './components/EntityTypeTabs';
 import GenericFilters from './components/GenericFilters';
@@ -68,7 +67,6 @@ export default function BrowseView() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <h1 style={{ margin: 0, fontSize: 20 }}>Browse</h1>
       <EntityTypeTabs types={[...TABS]} active={tab} />
-      <AvailableColumns columns={columnList} />
       <GenericFilters columns={shownColumns} values={filters} onChange={handleFilterChange} />
       {loading && <p style={{ color: tokens.color.textMuted }}>Loading...</p>}
       {error && <p style={{ color: tokens.color.danger }}>{error}</p>}

@@ -43,6 +43,15 @@ function FilterControl({ column, value, onChange }: ColumnFilterProps) {
   if (column.kind === 'enum') {
     return <EnumMultiSelectFilter column={column} value={value} onChange={onChange} />;
   }
+  if (column.kind === 'bool') {
+    return (
+      <select value={value} onChange={(e) => onChange(column.name, e.target.value)} style={controlStyle}>
+        <option value="">(any)</option>
+        <option value="true">true</option>
+        <option value="false">false</option>
+      </select>
+    );
+  }
   return (
     <input
       type="text"

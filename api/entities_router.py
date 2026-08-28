@@ -9,9 +9,8 @@ view, not preemptively for every model in models.py.
 Columns are introspected live from each model's SQLAlchemy mapper (see
 _introspect_columns), not hand-listed -- a new column on an existing type (or a new
 enum value) needs no change here to show up in /columns, /fields, filtering, or the
-generic list/detail responses. DEFAULT_COLUMNS is the one hand-curated piece left:
-which of those introspected columns a browse table shows by default versus lists as
-merely available -- a deliberate editorial choice, not something to derive."""
+generic list/detail responses. shown/editable/nullable are all derived structurally
+(see _introspect_columns) rather than hand-picked per type."""
 
 from typing import Any, Optional
 
@@ -42,47 +41,16 @@ ENTITY_TYPES: dict[str, type[Any]] = {
 # browse/filter/edit target) -- everything else on a model's mapper is generic.
 _HIDDEN_COLUMNS = {"embedding", "embedding_model"}
 
-# Which introspected columns a browse table shows by default, per type -- an editorial
-# choice (what's actually useful at a glance), not derivable from the schema alone.
-# Every other real column still appears via /columns for filtering, and is listed as
-# "available but not shown" by the frontend so a missing-but-wanted one is easy to spot.
-DEFAULT_COLUMNS: dict[str, tuple[str, ...]] = {
-    "Todo": ("title", "status", "kind", "severity", "context", "updated_at"),
-    "Goal": ("title", "status", "context", "updated_at"),
-    "Note": ("title", "collection", "tags", "updated_at"),
-    "Idea": ("title", "status", "context", "updated_at"),
-    "Wishlist": ("title", "status", "priority", "context", "updated_at"),
-    "Instruction": ("title", "trigger", "system_level", "context", "updated_at"),
-    "Daily": ("description", "domain", "tier", "recurrence", "context", "updated_at"),
-    "ArchivedLink": ("title", "url", "push_status", "content_status", "updated_at"),
-}
+# Column names carrying record-lifecycle metadata rather than user-editable content --
+# structural (every model writes these via base.py's _now(), see CLAUDE.md), not a
+# per-type editorial choice, so a new model needs no entry here to get this right.
+_TIMESTAMP_COLUMNS = {"created_at", "updated_at"}
 
-# Columns editable via PATCH, per type -- a further-restricted subset of what's
-# introspected (id/created_at/updated_at/long body-text fields are readable and
-# filterable but not edited inline this way).
-EDITABLE_COLUMNS: dict[str, tuple[str, ...]] = {
-    "Todo": ("title", "status", "kind", "severity", "notes"),
-    "Goal": ("title", "status", "description", "notes"),
-    "Note": ("title", "collection", "tags", "body"),
-    "Idea": ("title", "status", "description", "notes"),
-    "Wishlist": ("title", "status", "priority", "notes"),
-    "Instruction": ("title", "body", "trigger", "system_level"),
-    "Daily": ("description", "domain", "tier", "recurrence", "location", "notes", "is_active"),
-    "ArchivedLink": ("title", "reason"),
-}
-
-# Columns whose value may be cleared back to NULL via PATCH (see FieldUpdateIn.is_null)
-# -- a further-restricted subset of EDITABLE_COLUMNS, since not every editable column
-# is nullable at the DB level (e.g. Todo.title, Wishlist.status are NOT NULL).
-NULLABLE_COLUMNS: dict[str, tuple[str, ...]] = {
-    "Todo": ("severity", "notes"),
-    "Goal": ("description", "notes"),
-    "Note": ("tags",),
-    "Idea": ("description", "notes"),
-    "Wishlist": ("priority", "notes"),
-    "Instruction": ("trigger",),
-    "Daily": ("location", "notes"),
-}
+# Kinds a concrete frontend editor exists for today (BoolFieldToggle, EnumFieldSelect,
+# EditableFieldControl, NumberFieldControl -- see Field.tsx/EntityTable.tsx). "date" and
+# "reference" render read-only until a matching editor is written; adding one here (and
+# in the frontend) is what extends editability to that kind everywhere at once.
+_EDITABLE_KINDS = {"bool", "enum", "text", "number"}
 
 
 def _model_or_404(entity_type: str) -> type[Any]:
@@ -144,30 +112,34 @@ def _introspect_columns(entity_type: str, model: type[Any]) -> list[ColumnSchema
     """Every real column on this model's mapper, minus internal bookkeeping and raw FK
     ids that a relationship already resolves -- the one place "what columns does this
     type have" is decided, shared by /columns, /fields, list filtering, and row
-    serialization so all four always agree."""
+    serialization so all four always agree.
+
+    shown/editable/nullable are all derived structurally rather than hand-picked per
+    type: every non-hidden column is shown; a column is editable iff its kind has a
+    frontend editor (_EDITABLE_KINDS) and it isn't a PK or a lifecycle timestamp
+    (FK id columns never reach here at all -- see the fk_relationships skip below);
+    nullable mirrors the actual DB nullability. A new column or a new model needs no
+    entry anywhere in this file to show up correctly editable/read-only."""
     fk_relationships = _fk_to_relationship(model)
-    shown = set(DEFAULT_COLUMNS.get(entity_type, ()))
-    editable = set(EDITABLE_COLUMNS.get(entity_type, ()))
-    nullable = set(NULLABLE_COLUMNS.get(entity_type, ()))
     schemas = []
     for col in inspect(model).columns:
         if col.name in _HIDDEN_COLUMNS or col.name in fk_relationships:
             continue
         kind, choices = _column_kind(col)
+        read_only = col.primary_key or col.name in _TIMESTAMP_COLUMNS
+        editable = kind in _EDITABLE_KINDS and not read_only
         schemas.append(
             ColumnSchema(
                 name=col.name,
                 kind=kind,
                 choices=choices,
-                shown=col.name in shown,
-                editable=col.name in editable,
-                nullable=col.name in nullable,
+                shown=True,
+                editable=editable,
+                nullable=editable and col.nullable,
             )
         )
     for rel_name in set(fk_relationships.values()):
-        schemas.append(
-            ColumnSchema(name=rel_name, kind="reference", shown=rel_name in shown, editable=False, nullable=False)
-        )
+        schemas.append(ColumnSchema(name=rel_name, kind="reference", shown=True, editable=False, nullable=False))
     return schemas
 
 

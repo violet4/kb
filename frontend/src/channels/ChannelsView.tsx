@@ -129,7 +129,24 @@ export default function ChannelsView() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, height: 'calc(100vh - 96px)' }}>
+    // Bleeds past App.tsx's page-level 24px left/right padding -- unlike every other route,
+    // this page's whole point is a dense two-pane layout that wants the full viewport width,
+    // not a reading-width-capped column. Negative margin cancels that padding; the smaller
+    // paddingLeft/Right below (8px, not 24px) is just enough breathing room against the
+    // viewport edge, not a re-application of what was just canceled (that was tried and
+    // reverted earlier -- a no-op that didn't reclaim any width at all).
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 16,
+        height: 'calc(100vh - 96px)',
+        marginLeft: -24,
+        marginRight: -24,
+        paddingLeft: 8,
+        paddingRight: 8,
+      }}
+    >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
         <h1 style={{ margin: 0, fontSize: 20 }}>Channels</h1>
         <SettingsSection

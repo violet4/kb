@@ -11,9 +11,29 @@ import UsageView from './usage/UsageView';
 
 export default function App() {
   return (
-    <>
+    // height: 100vh on this outer flex column, not on the content div alone -- NavBar and
+    // the content div are siblings, so a height cap on only one of them (tried first) still
+    // let the pair together exceed the real viewport height, which is exactly the bug this
+    // is fixing, just shifted up one level. With the cap here, flexbox naturally gives NavBar
+    // its own content height and the content div the rest via flex: 1 + min-height: 0.
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
       <NavBar />
-      <div style={{ padding: 24 }}>
+      {/* flex: 1 + min-height: 0 (not a hardcoded height) so this div gets exactly the
+          viewport height minus NavBar's real height, whatever that happens to be --
+          overflowY: auto keeps every other route's natural "scroll if content is taller than
+          this space" behavior, just scoped to this div instead of the body. boxSizing:
+          border-box so the 24px padding is included in, not added on top of, that height. */}
+      <div
+        style={{
+          padding: 24,
+          display: 'flex',
+          flexDirection: 'column',
+          flex: 1,
+          minHeight: 0,
+          overflowY: 'auto',
+          boxSizing: 'border-box',
+        }}
+      >
         <Routes>
           <Route path="/" element={<DailiesView />} />
           <Route path="/usage" element={<UsageView />} />
@@ -26,6 +46,6 @@ export default function App() {
           <Route path="/entities/:type/:id" element={<EntityView />} />
         </Routes>
       </div>
-    </>
+    </div>
   );
 }

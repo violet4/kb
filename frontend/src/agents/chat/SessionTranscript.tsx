@@ -226,12 +226,12 @@ export default function SessionTranscript({ sessionId }: SessionTranscriptProps)
           scroll instead of just the one pane that's actually long (confirmed live
           2026-08-28: a session with many distinct facet values made the legend taller than
           the viewport, and the page itself scrolled to show the rest of it). */}
-      {/* gap shrinks to 8px when the legend is collapsed to a slim rail -- the 16px inter-
-          pane gap is fine between two substantial panes, but next to a ~16px-wide rail it
-          reads as its own second lost strip on top of the rail's own width (confirmed live
-          2026-08-28: a screenshot showed the collapsed rail sitting visibly further from the
-          message content than its own width would explain). */}
-      <div style={{ display: 'flex', gap: legendOpen ? 16 : 8, flex: 1, minHeight: 0 }}>
+      {/* position: relative so the collapsed-state expand tab (below) can float over this
+          row as an absolutely-positioned overlay rather than reserving its own flex slice --
+          confirmed live 2026-08-28 that even an ~8px-wide reserved rail still read as a
+          visible "lost strip" on top of its own width once the inter-pane gap was counted;
+          removing it from flow entirely (not just shrinking it) is the actual fix. */}
+      <div style={{ display: 'flex', gap: legendOpen ? 16 : 0, flex: 1, minHeight: 0, position: 'relative' }}>
         {/* Its own scroll container, independent of the page (and, inside Channels, the left
             channel sidebar) -- overflowY here, not on some page-level wrapper, is what lets a
             long transcript scroll without taking the sidebar or legend along with it. */}
@@ -248,41 +248,49 @@ export default function SessionTranscript({ sessionId }: SessionTranscriptProps)
             ))}
           </div>
         </div>
-        {allBlocks.length > 0 && (
-          <div style={{ flex: legendOpen ? '0 0 280px' : '0 0 auto', height: '100%' }}>
-            {legendOpen ? (
-              <LegendPanel
-                allBlocks={allBlocks}
-                visibleBlocks={visibleBlocks}
-                filter={filter}
-                onToggleFilterValue={toggleFilterValue}
-                onClearFilter={() => setFilter(new Map())}
-                onCollapseVisible={() => collapseMatching(visibleBlocks)}
-                onExpandVisible={() => expandMatching(visibleBlocks)}
-                onCollapsePanel={() => setLegendOpen(false)}
-              />
-            ) : (
-              <button
-                type="button"
-                onClick={() => setLegendOpen(true)}
-                aria-label="Expand filter legend"
-                title="Expand filter legend"
-                style={{
-                  position: 'sticky',
-                  top: 0,
-                  padding: '6px 4px',
-                  borderRadius: 6,
-                  border: `1px solid ${tokens.color.border}`,
-                  background: tokens.color.surface,
-                  color: tokens.color.textMuted,
-                  fontSize: 12,
-                  cursor: 'pointer',
-                }}
-              >
-                ◂
-              </button>
-            )}
+        {allBlocks.length > 0 && legendOpen && (
+          <div style={{ flex: '0 0 280px', height: '100%' }}>
+            <LegendPanel
+              allBlocks={allBlocks}
+              visibleBlocks={visibleBlocks}
+              filter={filter}
+              onToggleFilterValue={toggleFilterValue}
+              onClearFilter={() => setFilter(new Map())}
+              onCollapseVisible={() => collapseMatching(visibleBlocks)}
+              onExpandVisible={() => expandMatching(visibleBlocks)}
+              onCollapsePanel={() => setLegendOpen(false)}
+            />
           </div>
+        )}
+        {allBlocks.length > 0 && !legendOpen && (
+          // Overlay tab, not a flex item -- takes zero width from the message pane. Sits
+          // just inside the pane's own right edge (not the container's, since the message
+          // pane spans the full row when the legend is collapsed) so it reads as a
+          // hover/reveal affordance rather than a permanent UI slice.
+          <button
+            type="button"
+            onClick={() => setLegendOpen(true)}
+            aria-label="Expand filter legend"
+            title="Expand filter legend"
+            style={{
+              position: 'absolute',
+              top: 0,
+              right: 8,
+              padding: '6px 4px',
+              borderRadius: 6,
+              border: `1px solid ${tokens.color.border}`,
+              background: tokens.color.surface,
+              color: tokens.color.textMuted,
+              fontSize: 12,
+              cursor: 'pointer',
+              opacity: 0.6,
+              transition: 'opacity 0.15s',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+            onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.6')}
+          >
+            ◂
+          </button>
         )}
       </div>
     </div>

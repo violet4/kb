@@ -135,12 +135,18 @@ export default function ChannelsView() {
     // paddingLeft/Right below (8px, not 24px) is just enough breathing room against the
     // viewport edge, not a re-application of what was just canceled (that was tried and
     // reverted earlier -- a no-op that didn't reclaim any width at all).
+    //
+    // Vertically: flex: 1 + minHeight: 0 against App.tsx's own flex-column + minHeight: 100vh
+    // wrapper, not a hardcoded calc(100vh - Npx) -- that calc assumed a top-offset that didn't
+    // match this page's real chrome height and left ~30px of dead space at the bottom
+    // (confirmed live 2026-08-28 via getBoundingClientRect on the rendered page).
     <div
       style={{
         display: 'flex',
         flexDirection: 'column',
         gap: 16,
-        height: 'calc(100vh - 96px)',
+        flex: 1,
+        minHeight: 0,
         marginLeft: -24,
         marginRight: -24,
         paddingLeft: 8,

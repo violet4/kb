@@ -226,7 +226,12 @@ export default function SessionTranscript({ sessionId }: SessionTranscriptProps)
           scroll instead of just the one pane that's actually long (confirmed live
           2026-08-28: a session with many distinct facet values made the legend taller than
           the viewport, and the page itself scrolled to show the rest of it). */}
-      <div style={{ display: 'flex', gap: 16, flex: 1, minHeight: 0 }}>
+      {/* gap shrinks to 8px when the legend is collapsed to a slim rail -- the 16px inter-
+          pane gap is fine between two substantial panes, but next to a ~16px-wide rail it
+          reads as its own second lost strip on top of the rail's own width (confirmed live
+          2026-08-28: a screenshot showed the collapsed rail sitting visibly further from the
+          message content than its own width would explain). */}
+      <div style={{ display: 'flex', gap: legendOpen ? 16 : 8, flex: 1, minHeight: 0 }}>
         {/* Its own scroll container, independent of the page (and, inside Channels, the left
             channel sidebar) -- overflowY here, not on some page-level wrapper, is what lets a
             long transcript scroll without taking the sidebar or legend along with it. */}

@@ -51,7 +51,7 @@ export default function ChannelSidebar({ channels, selectedKey, onSelect }: Chan
         display: 'flex',
         flexDirection: 'column',
         gap: 16,
-        width: 260,
+        width: 180,
         flexShrink: 0,
         borderRight: `1px solid ${tokens.color.border}`,
         paddingRight: 16,

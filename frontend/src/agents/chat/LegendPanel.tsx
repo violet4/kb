@@ -11,6 +11,7 @@ interface LegendPanelProps {
   onClearFilter: () => void;
   onCollapseVisible: () => void;
   onExpandVisible: () => void;
+  onCollapsePanel: () => void;
 }
 
 // Keys shown expanded by default -- everything else starts collapsed under its own
@@ -26,6 +27,7 @@ export default function LegendPanel({
   onClearFilter,
   onCollapseVisible,
   onExpandVisible,
+  onCollapsePanel,
 }: LegendPanelProps) {
   const facets = computeFacets(allBlocks);
   const activeFilterCount = Array.from(filter.values()).reduce((sum, values) => sum + values.size, 0);
@@ -41,12 +43,17 @@ export default function LegendPanel({
   }
 
   return (
+    // height: 100% (not position: sticky + a viewport-relative maxHeight) so this panel
+    // always fills exactly its flex-item slot, whatever that happens to be in a given parent
+    // layout -- a hardcoded `calc(100vh - Npx)` here was wrong the moment this component got
+    // reused inside ChannelsView's own chrome height, and made the *page* scroll instead of
+    // just this panel whenever its content (a session with many distinct facet values) was
+    // taller than the viewport (confirmed live 2026-08-28). The parent is responsible for
+    // giving this flex item a real bounded height (flex: 1 + min-height: 0 down the chain);
+    // this component only needs to respect whatever height it's given and scroll internally.
     <div
       style={{
-        position: 'sticky',
-        top: 24,
-        alignSelf: 'flex-start',
-        maxHeight: 'calc(100vh - 48px)',
+        height: '100%',
         display: 'flex',
         flexDirection: 'column',
         gap: 10,
@@ -59,10 +66,21 @@ export default function LegendPanel({
       }}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <span style={{ color: tokens.color.textMuted }}>
-          {visibleBlocks.length} / {allBlocks.length} blocks
-          {activeFilterCount > 0 && ` (${activeFilterCount} filter${activeFilterCount === 1 ? '' : 's'} active)`}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <span style={{ color: tokens.color.textMuted }}>
+            {visibleBlocks.length} / {allBlocks.length} blocks
+            {activeFilterCount > 0 && ` (${activeFilterCount} filter${activeFilterCount === 1 ? '' : 's'} active)`}
+          </span>
+          <button
+            type="button"
+            onClick={onCollapsePanel}
+            aria-label="Collapse filter legend"
+            title="Collapse filter legend"
+            style={{ ...buttonStyle, padding: '2px 6px' }}
+          >
+            ▸
+          </button>
+        </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {activeFilterCount > 0 && (
             <button type="button" onClick={onClearFilter} style={buttonStyle}>

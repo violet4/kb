@@ -9,11 +9,16 @@ import type { ChatMessage } from './types';
 
 function TagList({ tags }: { tags: Record<string, string> }) {
   return (
-    <dl style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 10px', margin: 0, fontSize: 11 }}>
+    <dl style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 10px', margin: 0, fontSize: 11, minWidth: 0 }}>
       {Object.entries(tags).map(([key, value]) => (
-        <div key={key} style={{ display: 'flex', gap: 4 }}>
-          <dt style={{ color: tokens.color.textMuted }}>{key}:</dt>
-          <dd style={{ margin: 0, color: tokens.color.text }}>{value}</dd>
+        // minWidth: 0 + overflow-wrap on the value -- a long unbroken tag value (a full
+        // path, a long id) would otherwise force this flex item wider than its container,
+        // pushing the whole message column into horizontal scroll (confirmed live
+        // 2026-08-28: the session transcript pane, not the legend, was the one actually
+        // overflowing).
+        <div key={key} style={{ display: 'flex', gap: 4, minWidth: 0, maxWidth: '100%' }}>
+          <dt style={{ color: tokens.color.textMuted, flexShrink: 0 }}>{key}:</dt>
+          <dd style={{ margin: 0, color: tokens.color.text, minWidth: 0, overflowWrap: 'break-word' }}>{value}</dd>
         </div>
       ))}
     </dl>
@@ -65,15 +70,41 @@ function BlockRow({
       {!collapsed && (
         <>
           {block.kind === 'text' && (
-            <p style={{ margin: 0, fontSize: 14, whiteSpace: 'pre-wrap', color: tokens.color.text }}>{block.text}</p>
+            <p
+              style={{
+                margin: 0,
+                fontSize: 14,
+                whiteSpace: 'pre-wrap',
+                overflowWrap: 'anywhere',
+                color: tokens.color.text,
+              }}
+            >
+              {block.text}
+            </p>
           )}
           {block.kind === 'tool_use' && (
-            <pre style={{ margin: 0, fontSize: 12, whiteSpace: 'pre-wrap', color: tokens.color.textMuted }}>
+            <pre
+              style={{
+                margin: 0,
+                fontSize: 12,
+                whiteSpace: 'pre-wrap',
+                overflowWrap: 'anywhere',
+                color: tokens.color.textMuted,
+              }}
+            >
               {JSON.stringify(block.tool_input, null, 2)}
             </pre>
           )}
           {block.kind === 'tool_result' && (
-            <pre style={{ margin: 0, fontSize: 12, whiteSpace: 'pre-wrap', color: tokens.color.text }}>
+            <pre
+              style={{
+                margin: 0,
+                fontSize: 12,
+                whiteSpace: 'pre-wrap',
+                overflowWrap: 'anywhere',
+                color: tokens.color.text,
+              }}
+            >
               {block.tool_output}
             </pre>
           )}
@@ -141,6 +172,7 @@ export default function SessionTranscript({ sessionId }: SessionTranscriptProps)
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FacetFilter>(new Map());
+  const [legendOpen, setLegendOpen] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -181,38 +213,70 @@ export default function SessionTranscript({ sessionId }: SessionTranscriptProps)
   );
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minHeight: 0, flex: 1 }}>
       {loading && <p style={{ margin: 0, color: tokens.color.textMuted, fontSize: 13 }}>Loading...</p>}
       {error && <p style={{ margin: 0, color: tokens.color.danger }}>{error}</p>}
       {!loading && !error && messages.length === 0 && (
         <p style={{ margin: 0, color: tokens.color.textMuted, fontSize: 13 }}>No chat messages found.</p>
       )}
-      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {messages.map((message, i) => (
-            <MessageRow
-              key={i}
-              message={message}
-              addressedBlocks={messageBlockGroups[i]}
-              isCollapsed={isCollapsed}
-              onToggle={toggle}
-            />
-          ))}
+      {/* alignItems defaults to stretch (not flex-start) so both the message pane and the
+          legend actually fill this row's real height -- with flex-start, each pane sized to
+          its own content, meaning this row (and the page above it) grew to fit the taller of
+          the two, defeating both panes' own overflowY: auto and pushing the whole PAGE into
+          scroll instead of just the one pane that's actually long (confirmed live
+          2026-08-28: a session with many distinct facet values made the legend taller than
+          the viewport, and the page itself scrolled to show the rest of it). */}
+      <div style={{ display: 'flex', gap: 16, flex: 1, minHeight: 0 }}>
+        {/* Its own scroll container, independent of the page (and, inside Channels, the left
+            channel sidebar) -- overflowY here, not on some page-level wrapper, is what lets a
+            long transcript scroll without taking the sidebar or legend along with it. */}
+        <div style={{ flex: 1, minWidth: 0, height: '100%', overflowY: 'auto' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {messages.map((message, i) => (
+              <MessageRow
+                key={i}
+                message={message}
+                addressedBlocks={messageBlockGroups[i]}
+                isCollapsed={isCollapsed}
+                onToggle={toggle}
+              />
+            ))}
+          </div>
         </div>
         {allBlocks.length > 0 && (
-          // Fixed width, not flex-grow -- the legend is a filter/navigation aid, not
-          // primary content, so it shouldn't compete with the message list for freed
-          // horizontal space on wide viewports.
-          <div style={{ flex: '0 0 280px' }}>
-            <LegendPanel
-              allBlocks={allBlocks}
-              visibleBlocks={visibleBlocks}
-              filter={filter}
-              onToggleFilterValue={toggleFilterValue}
-              onClearFilter={() => setFilter(new Map())}
-              onCollapseVisible={() => collapseMatching(visibleBlocks)}
-              onExpandVisible={() => expandMatching(visibleBlocks)}
-            />
+          <div style={{ flex: legendOpen ? '0 0 280px' : '0 0 auto', height: '100%' }}>
+            {legendOpen ? (
+              <LegendPanel
+                allBlocks={allBlocks}
+                visibleBlocks={visibleBlocks}
+                filter={filter}
+                onToggleFilterValue={toggleFilterValue}
+                onClearFilter={() => setFilter(new Map())}
+                onCollapseVisible={() => collapseMatching(visibleBlocks)}
+                onExpandVisible={() => expandMatching(visibleBlocks)}
+                onCollapsePanel={() => setLegendOpen(false)}
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setLegendOpen(true)}
+                aria-label="Expand filter legend"
+                title="Expand filter legend"
+                style={{
+                  position: 'sticky',
+                  top: 0,
+                  padding: '6px 4px',
+                  borderRadius: 6,
+                  border: `1px solid ${tokens.color.border}`,
+                  background: tokens.color.surface,
+                  color: tokens.color.textMuted,
+                  fontSize: 12,
+                  cursor: 'pointer',
+                }}
+              >
+                ◂
+              </button>
+            )}
           </div>
         )}
       </div>

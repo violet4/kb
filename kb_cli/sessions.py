@@ -152,6 +152,23 @@ def cmd_register(args: argparse.Namespace) -> None:
     args.session.commit()
 
 
+def refresh_agent_title(agent: HarnessSession) -> None:
+    """Pull the current title (custom-title event, else ai-title, else first user message --
+    same resolution Claude Code's own session picker uses) from the agent's own transcript
+    and write it onto HarnessSession.title if it changed. HarnessSession.title is only ever
+    set once, at SessionStart (kb sessions register), so a mid-session /rename never reaches
+    it on its own -- this keeps it current on every live-session read rather than adding a
+    second write path for the CLI-side rename event, since a transcript read is cheap and both
+    `kb sessions list` and the frontend's session listings read every live agent's identity
+    per call anyway."""
+    path = find_session_transcript_path(agent.id)
+    if path is None:
+        return
+    title = session_transcript_title(path)
+    if title is not None and title != agent.title:
+        agent.title = title
+
+
 class LiveSessionInfo(NamedTuple):
     """One row of `kb sessions list`'s live-session view, independent of how it's rendered --
     shared by the CLI table and the frontend's JSON API (api/sessions_router.py) so the two
@@ -176,6 +193,7 @@ def list_live_sessions(session: Session) -> tuple[list[LiveSessionInfo], int]:
     now = datetime.now(timezone.utc)
     infos = []
     for row in live:
+        refresh_agent_title(row)
         if row.is_listening_live():
             listening = f"yes (pid {row.listener_pid})"
         elif row.is_listening:

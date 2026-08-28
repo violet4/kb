@@ -17,10 +17,11 @@ export default function AgentPage() {
   const [displayName] = useDisplayName();
   const [intervalSeconds] = useChannelListRefreshInterval();
   const { channels, refresh: refreshChannels } = useChannelList(displayName, intervalSeconds);
-  const channelId = useMemo(
-    () => channels.find((c) => c.kind === 'dm' && c.agent_session_id === sessionId)?.channel_id ?? null,
+  const dmChannel = useMemo(
+    () => channels.find((c) => c.kind === 'dm' && c.agent_session_id === sessionId) ?? null,
     [channels, sessionId],
   );
+  const channelId = dmChannel?.channel_id ?? null;
 
   function setTab(next: AgentContentTab) {
     setSearchParams((prev) => {
@@ -50,7 +51,9 @@ export default function AgentPage() {
         <Link to="/agents" style={{ color: tokens.color.textMuted, fontSize: 13, textDecoration: 'none' }}>
           ← Agents
         </Link>
-        <h1 style={{ margin: 0, fontSize: 18, fontFamily: 'monospace' }}>{sessionId}</h1>
+        <h1 style={{ margin: 0, fontSize: 18, fontFamily: 'monospace' }} title={sessionId}>
+          {dmChannel?.agent_title || sessionId}
+        </h1>
       </div>
       <AgentContentTabs
         agentSessionId={sessionId}

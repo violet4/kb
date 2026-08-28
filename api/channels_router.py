@@ -19,26 +19,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from api.deps import get_session
-from harness import find_session_transcript_path, session_transcript_title
+from kb_cli.sessions import refresh_agent_title
 from models import Channel, ChannelMessage, ChannelSubscription, HarnessSession
 
 router = APIRouter(prefix="/channels")
-
-
-def _refresh_title(session: Session, agent: HarnessSession) -> None:
-    """Pull the current title (custom-title event, else ai-title, else first user message --
-    same resolution Claude Code's own session picker uses) from the agent's own transcript
-    and write it onto HarnessSession.title if it changed. HarnessSession.title is only ever
-    set once, at SessionStart (kb sessions register), so a mid-session /rename never reaches
-    it on its own -- this keeps it current on every channels list rather than adding a second
-    write path for the CLI-side rename event, since a transcript read is cheap and this
-    endpoint is already the one place that reads every live agent's identity per request."""
-    path = find_session_transcript_path(agent.id)
-    if path is None:
-        return
-    title = session_transcript_title(path)
-    if title is not None and title != agent.title:
-        agent.title = title
 
 
 def _latest_message_at(session: Session, channel_id: int) -> Optional[str]:
@@ -76,7 +60,7 @@ async def list_channels(display_name: str, session: Session = Depends(get_sessio
 
     summaries = []
     for agent in HarnessSession.live(session):
-        _refresh_title(session, agent)
+        refresh_agent_title(agent)
         dm_channel = Channel.find_dm(session, human.id, agent.id)
         channel_id = dm_channel.id if dm_channel is not None else None
         summaries.append(

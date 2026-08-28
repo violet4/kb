@@ -27,10 +27,11 @@ function Row({ session }: { session: AgentSession }) {
       <td style={cellStyle}>
         <Link
           to={`/agents/${encodeURIComponent(session.id)}`}
-          aria-label={`View chat for session ${session.id}`}
+          aria-label={`View chat for session ${session.title || session.id}`}
+          title={session.id}
           style={{ color: 'inherit', textDecoration: 'none' }}
         >
-          {session.id}
+          {session.title || session.id}
         </Link>
         {session.is_self && ' (you)'}
       </td>
@@ -39,7 +40,6 @@ function Row({ session }: { session: AgentSession }) {
       <td style={cellStyle}>{formatSeconds(session.age_seconds)}</td>
       <td style={cellStyle}>{session.last_message_seconds !== null ? formatSeconds(session.last_message_seconds) : '—'}</td>
       <td style={cellStyle}>{session.cwd}</td>
-      <td style={{ ...cellStyle, whiteSpace: 'normal' }}>{session.title || '—'}</td>
     </tr>
   );
 }
@@ -95,7 +95,7 @@ export default function AgentsView() {
         <table style={{ borderCollapse: 'collapse', width: '100%' }}>
           <thead>
             <tr>
-              {['Session', 'Status', 'Listening', 'Age', 'Last Msg', 'Cwd', 'Title'].map((header) => (
+              {['Session', 'Status', 'Listening', 'Age', 'Last Msg', 'Cwd'].map((header) => (
                 <th
                   key={header}
                   style={{

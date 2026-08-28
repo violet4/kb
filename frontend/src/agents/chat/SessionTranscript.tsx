@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
 import { tokens } from '../../shared/tokens';
 import { fetchSessionChat } from './api';
 import { addressBlocks, type AddressedBlock } from './blockAddress';
@@ -128,15 +127,22 @@ function MessageRow({
   );
 }
 
-export default function SessionChatView() {
-  const { sessionId } = useParams<{ sessionId: string }>();
+interface SessionTranscriptProps {
+  sessionId: string;
+}
+
+// The raw Claude Code JSONL transcript for one session -- every user/assistant message,
+// tool_use/tool_result block, with the generic tag-filter legend. Distinct from a Channel DM
+// (frontend/src/channels/): this reads the session's own transcript file, not the
+// cross-session ChannelMessage mailbox -- see the two-tab split in AgentPage.tsx for why they
+// must never be conflated into one view.
+export default function SessionTranscript({ sessionId }: SessionTranscriptProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FacetFilter>(new Map());
 
   useEffect(() => {
-    if (!sessionId) return;
     let cancelled = false;
     setLoading(true);
     fetchSessionChat(sessionId)
@@ -176,12 +182,6 @@ export default function SessionChatView() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <Link to="/agents" style={{ color: tokens.color.textMuted, fontSize: 13, textDecoration: 'none' }}>
-          ← Agents
-        </Link>
-        <h1 style={{ margin: 0, fontSize: 18, fontFamily: 'monospace' }}>{sessionId}</h1>
-      </div>
       {loading && <p style={{ margin: 0, color: tokens.color.textMuted, fontSize: 13 }}>Loading...</p>}
       {error && <p style={{ margin: 0, color: tokens.color.danger }}>{error}</p>}
       {!loading && !error && messages.length === 0 && (

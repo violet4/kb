@@ -1,14 +1,15 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { tokens } from '../shared/tokens';
 import { useDisplayName } from '../shared/useDisplayName';
-import { sendBroadcastMessage, sendDirectMessage } from './api';
+import { sendToNamedChannel } from './api';
 import ChannelSidebar, { channelKey } from './components/ChannelSidebar';
+import DmChatPanel from './components/DmChatPanel';
 import MessageComposer from './components/MessageComposer';
 import MessageList from './components/MessageList';
 import { useChannelList } from './hooks/useChannelList';
 import { useChannelListRefreshInterval } from './hooks/useChannelListRefreshInterval';
 import { useChannelMessages } from './hooks/useChannelMessages';
-import type { ChannelSummary } from './types';
 
 function SettingsSection({
   displayName,
@@ -63,25 +64,45 @@ const inputStyle: React.CSSProperties = {
   color: tokens.color.text,
 };
 
+function NamedChannelPanel({
+  name,
+  channelId,
+  displayName,
+}: {
+  name: string;
+  channelId: number;
+  displayName: string;
+}) {
+  const { messages, hasMoreOlder, loadingOlder, error, loadOlder, refresh } = useChannelMessages(channelId);
+
+  async function handleSend(body: string) {
+    await sendToNamedChannel(displayName, name, body);
+    refresh();
+  }
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      {error && <p style={{ margin: '8px 0', color: tokens.color.danger }}>{error}</p>}
+      <MessageList
+        messages={messages}
+        channelExists
+        selfSessionId={`human:${displayName}`}
+        hasMoreOlder={hasMoreOlder}
+        loadingOlder={loadingOlder}
+        onLoadOlder={loadOlder}
+      />
+      <MessageComposer onSend={handleSend} placeholder={`Message #${name}...`} />
+    </div>
+  );
+}
+
 export default function ChannelsView() {
   const [displayName, setDisplayName] = useDisplayName();
   const [intervalSeconds, setIntervalSeconds] = useChannelListRefreshInterval();
-  const { channels, error: channelsError } = useChannelList(displayName, intervalSeconds);
+  const { channels, error: channelsError, refresh: refreshChannels } = useChannelList(displayName, intervalSeconds);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
   const selected = useMemo(() => channels.find((c) => channelKey(c) === selectedKey) ?? null, [channels, selectedKey]);
-  const { messages, hasMoreOlder, loadingOlder, error: messagesError, loadOlder } = useChannelMessages(
-    selected?.channel_id ?? null,
-  );
-
-  async function handleSend(body: string) {
-    if (selected === null) return;
-    if (selected.kind === 'broadcast') {
-      await sendBroadcastMessage(displayName, body);
-    } else if (selected.agent_session_id) {
-      await sendDirectMessage(displayName, selected.agent_session_id, body);
-    }
-  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, height: 'calc(100vh - 96px)' }}>
@@ -106,26 +127,36 @@ export default function ChannelsView() {
             <>
               <div
                 style={{
-                  fontWeight: 600,
-                  fontSize: 14,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
                   paddingBottom: 8,
                   borderBottom: `1px solid ${tokens.color.border}`,
                 }}
               >
-                {selected.kind === 'broadcast' ? '#broadcast' : selected.agent_session_id}
+                <span style={{ fontWeight: 600, fontSize: 14 }}>
+                  {selected.kind === 'named' ? `#${selected.name}` : selected.agent_session_id}
+                </span>
+                {selected.kind === 'dm' && selected.agent_session_id && (
+                  <Link
+                    to={`/agents/${encodeURIComponent(selected.agent_session_id)}?tab=session`}
+                    style={{ color: tokens.color.textMuted, fontSize: 12, textDecoration: 'none' }}
+                  >
+                    View session transcript →
+                  </Link>
+                )}
               </div>
-              {messagesError && <p style={{ margin: '8px 0', color: tokens.color.danger }}>{messagesError}</p>}
-              <MessageList
-                messages={messages}
-                selfSessionId={`human:${displayName}`}
-                hasMoreOlder={hasMoreOlder}
-                loadingOlder={loadingOlder}
-                onLoadOlder={loadOlder}
-              />
-              <MessageComposer
-                onSend={handleSend}
-                placeholder={selected.kind === 'broadcast' ? 'Message #broadcast...' : 'Message this agent...'}
-              />
+              {selected.kind === 'named' && selected.channel_id !== null && (
+                <NamedChannelPanel name={selected.name ?? ''} channelId={selected.channel_id} displayName={displayName} />
+              )}
+              {selected.kind === 'dm' && selected.agent_session_id && (
+                <DmChatPanel
+                  agentSessionId={selected.agent_session_id}
+                  channelId={selected.channel_id}
+                  displayName={displayName}
+                  onSent={refreshChannels}
+                />
+              )}
             </>
           )}
         </div>

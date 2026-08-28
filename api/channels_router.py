@@ -4,10 +4,12 @@ send`/`broadcast`/`inbox` already use (see models.py's HarnessSession + Channel 
 section), so a message sent from the UI and one sent via the CLI are indistinguishable to
 every reader on either side.
 
-The UI's sidebar shows one "channel slot" per currently-live agent (a DM) plus the broadcast
-channel, without requiring a real Channel row to exist yet -- find_or_create_dm/
-get_or_create_named are only called on first send, matching the CLI's own lazy-creation
-behavior, so listing channels never creates one no message has been sent into."""
+Scope, deliberately: read/post to channels that already exist (a live agent's DM slot, plus
+every named Channel already in the DB -- "broadcast" today, others as agents/CLI usage create
+them organically). No channel-creation or subscription-management endpoint yet -- there is no
+mechanism today for encouraging/requiring an agent to subscribe to a channel, so building UI
+to manage membership would manage a roster nothing else respects. That's future work, tracked
+separately, not a gap to paper over here."""
 
 from typing import Optional
 
@@ -17,16 +19,25 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from api.deps import get_session
-from kb_cli.sessions import _BROADCAST_CHANNEL_NAME
 from models import Channel, ChannelMessage, ChannelSubscription, HarnessSession
 
 router = APIRouter(prefix="/channels")
 
 
+def _latest_message_at(session: Session, channel_id: int) -> Optional[str]:
+    latest = session.scalars(
+        select(ChannelMessage).where(ChannelMessage.channel_id == channel_id).order_by(ChannelMessage.id.desc())
+    ).first()
+    return latest.created_at.isoformat() if latest is not None else None
+
+
 class ChannelSummaryOut(BaseModel):
-    # channel_id is None when no message has been sent yet -- see Channel.find_dm.
+    # channel_id is None only for a "dm" slot with no message sent yet -- see Channel.find_dm.
+    # A "named" entry always has a real, already-existing channel_id (this endpoint doesn't
+    # create channels).
     channel_id: Optional[int]
-    kind: str  # "dm" or "broadcast"
+    kind: str  # "dm" or "named"
+    name: Optional[str] = None  # set for kind == "named" (e.g. "broadcast")
     agent_session_id: Optional[str] = None  # set for kind == "dm"
     agent_title: str = ""
     agent_cwd: str = ""
@@ -35,10 +46,14 @@ class ChannelSummaryOut(BaseModel):
 
 @router.get("", response_model=list[ChannelSummaryOut])
 async def list_channels(display_name: str, session: Session = Depends(get_session)) -> list[ChannelSummaryOut]:
-    """One entry per currently-live agent session (a DM slot) plus the broadcast channel --
-    scoped to live agents only, per the web UI's "start simple" requirement; a DM with an
-    agent that has since exited simply drops out of this list even if history exists (still
-    reachable directly via GET /channels/{id}/messages using its old channel_id)."""
+    """One entry per currently-live agent session (a DM slot, kind="dm") plus one entry per
+    named Channel that already exists in the DB (kind="named") -- scoped to live agents for
+    DMs per the web UI's "start simple" requirement; a DM with an agent that has since exited
+    simply drops out of this list even if history exists (still reachable directly via
+    GET /channels/{id}/messages using its old channel_id). Named channels are listed
+    regardless of the human's own subscription state -- read/post access here isn't gated on
+    ChannelSubscription, since there's no membership-management UI yet for a human to have
+    joined one through in the first place (see this module's own docstring)."""
     human = HarnessSession.get_or_create_human(session, display_name)
     session.commit()
 
@@ -46,13 +61,6 @@ async def list_channels(display_name: str, session: Session = Depends(get_sessio
     for agent in HarnessSession.live(session):
         dm_channel = Channel.find_dm(session, human.id, agent.id)
         channel_id = dm_channel.id if dm_channel is not None else None
-        last_message_at = None
-        if channel_id is not None:
-            latest = session.scalars(
-                select(ChannelMessage).where(ChannelMessage.channel_id == channel_id).order_by(ChannelMessage.id.desc())
-            ).first()
-            if latest is not None:
-                last_message_at = latest.created_at.isoformat()
         summaries.append(
             ChannelSummaryOut(
                 channel_id=channel_id,
@@ -60,25 +68,20 @@ async def list_channels(display_name: str, session: Session = Depends(get_sessio
                 agent_session_id=agent.id,
                 agent_title=agent.title or "",
                 agent_cwd=agent.cwd,
-                last_message_at=last_message_at,
+                last_message_at=_latest_message_at(session, channel_id) if channel_id is not None else None,
             )
         )
 
-    broadcast = session.scalars(select(Channel).where(Channel.name == _BROADCAST_CHANNEL_NAME)).first()
-    broadcast_last_at = None
-    if broadcast is not None:
-        latest = session.scalars(
-            select(ChannelMessage).where(ChannelMessage.channel_id == broadcast.id).order_by(ChannelMessage.id.desc())
-        ).first()
-        if latest is not None:
-            broadcast_last_at = latest.created_at.isoformat()
-    summaries.append(
-        ChannelSummaryOut(
-            channel_id=broadcast.id if broadcast is not None else None,
-            kind="broadcast",
-            last_message_at=broadcast_last_at,
+    named_channels = session.scalars(select(Channel).where(Channel.name.isnot(None)).order_by(Channel.name)).all()
+    for channel in named_channels:
+        summaries.append(
+            ChannelSummaryOut(
+                channel_id=channel.id,
+                kind="named",
+                name=channel.name,
+                last_message_at=_latest_message_at(session, channel.id),
+            )
         )
-    )
     return summaries
 
 
@@ -121,17 +124,14 @@ async def get_channel_messages(
     ]
 
 
-class SendMessageIn(BaseModel):
+class SendDmIn(BaseModel):
     display_name: str
+    agent_session_id: str
     body: str
 
 
-class SendToAgentIn(SendMessageIn):
-    agent_session_id: str
-
-
 @router.post("/dm", response_model=ChannelMessageOut)
-async def send_dm(payload: SendToAgentIn, session: Session = Depends(get_session)) -> ChannelMessageOut:
+async def send_dm(payload: SendDmIn, session: Session = Depends(get_session)) -> ChannelMessageOut:
     """Sends as a human -- creates the human's own HarnessSession row and the DM channel on
     first use, exactly like `kb sessions send` does for an agent-to-agent DM. agent_session_id
     is not required to currently be live: sending to a DM slot that was live when the sidebar
@@ -153,17 +153,29 @@ async def send_dm(payload: SendToAgentIn, session: Session = Depends(get_session
     )
 
 
-@router.post("/broadcast", response_model=ChannelMessageOut)
-async def send_broadcast(payload: SendMessageIn, session: Session = Depends(get_session)) -> ChannelMessageOut:
-    """Posts into the shared "broadcast" Channel -- same channel `kb sessions broadcast`
-    posts into, so every currently-subscribed live agent receives it exactly as if the CLI had
-    sent it. The human's own HarnessSession is subscribed to the broadcast channel on first
-    use here (mirroring cmd_register's auto-subscribe for a new agent session) so future
-    GET /channels/{id}/messages history is reachable the same way for a human as an agent."""
+class SendNamedIn(BaseModel):
+    display_name: str
+    body: str
+
+
+@router.post("/named/{channel_name}", response_model=ChannelMessageOut)
+async def send_to_named_channel(
+    channel_name: str, payload: SendNamedIn, session: Session = Depends(get_session)
+) -> ChannelMessageOut:
+    """Posts into an already-existing named Channel (e.g. "broadcast") -- same channel `kb
+    sessions broadcast`/a future `kb sessions send --channel NAME` would post into, so every
+    currently-subscribed live agent receives it exactly as if the CLI had sent it. Refuses a
+    channel name with no existing Channel row rather than creating one -- see this module's
+    own docstring for why channel creation isn't exposed here yet. The human's own
+    HarnessSession is subscribed on first use (mirroring cmd_register's auto-subscribe for a
+    new agent session) so future GET /channels/{id}/messages history is reachable the same
+    way for a human as an agent."""
+    channel = session.scalars(select(Channel).where(Channel.name == channel_name)).first()
+    if channel is None:
+        raise HTTPException(status_code=404, detail=f"No channel named {channel_name!r}")
     human = HarnessSession.get_or_create_human(session, payload.display_name)
-    broadcast = Channel.get_or_create_named(session, _BROADCAST_CHANNEL_NAME)
-    ChannelSubscription.subscribe(session, channel_id=broadcast.id, session_id=human.id)
-    msg = ChannelMessage.post(session, channel_id=broadcast.id, from_session=human.id, body=payload.body)
+    ChannelSubscription.subscribe(session, channel_id=channel.id, session_id=human.id)
+    msg = ChannelMessage.post(session, channel_id=channel.id, from_session=human.id, body=payload.body)
     session.commit()
     return ChannelMessageOut(
         id=msg.id,

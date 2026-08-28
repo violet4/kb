@@ -8,6 +8,7 @@ interface UseChannelMessagesResult {
   loadingOlder: boolean;
   error: string | null;
   loadOlder: () => void;
+  refresh: () => void;
 }
 
 const PAGE_SIZE = 50;
@@ -33,42 +34,36 @@ export function useChannelMessages(channelId: number | null): UseChannelMessages
   const inFlight = useRef(false);
   const oldestIdRef = useRef<number | null>(null);
 
+  const pollNewest = useCallback(async () => {
+    if (channelId === null || inFlight.current) return;
+    inFlight.current = true;
+    try {
+      const page = await fetchChannelMessages(channelId);
+      setMessages((prev) => {
+        const next = prev.length === 0 ? [...page].reverse() : mergeNew(prev, page);
+        oldestIdRef.current = next.length > 0 ? next[0].id : null;
+        return next;
+      });
+      setHasMoreOlder(page.length === PAGE_SIZE);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      inFlight.current = false;
+    }
+  }, [channelId]);
+
   useEffect(() => {
     setMessages([]);
     setHasMoreOlder(false);
     setError(null);
+    oldestIdRef.current = null;
     if (channelId === null) return;
-
-    let cancelled = false;
-
-    async function pollNewest() {
-      if (inFlight.current) return;
-      inFlight.current = true;
-      try {
-        const page = await fetchChannelMessages(channelId as number);
-        if (!cancelled) {
-          setMessages((prev) => {
-            const next = prev.length === 0 ? [...page].reverse() : mergeNew(prev, page);
-            oldestIdRef.current = next.length > 0 ? next[0].id : null;
-            return next;
-          });
-          setHasMoreOlder(page.length === PAGE_SIZE);
-          setError(null);
-        }
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      } finally {
-        inFlight.current = false;
-      }
-    }
 
     pollNewest();
     const id = setInterval(pollNewest, POLL_INTERVAL_SECONDS * 1000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, [channelId]);
+    return () => clearInterval(id);
+  }, [channelId, pollNewest]);
 
   const loadOlder = useCallback(async () => {
     if (channelId === null || oldestIdRef.current === null || loadingOlder) return;
@@ -88,5 +83,5 @@ export function useChannelMessages(channelId: number | null): UseChannelMessages
     }
   }, [channelId, loadingOlder]);
 
-  return { messages, hasMoreOlder, loadingOlder, error, loadOlder };
+  return { messages, hasMoreOlder, loadingOlder, error, loadOlder, refresh: pollNewest };
 }

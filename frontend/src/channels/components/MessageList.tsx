@@ -29,6 +29,7 @@ const MessageRow = memo(function MessageRow({ message, isSelf }: MessageRowProps
 
 interface MessageListProps {
   messages: ChannelMessage[];
+  channelExists: boolean;
   selfSessionId: string | null;
   hasMoreOlder: boolean;
   loadingOlder: boolean;
@@ -37,6 +38,7 @@ interface MessageListProps {
 
 export default function MessageList({
   messages,
+  channelExists,
   selfSessionId,
   hasMoreOlder,
   loadingOlder,
@@ -79,7 +81,9 @@ export default function MessageList({
         <MessageRow key={message.id} message={message} isSelf={message.from_session === selfSessionId} />
       ))}
       {messages.length === 0 && (
-        <p style={{ margin: 0, padding: 12, fontSize: 13, color: tokens.color.textMuted }}>No messages yet.</p>
+        <p style={{ margin: 0, padding: 12, fontSize: 13, color: tokens.color.textMuted }}>
+          {channelExists ? 'No messages yet.' : "No conversation yet — send a message below to start one."}
+        </p>
       )}
     </div>
   );

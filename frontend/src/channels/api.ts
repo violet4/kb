@@ -30,12 +30,16 @@ export async function sendDirectMessage(
   return response.json();
 }
 
-export async function sendBroadcastMessage(displayName: string, body: string): Promise<ChannelMessage> {
-  const response = await fetch(`${API_BASE}/channels/broadcast`, {
+export async function sendToNamedChannel(
+  displayName: string,
+  channelName: string,
+  body: string,
+): Promise<ChannelMessage> {
+  const response = await fetch(`${API_BASE}/channels/named/${encodeURIComponent(channelName)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ display_name: displayName, body }),
   });
-  if (!response.ok) throw new Error(`Failed to send broadcast: ${response.status} ${await response.text()}`);
+  if (!response.ok) throw new Error(`Failed to send message: ${response.status} ${await response.text()}`);
   return response.json();
 }

@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback } from 'react';
+import { usePolling } from '../../shared/usePolling';
 import { fetchAgentSessions } from '../api';
 import type { AgentSession } from '../types';
 
@@ -9,38 +10,10 @@ interface UseAgentSessionsResult {
 
 // Polls at intervalSeconds on a fixed schedule (not a "wait intervalSeconds after the
 // previous response") so the settings-panel refresh rate reads as the true cadence a viewer
-// sees, matching RefreshControl's countdown model in ../../usage.
+// sees, matching RefreshControl's countdown model in ../../usage. See usePolling for the
+// shared, generation-scoped poll mechanism this builds on.
 export function useAgentSessions(intervalSeconds: number): UseAgentSessionsResult {
-  const [sessions, setSessions] = useState<AgentSession[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const inFlight = useRef(false);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function poll() {
-      if (inFlight.current) return;
-      inFlight.current = true;
-      try {
-        const result = await fetchAgentSessions();
-        if (!cancelled) {
-          setSessions(result);
-          setError(null);
-        }
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      } finally {
-        inFlight.current = false;
-      }
-    }
-
-    poll();
-    const id = setInterval(poll, intervalSeconds * 1000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, [intervalSeconds]);
-
-  return { sessions, error };
+  const fetcher = useCallback(() => fetchAgentSessions(), []);
+  const { data, error } = usePolling(fetcher, intervalSeconds);
+  return { sessions: data ?? [], error };
 }

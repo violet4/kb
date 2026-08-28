@@ -1,10 +1,9 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import AgentContentTabs, { type AgentContentTab } from '../agents/AgentContentTabs';
 import { tokens } from '../shared/tokens';
 import { useDisplayName } from '../shared/useDisplayName';
 import { sendToNamedChannel } from './api';
 import ChannelSidebar, { channelKey } from './components/ChannelSidebar';
-import DmChatPanel from './components/DmChatPanel';
 import MessageComposer from './components/MessageComposer';
 import MessageList from './components/MessageList';
 import { useChannelList } from './hooks/useChannelList';
@@ -101,6 +100,10 @@ export default function ChannelsView() {
   const [intervalSeconds, setIntervalSeconds] = useChannelListRefreshInterval();
   const { channels, error: channelsError, refresh: refreshChannels } = useChannelList(displayName, intervalSeconds);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  // Kept per-ChannelsView, not per-agent -- switching which DM is selected doesn't need to
+  // remember each agent's own last-viewed tab; landing back on "Chat" (the default) after
+  // switching DMs matches how Slack-style sidebars behave.
+  const [contentTab, setContentTab] = useState<AgentContentTab>('chat');
 
   const selected = useMemo(() => channels.find((c) => channelKey(c) === selectedKey) ?? null, [channels, selectedKey]);
 
@@ -117,48 +120,33 @@ export default function ChannelsView() {
       </div>
       {channelsError && <p style={{ margin: 0, color: tokens.color.danger }}>{channelsError}</p>}
       <div style={{ display: 'flex', gap: 16, flex: 1, minHeight: 0 }}>
-        <ChannelSidebar channels={channels} selectedKey={selectedKey} onSelect={(c) => setSelectedKey(channelKey(c))} />
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        <ChannelSidebar
+          channels={channels}
+          selectedKey={selectedKey}
+          onSelect={(c) => setSelectedKey(channelKey(c))}
+        />
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
           {selected === null ? (
             <p style={{ margin: 'auto', color: tokens.color.textMuted, fontSize: 13 }}>
               Select a channel to view its history.
             </p>
-          ) : (
+          ) : selected.kind === 'named' && selected.channel_id !== null ? (
             <>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  paddingBottom: 8,
-                  borderBottom: `1px solid ${tokens.color.border}`,
-                }}
-              >
-                <span style={{ fontWeight: 600, fontSize: 14 }}>
-                  {selected.kind === 'named' ? `#${selected.name}` : selected.agent_session_id}
-                </span>
-                {selected.kind === 'dm' && selected.agent_session_id && (
-                  <Link
-                    to={`/agents/${encodeURIComponent(selected.agent_session_id)}?tab=session`}
-                    style={{ color: tokens.color.textMuted, fontSize: 12, textDecoration: 'none' }}
-                  >
-                    View session transcript →
-                  </Link>
-                )}
+              <div style={{ fontWeight: 600, fontSize: 14, paddingBottom: 8, borderBottom: `1px solid ${tokens.color.border}` }}>
+                #{selected.name}
               </div>
-              {selected.kind === 'named' && selected.channel_id !== null && (
-                <NamedChannelPanel name={selected.name ?? ''} channelId={selected.channel_id} displayName={displayName} />
-              )}
-              {selected.kind === 'dm' && selected.agent_session_id && (
-                <DmChatPanel
-                  agentSessionId={selected.agent_session_id}
-                  channelId={selected.channel_id}
-                  displayName={displayName}
-                  onSent={refreshChannels}
-                />
-              )}
+              <NamedChannelPanel name={selected.name ?? ''} channelId={selected.channel_id} displayName={displayName} />
             </>
-          )}
+          ) : selected.kind === 'dm' && selected.agent_session_id ? (
+            <AgentContentTabs
+              agentSessionId={selected.agent_session_id}
+              channelId={selected.channel_id}
+              displayName={displayName}
+              tab={contentTab}
+              onChangeTab={setContentTab}
+              onSent={refreshChannels}
+            />
+          ) : null}
         </div>
       </div>
     </div>

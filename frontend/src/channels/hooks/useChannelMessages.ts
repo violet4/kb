@@ -31,14 +31,24 @@ export function useChannelMessages(channelId: number | null): UseChannelMessages
   const [hasMoreOlder, setHasMoreOlder] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const inFlight = useRef(false);
   const oldestIdRef = useRef<number | null>(null);
+  // Same generation-scoped in-flight tracking as useChannelList, and for the same reason:
+  // under StrictMode's mount->cleanup->remount effect cycle (or a fast channelId switch), a
+  // plain inFlight boolean either blocks the remount's own fetch or lets a stale-channelId
+  // response land after the fact -- keying "is a request in flight" by generation instead of
+  // a bare boolean means a new generation's poll is never blocked by an old one, and a late
+  // response can never write into a state that's since moved on to a different channel.
+  const inFlightGenerationRef = useRef<number | null>(null);
+  const requestGenerationRef = useRef(0);
 
   const pollNewest = useCallback(async () => {
-    if (channelId === null || inFlight.current) return;
-    inFlight.current = true;
+    if (channelId === null) return;
+    const generation = requestGenerationRef.current;
+    if (inFlightGenerationRef.current === generation) return;
+    inFlightGenerationRef.current = generation;
     try {
       const page = await fetchChannelMessages(channelId);
+      if (generation !== requestGenerationRef.current) return;
       setMessages((prev) => {
         const next = prev.length === 0 ? [...page].reverse() : mergeNew(prev, page);
         oldestIdRef.current = next.length > 0 ? next[0].id : null;
@@ -47,13 +57,16 @@ export function useChannelMessages(channelId: number | null): UseChannelMessages
       setHasMoreOlder(page.length === PAGE_SIZE);
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (generation === requestGenerationRef.current) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
     } finally {
-      inFlight.current = false;
+      if (inFlightGenerationRef.current === generation) inFlightGenerationRef.current = null;
     }
   }, [channelId]);
 
   useEffect(() => {
+    requestGenerationRef.current += 1;
     setMessages([]);
     setHasMoreOlder(false);
     setError(null);

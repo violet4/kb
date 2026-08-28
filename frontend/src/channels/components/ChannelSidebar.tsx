@@ -134,11 +134,19 @@ function DmRow({
         onClick={() => onSelect(dm)}
         aria-current={isSelected}
         aria-label={`Open DM with ${dm.agent_session_id}`}
-        style={{ ...rowStyle(isSelected), flex: 1, minWidth: 0 }}
+        style={{ ...rowStyle(isSelected), flex: 1, minWidth: 0, alignItems: 'flex-start' }}
       >
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', overflow: 'hidden' }}>
-          <span style={{ fontFamily: 'monospace', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {dm.agent_session_id}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', minWidth: 0 }}>
+          <span
+            style={{
+              fontSize: 12,
+              overflowWrap: 'break-word',
+              wordBreak: 'break-word',
+              maxWidth: '100%',
+            }}
+            title={dm.agent_session_id ?? undefined}
+          >
+            {dm.agent_title || dm.agent_session_id}
           </span>
         </div>
         {dm.last_message_at && (

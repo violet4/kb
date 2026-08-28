@@ -82,6 +82,8 @@ The embedding server runs as a systemd user service (`kb.service`). `embed()` (i
 scripts/service/status | restart | is-active
 ```
 
+The web UI's backend (`server.py`, FastAPI/uvicorn) listens on port 25690; the frontend's Vite dev server (`frontend/vite.config.ts`) listens on 25691 and proxies `/api` to the backend.
+
 ## Schema changes
 
 Add a column when something needs to be filtered or sorted on; use a `notes: Text` field for anything you just want to remember. Start with more in `notes` and promote to a real column once a real query need shows up.

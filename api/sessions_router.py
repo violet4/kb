@@ -11,7 +11,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from api.deps import get_session
-from kb_cli.sessions import _find_session_path, list_chat_messages, list_live_sessions
+from harness import find_session_transcript_path
+from kb_cli.sessions import list_chat_messages, list_live_sessions
 
 router = APIRouter(prefix="/sessions")
 
@@ -52,7 +53,7 @@ class ChatMessageOut(BaseModel):
 
 @router.get("/{session_id}/chat", response_model=list[ChatMessageOut])
 async def get_session_chat(session_id: str) -> list[ChatMessageOut]:
-    path = _find_session_path(session_id)
+    path = find_session_transcript_path(session_id)
     if path is None:
         raise HTTPException(status_code=404, detail=f"No transcript found for session {session_id!r}")
     messages = list_chat_messages(path)

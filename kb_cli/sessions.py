@@ -29,7 +29,7 @@ import psutil
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from harness import current_session_id
+from harness import current_session_id, find_session_transcript_path, session_transcript_title
 from models import Channel, ChannelMessage, ChannelRead, ChannelSubscription, HarnessSession
 
 from kb_cli._util import print_table, resolve_text_arg
@@ -79,11 +79,12 @@ def _last_message_at(session: Session, session_id: str) -> Optional[datetime]:
 
 
 def _session_info(path: Path) -> dict[str, str] | None:
-    """Return {'title', 'timestamp'} for a session transcript, or None if empty/unreadable."""
-    title = None
-    custom_title = None
+    """Return {'title', 'timestamp'} for a session transcript, or None if empty/unreadable.
+    Title resolution itself lives in harness.session_transcript_title (shared with the web
+    UI's channels_router, which refreshes HarnessSession.title from the same transcripts) --
+    this wrapper adds only the last-activity timestamp, which that shared function doesn't
+    need for its own callers."""
     last_ts = None
-    first_user_text = None
     with path.open() as fh:
         for line in fh:
             line = line.strip()
@@ -96,39 +97,11 @@ def _session_info(path: Path) -> dict[str, str] | None:
             ts = d.get("timestamp")
             if ts:
                 last_ts = ts
-            t = d.get("type")
-            if t == "ai-title":
-                title = d.get("aiTitle")
-            elif t == "custom-title":
-                custom_title = d.get("customTitle")
-            elif t == "user" and first_user_text is None and not d.get("isMeta"):
-                content = d.get("message", {}).get("content")
-                if isinstance(content, str):
-                    first_user_text = content
-                elif isinstance(content, list):
-                    for c in content:
-                        if isinstance(c, dict) and c.get("type") == "text":
-                            first_user_text = c["text"]
-                            break
 
-    resolved_title = custom_title or title or first_user_text
+    resolved_title = session_transcript_title(path)
     if resolved_title is None or last_ts is None:
         return None
-    resolved_title = " ".join(resolved_title.split())
-    if len(resolved_title) > 70:
-        resolved_title = resolved_title[:67] + "..."
     return {"title": resolved_title, "timestamp": last_ts}
-
-
-def _find_session_path(session_id: str) -> Path | None:
-    """Locate a session transcript by its session_id (filename stem) across all projects."""
-    if not _PROJECTS_DIR.is_dir():
-        return None
-    for project_dir in _PROJECTS_DIR.iterdir():
-        candidate = project_dir / f"{session_id}.jsonl"
-        if candidate.is_file():
-            return candidate
-    return None
 
 
 def _require_session_id() -> str:
@@ -490,7 +463,7 @@ def list_chat_messages(path: Path) -> list[ChatMessage]:
 
 
 def cmd_show(args: argparse.Namespace) -> None:
-    path = _find_session_path(args.session_id)
+    path = find_session_transcript_path(args.session_id)
     if path is None:
         if not args.title:
             print(f"No session found with id {args.session_id}")

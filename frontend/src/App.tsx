@@ -21,11 +21,9 @@ export default function App() {
       {/* flex: 1 + min-height: 0 (not a hardcoded height) so this div gets exactly the
           viewport height minus NavBar's real height, whatever that happens to be --
           overflowY: auto keeps every other route's natural "scroll if content is taller than
-          this space" behavior, just scoped to this div instead of the body. boxSizing:
-          border-box so the 24px padding is included in, not added on top of, that height. */}
+          this space" behavior, just scoped to this div instead of the body. */}
       <div
         style={{
-          padding: 24,
           display: 'flex',
           flexDirection: 'column',
           flex: 1,

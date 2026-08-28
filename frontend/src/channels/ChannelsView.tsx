@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import AgentContentTabs, { type AgentContentTab } from '../agents/AgentContentTabs';
 import { tokens } from '../shared/tokens';
 import { useDisplayName } from '../shared/useDisplayName';
@@ -99,13 +100,33 @@ export default function ChannelsView() {
   const [displayName, setDisplayName] = useDisplayName();
   const [intervalSeconds, setIntervalSeconds] = useChannelListRefreshInterval();
   const { channels, error: channelsError, refresh: refreshChannels } = useChannelList(displayName, intervalSeconds);
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  // Kept per-ChannelsView, not per-agent -- switching which DM is selected doesn't need to
-  // remember each agent's own last-viewed tab; landing back on "Chat" (the default) after
-  // switching DMs matches how Slack-style sidebars behave.
-  const [contentTab, setContentTab] = useState<AgentContentTab>('chat');
+  // Selected channel and tab live in the URL (?channel=..., ?tab=...), not component state,
+  // so a page refresh (or a shared/bookmarked link) lands back on the same channel/tab --
+  // the same reasoning AgentPage already applies to its own tab. selectedKey mirrors
+  // ChannelSidebar's own channelKey() encoding (an agent_session_id for a DM, "named:<name>"
+  // for a named channel) so the URL param and the sidebar's row-identity logic never drift.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedKey = searchParams.get('channel');
+  const contentTab: AgentContentTab = searchParams.get('tab') === 'session' ? 'session' : 'chat';
 
   const selected = useMemo(() => channels.find((c) => channelKey(c) === selectedKey) ?? null, [channels, selectedKey]);
+
+  function selectChannel(key: string) {
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev);
+      params.set('channel', key);
+      params.delete('tab'); // switching channels always lands back on the default tab (Chat)
+      return params;
+    });
+  }
+
+  function setContentTab(next: AgentContentTab) {
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev);
+      params.set('tab', next);
+      return params;
+    });
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, height: 'calc(100vh - 96px)' }}>
@@ -123,7 +144,7 @@ export default function ChannelsView() {
         <ChannelSidebar
           channels={channels}
           selectedKey={selectedKey}
-          onSelect={(c) => setSelectedKey(channelKey(c))}
+          onSelect={(c) => selectChannel(channelKey(c))}
         />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
           {selected === null ? (

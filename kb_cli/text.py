@@ -10,13 +10,23 @@ extracted to its own package later without carrying kb-specific dependencies alo
     kb text extract SOURCE --show N       # print paragraph N verbatim from the cache (no re-fetch)
     kb text extract -                     # read plain text from stdin, split into paragraphs
 
+    kb text cat FILE                      # auto-detect encoding, print FILE as UTF-8 to stdout
+    kb text cat -                         # same, reading stdin instead of a file
+
     kb text semsearch rank QUERY [FILE]   # rank stdin/FILE's lines by relevance to QUERY
     kb text semsearch compare A B         # cosine similarity between two texts/files/- (stdin)
 
     kb text extract https://example.com/article | kb text semsearch rank "query"
+    kb text cat weird-encoding.txt | grep pattern
 
 SOURCE may be an http(s):// URL, a local file path (.pdf/.html/.htm/.txt or extensionless --
-sniffed by content), or - for stdin."""
+sniffed by content), or - for stdin.
+
+`kb text cat` is a general filesystem-reading primitive, not a text-command-internal detail --
+any file on disk may be non-UTF-8 (scraper output, another program's export, a manually saved
+file), and there is no single ingestion point to fix that at write time since files arrive from
+many uncontrolled sources. Detecting encoding at the read boundary and normalizing to UTF-8
+stdout, usable as the front of any shell pipeline, is the durable fix."""
 
 import argparse
 import hashlib
@@ -147,8 +157,8 @@ def extract_paragraphs(source: str) -> list[str]:
     if kind == "pdf":
         return _paragraphs_from_pdf(data)
     if kind == "html":
-        return _paragraphs_from_html(data.decode("utf-8", errors="replace"))
-    return _paragraphs_from_plain_text(data.decode("utf-8", errors="replace"))
+        return _paragraphs_from_html(decode_bytes(data))
+    return _paragraphs_from_plain_text(decode_bytes(data))
 
 
 def cmd_extract(args: argparse.Namespace) -> None:
@@ -178,6 +188,30 @@ def cmd_extract(args: argparse.Namespace) -> None:
     try:
         for para in paragraphs:
             print(para)
+    except BrokenPipeError:
+        sys.stderr.close()
+
+
+# -- cat --------------------------------------------------------------
+
+
+def decode_bytes(data: bytes) -> str:
+    """The one entry point for turning arbitrary bytes of unknown encoding into text --
+    auto-detects via charset-normalizer rather than assuming UTF-8, since a file's actual
+    encoding can't be known in advance regardless of source (scraper, download, manual save,
+    another program's export)."""
+    from charset_normalizer import from_bytes
+
+    best = from_bytes(data).best()
+    if best is None:
+        return data.decode("utf-8", errors="replace")
+    return str(best)
+
+
+def cmd_cat(args: argparse.Namespace) -> None:
+    data = sys.stdin.buffer.read() if args.file == "-" else Path(args.file).read_bytes()
+    try:
+        sys.stdout.write(decode_bytes(data))
     except BrokenPipeError:
         sys.stderr.close()
 
@@ -246,6 +280,10 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_extract.add_argument("--cache", action="store_true", help="Write paragraphs to the source's cache file")
     p_extract.add_argument("--show", type=int, metavar="N", help="Print cached paragraph N verbatim, no re-fetch")
     p_extract.set_defaults(func=cmd_extract)
+
+    p_cat = sub.add_parser("cat", help="Auto-detect encoding and print a file/stream as UTF-8")
+    p_cat.add_argument("file", help="File path, or - for stdin")
+    p_cat.set_defaults(func=cmd_cat)
 
     p_semsearch = sub.add_parser("semsearch", help="Rank or compare paragraphs by embedding")
     semsearch_sub = p_semsearch.add_subparsers(dest="semsearch_cmd", required=True)

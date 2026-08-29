@@ -2,9 +2,9 @@
 neighbors (EntityLink), and Journal history -- backs the frontend's entity table/
 drilldown views, the same way dailies_router.py backs the Dailies view but generic
 across entity types instead of one hardcoded model. Deliberately scoped to the entity
-types the UI actually renders (Todo, Goal, Note, Idea, Wishlist) rather than every
-mapped class -- add a type to ENTITY_TYPES when a new type needs a table/drilldown
-view, not preemptively for every model in models.py.
+types the UI actually renders rather than every mapped class -- add a type to
+ENTITY_TYPES when a new type needs a table/drilldown view, not preemptively for
+every model in models.py.
 
 Columns are introspected live from each model's SQLAlchemy mapper (see
 _introspect_columns), not hand-listed -- a new column on an existing type (or a new
@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 from api.deps import get_session
 from archivebox_compat.config import ArchiveBoxConfigError
 from kb_cli.archivebox import archivebox_url
-from models import ArchivedLink, Daily, EntityLink, Goal, Idea, Instruction, Journal, Note, Todo, Wishlist
+from models import ArchivedLink, Daily, EntityLink, Goal, Idea, Instruction, Journal, LogEntry, Note, Todo, Wishlist
 
 router = APIRouter(prefix="/entities")
 
@@ -35,6 +35,7 @@ ENTITY_TYPES: dict[str, type[Any]] = {
     "Instruction": Instruction,
     "Daily": Daily,
     "ArchivedLink": ArchivedLink,
+    "LogEntry": LogEntry,
 }
 
 # Columns hidden from every introspected view (internal bookkeeping, never a useful
@@ -69,7 +70,13 @@ def _get_or_404(session: Session, entity_type: str, entity_id: int) -> Any:
 
 
 def _label(row: Any) -> str:
-    return getattr(row, "title", None) or getattr(row, "name", None) or getattr(row, "description", None) or repr(row)
+    return (
+        getattr(row, "title", None)
+        or getattr(row, "name", None)
+        or getattr(row, "description", None)
+        or getattr(row, "body", None)
+        or repr(row)
+    )
 
 
 def _fk_to_relationship(model: type[Any]) -> dict[str, str]:

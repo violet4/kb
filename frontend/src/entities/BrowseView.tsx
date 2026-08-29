@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { tokens } from '../shared/tokens';
+import { fetchEntityTypes } from './api';
 import EntityTable from './components/EntityTable';
 import EntityTypeTabs from './components/EntityTypeTabs';
 import GenericFilters from './components/GenericFilters';
@@ -9,12 +10,13 @@ import { useEntityList } from './hooks/useEntityList';
 import { labelColumnName } from './labelColumn';
 import type { EntityType } from './types';
 
-const TABS = ['Todo', 'Bugs', 'Goal', 'Note', 'Idea', 'Wishlist', 'Instruction', 'Daily', 'ArchivedLink'] as const;
-type Tab = (typeof TABS)[number];
-
 // "Bugs" isn't a real entity type -- it's Todo with kind=bug (same table/lifecycle
-// as Todo, see CLAUDE.md) -- so its tab resolves to Todo's own type + a fixed extra
-// filter rather than being a separate entry in ENTITY_TYPES.
+// as Todo, see CLAUDE.md) -- so it's a synthetic extra tab layered onto the real,
+// backend-sourced entity type list (see fetchEntityTypes) rather than a hand-listed
+// entry in that list itself. A new entity type registered in ENTITY_TYPES on the
+// backend needs no frontend change to appear here.
+type Tab = EntityType | 'Bugs';
+
 function resolveTab(tab: Tab): { type: EntityType; fixedFilters: Record<string, string> } {
   return tab === 'Bugs' ? { type: 'Todo', fixedFilters: { kind: 'bug' } } : { type: tab, fixedFilters: {} };
 }
@@ -41,7 +43,15 @@ const DEFAULT_FILTERS: Partial<Record<Tab, Record<string, string>>> = {
 // here, only DEFAULT_COLUMNS/EDITABLE_COLUMNS on the backend if it should be shown.
 export default function BrowseView() {
   const { type } = useParams<{ type: string }>();
-  const tab = (TABS as readonly string[]).includes(type ?? '') ? (type as Tab) : 'Todo';
+  const [entityTypes, setEntityTypes] = useState<EntityType[]>([]);
+  useEffect(() => {
+    fetchEntityTypes().then(setEntityTypes);
+  }, []);
+  // "Bugs" always sits right after "Todo" since it's Todo's own kind=bug slice --
+  // Array.prototype.flatMap keeps that fixed adjacency while the rest of the list
+  // (and any brand-new type) comes straight from the backend with no reordering.
+  const tabs: Tab[] = entityTypes.flatMap((t) => (t === 'Todo' ? (['Todo', 'Bugs'] as Tab[]) : [t]));
+  const tab = (tabs as string[]).includes(type ?? '') ? (type as Tab) : 'Todo';
   const { type: entityType, fixedFilters } = resolveTab(tab);
   const [filters, setFilters] = useState<Record<string, string>>(() => DEFAULT_FILTERS[tab] ?? {});
   // Re-seed from this tab's own defaults on navigating between tabs -- filters is
@@ -66,7 +76,7 @@ export default function BrowseView() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <h1 style={{ margin: 0, fontSize: 20 }}>Browse</h1>
-      <EntityTypeTabs types={[...TABS]} active={tab} />
+      <EntityTypeTabs types={tabs} active={tab} />
       <GenericFilters columns={shownColumns} values={filters} onChange={handleFilterChange} />
       {loading && <p style={{ color: tokens.color.textMuted }}>Loading...</p>}
       {error && <p style={{ color: tokens.color.danger }}>{error}</p>}

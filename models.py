@@ -193,6 +193,36 @@ class WishlistEffort(enum.Enum):
     PROJECT = "project"  # multi-step effort (e.g. server upgrade)
 
 
+class TodoSeverity(enum.Enum):
+    """How bad it is if this Todo doesn't get done -- impact, orthogonal to `urgent`
+    (time-sensitivity: act now regardless of impact). Nullable: most Todos carry no
+    meaningful severity, the same reasoning as WishlistEffort being optional."""
+
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+class TodoResolutionDistance(enum.Enum):
+    """How many open decisions/unknowns stand between now and this Todo being done --
+    epistemic distance to a solution, orthogonal to severity (impact) and effort
+    (work size). Matches kb instructions root's own Resolution-Distance Ordering
+    exactly, so a punch list sorted by this field sorts the same way that node
+    already says to present one by hand. Nullable: most Todos aren't worth this
+    assessment, the same reasoning as severity being optional. A freely-settable
+    field, not a Definition-of-Ready-style workflow gate -- no mainstream PM tool
+    models this as a graduated field (the closest analogs, Cynefin and Agile
+    "spikes"/DoR, are all binary workflow states requiring a real triage step), but
+    kb has no team-triage-ritual reason to gate it behind one; triage happens
+    whenever it happens."""
+
+    MECHANICAL = "mechanical"  # a data fix or config change using an existing mechanism; zero design
+    DIAGNOSE = "diagnose"  # likely a small bug, but scope needs confirming before it's mechanical
+    CLEAR_SHOT = "clear_shot"  # the design choice is essentially already settled; only implementation remains
+    OPEN = "open"  # real design tradeoffs remain; needs discussion before code
+
+
 # ---------------------------------------------------------------------------
 # Context
 # ---------------------------------------------------------------------------
@@ -806,6 +836,12 @@ class Todo(Base, HasContextOrTag, HasEmbedding):
     defer_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     urgent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    severity: Mapped[Optional[TodoSeverity]] = mapped_column(
+        Enum(TodoSeverity, create_constraint=True, validate_strings=True), nullable=True
+    )
+    resolution_distance: Mapped[Optional[TodoResolutionDistance]] = mapped_column(
+        Enum(TodoResolutionDistance, create_constraint=True, validate_strings=True), nullable=True
+    )
 
     goal: Mapped[Optional[Goal]] = relationship("Goal", back_populates="todos")
     context: Mapped[Optional[Context]] = relationship("Context")
@@ -829,6 +865,10 @@ class Todo(Base, HasContextOrTag, HasEmbedding):
         effort: Optional[WishlistEffort] = None,
         kind: Optional[TodoKind] = None,
         include_deferred: bool = False,
+        severity: Optional[TodoSeverity] = None,
+        untriaged: bool = False,
+        resolution_distance: Optional[TodoResolutionDistance] = None,
+        unscoped_distance: bool = False,
     ) -> Sequence[Todo]:
         """`context` matches that single context exactly; `contexts` (e.g. from
         Context.self_and_descendants) matches any context in the given set, plus any
@@ -837,7 +877,12 @@ class Todo(Base, HasContextOrTag, HasEmbedding):
         surfaces Todos with no context/tag at all (e.g. for a summary view that treats
         untagged items as always-relevant, regardless of which context is active).
         Named to match Goal/Daily/Idea's own .active() -- every context/tag-addressable
-        entity exposes the same shape so a generic renderer can call it uniformly."""
+        entity exposes the same shape so a generic renderer can call it uniformly.
+        `untriaged` (severity IS NULL) and `severity` (a specific assessed value) are
+        mutually exclusive filters on that column; `unscoped_distance`
+        (resolution_distance IS NULL) and `resolution_distance` (a specific assessed
+        value) are the same pairing for that column -- the caller (kb_cli/todo.py's
+        argparse groups) is responsible for not passing both of either pair."""
         q = select(cls).where(cls.status.in_([TodoStatus.PENDING, TodoStatus.IN_PROGRESS]))
         if context is not None:
             q = q.where(cls.context_id == context.id)
@@ -852,6 +897,14 @@ class Todo(Base, HasContextOrTag, HasEmbedding):
             q = q.where(cls.effort == effort)
         if kind is not None:
             q = q.where(cls.kind == kind)
+        if severity is not None:
+            q = q.where(cls.severity == severity)
+        if untriaged:
+            q = q.where(cls.severity.is_(None))
+        if resolution_distance is not None:
+            q = q.where(cls.resolution_distance == resolution_distance)
+        if unscoped_distance:
+            q = q.where(cls.resolution_distance.is_(None))
         if not include_deferred:
             q = q.where((cls.defer_until.is_(None)) | (cls.defer_until <= _now()))
         return session.scalars(q).all()
@@ -878,6 +931,8 @@ class Todo(Base, HasContextOrTag, HasEmbedding):
         kind: TodoKind = TodoKind.TASK,
         defer_until: Optional[datetime] = None,
         urgent: bool = False,
+        severity: Optional[TodoSeverity] = None,
+        resolution_distance: Optional[TodoResolutionDistance] = None,
     ) -> Todo:
         todo = cls(
             title=title,
@@ -890,6 +945,8 @@ class Todo(Base, HasContextOrTag, HasEmbedding):
             kind=kind,
             defer_until=defer_until,
             urgent=urgent,
+            severity=severity,
+            resolution_distance=resolution_distance,
         )
         todo.reembed()
         session.add(todo)
@@ -903,9 +960,11 @@ class Todo(Base, HasContextOrTag, HasEmbedding):
         context_str = f" [{self.context.name}]" if self.context else ""
         tag_str = f" @{self.tag.name}" if self.tag else ""
         urgent_str = " !URGENT!" if self.urgent else ""
+        severity_str = f" severity={self.severity.value}" if self.severity else ""
+        distance_str = f" distance={self.resolution_distance.value}" if self.resolution_distance else ""
         return (
             f"<Todo #{self.id} {self.title!r} [{self.status.value}]{kind_str}{effort_str}{defer_str}"
-            f"{context_str}{tag_str}{urgent_str}{self.age_marker()}>"
+            f"{context_str}{tag_str}{urgent_str}{severity_str}{distance_str}{self.age_marker()}>"
         )
 
 

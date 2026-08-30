@@ -7,7 +7,7 @@ from typing import Optional
 
 from context import creation_context
 from kb_cli.context_cmd import render_tree
-from models import Journal, Tag, Todo, TodoKind, TodoStatus, WishlistEffort
+from models import Journal, Tag, Todo, TodoKind, TodoResolutionDistance, TodoSeverity, TodoStatus, WishlistEffort
 
 from kb_cli._util import (
     add_history_arg,
@@ -66,6 +66,10 @@ def cmd_show(args: argparse.Namespace) -> None:
             print(f"notes: {todo.notes}")
         if todo.urgent:
             print("urgent: yes")
+        if todo.severity:
+            print(f"severity: {todo.severity.value}")
+        if todo.resolution_distance:
+            print(f"resolution_distance: {todo.resolution_distance.value}")
         if todo.defer_until:
             print(f"defer_until: {todo.defer_until.replace(tzinfo=timezone.utc)}")
         print_timestamps(todo)
@@ -87,6 +91,8 @@ def cmd_add(args: argparse.Namespace) -> None:
         sys.exit(2)
     effort = WishlistEffort(args.effort) if args.effort else None
     kind = TodoKind(args.kind) if args.kind else TodoKind.TASK
+    severity = TodoSeverity(args.severity) if args.severity else None
+    resolution_distance = TodoResolutionDistance(args.resolution_distance) if args.resolution_distance else None
     defer_until = _parse_defer_until(args.defer_until) if args.defer_until else None
     tag = get_by_name(args.session, Tag, args.tag) if args.tag else None
     todo = Todo.create(
@@ -99,6 +105,8 @@ def cmd_add(args: argparse.Namespace) -> None:
         context=None if tag else creation_context(args),
         tag=tag,
         urgent=args.urgent,
+        severity=severity,
+        resolution_distance=resolution_distance,
     )
     args.session.commit()
     print(todo)
@@ -114,6 +122,10 @@ def cmd_update(args: argparse.Namespace) -> None:
             "title": resolve_text_arg(args.title) if args.title else args.title,
             "effort": WishlistEffort(args.effort) if args.effort else None,
             "kind": TodoKind(args.kind) if args.kind else None,
+            "severity": TodoSeverity(args.severity) if args.severity else None,
+            "resolution_distance": (
+                TodoResolutionDistance(args.resolution_distance) if args.resolution_distance else None
+            ),
             "defer_until": _parse_defer_until(args.defer_until) if args.defer_until else None,
             "notes": resolve_text_arg(args.notes) if args.notes else args.notes,
             "goal_id": args.goal,
@@ -124,6 +136,10 @@ def cmd_update(args: argparse.Namespace) -> None:
         todo.urgent = True
     if args.no_urgent:
         todo.urgent = False
+    if args.clear_severity:
+        todo.severity = None
+    if args.clear_resolution_distance:
+        todo.resolution_distance = None
     args.session.commit()
     print(todo)
 
@@ -142,7 +158,18 @@ def cmd_complete(args: argparse.Namespace) -> None:
 def cmd_pending(args: argparse.Namespace) -> None:
     effort = WishlistEffort(args.effort) if args.effort else None
     kind = TodoKind(args.kind) if args.kind else None
-    todos = Todo.active(args.session, effort=effort, kind=kind, include_deferred=args.all)
+    severity = TodoSeverity(args.severity) if args.severity else None
+    resolution_distance = TodoResolutionDistance(args.resolution_distance) if args.resolution_distance else None
+    todos = Todo.active(
+        args.session,
+        effort=effort,
+        kind=kind,
+        severity=severity,
+        untriaged=args.untriaged,
+        resolution_distance=resolution_distance,
+        unscoped_distance=args.unscoped_distance,
+        include_deferred=args.all,
+    )
     if not todos:
         print("No pending todos.")
         return
@@ -159,8 +186,19 @@ def cmd_pending(args: argparse.Namespace) -> None:
 def cmd_list(args: argparse.Namespace) -> None:
     effort = WishlistEffort(args.effort) if args.effort else None
     kind = TodoKind(args.kind) if args.kind else None
+    severity = TodoSeverity(args.severity) if args.severity else None
+    resolution_distance = TodoResolutionDistance(args.resolution_distance) if args.resolution_distance else None
     if args.all:
-        todos = Todo.active(args.session, effort=effort, kind=kind, include_deferred=args.include_deferred)
+        todos = Todo.active(
+            args.session,
+            effort=effort,
+            kind=kind,
+            severity=severity,
+            untriaged=args.untriaged,
+            resolution_distance=resolution_distance,
+            unscoped_distance=args.unscoped_distance,
+            include_deferred=args.include_deferred,
+        )
     else:
         in_scope = scope_to_context(args.session, args.context)
         todos = Todo.active(
@@ -169,6 +207,10 @@ def cmd_list(args: argparse.Namespace) -> None:
             include_no_context=True,
             effort=effort,
             kind=kind,
+            severity=severity,
+            untriaged=args.untriaged,
+            resolution_distance=resolution_distance,
+            unscoped_distance=args.unscoped_distance,
             include_deferred=args.include_deferred,
         )
     if not todos:
@@ -237,6 +279,16 @@ def add_subparser(
         help="Hide from `todo pending`/summary until this time — HH:MM (today, or tomorrow if already past), "
         "'YYYY-MM-DD', or 'YYYY-MM-DD HH:MM'",
     )
+    p_add.add_argument(
+        "--severity",
+        choices=[s.value for s in TodoSeverity],
+        help="How bad it is if this doesn't get done (impact, orthogonal to --urgent's time-sensitivity)",
+    )
+    p_add.add_argument(
+        "--resolution-distance",
+        choices=[d.value for d in TodoResolutionDistance],
+        help="How many open decisions stand between now and done -- mechanical/diagnose/clear_shot/open",
+    )
     p_add.add_argument("--notes")
     p_add.add_argument("--tag", help="Address by Tag instead of context (mutually exclusive with the global --context)")
     p_add.add_argument(
@@ -255,6 +307,16 @@ def add_subparser(
     p_update.add_argument("--effort", choices=[e.value for e in WishlistEffort])
     if locked_kind is None:
         p_update.add_argument("--kind", choices=kind_choices)
+    p_update_severity = p_update.add_mutually_exclusive_group()
+    p_update_severity.add_argument("--severity", choices=[s.value for s in TodoSeverity])
+    p_update_severity.add_argument(
+        "--clear-severity", action="store_true", help="Set severity back to null (not yet triaged)"
+    )
+    p_update_distance = p_update.add_mutually_exclusive_group()
+    p_update_distance.add_argument("--resolution-distance", choices=[d.value for d in TodoResolutionDistance])
+    p_update_distance.add_argument(
+        "--clear-resolution-distance", action="store_true", help="Set resolution_distance back to null"
+    )
     p_update.add_argument(
         "--defer-until",
         metavar="WHEN",
@@ -281,6 +343,14 @@ def add_subparser(
     p_pending.add_argument("--effort", choices=[e.value for e in WishlistEffort])
     if locked_kind is None:
         p_pending.add_argument("--kind", choices=kind_choices)
+    p_pending_severity = p_pending.add_mutually_exclusive_group()
+    p_pending_severity.add_argument("--severity", choices=[s.value for s in TodoSeverity])
+    p_pending_severity.add_argument("--untriaged", action="store_true", help="Only Todos with no severity assessed yet")
+    p_pending_distance = p_pending.add_mutually_exclusive_group()
+    p_pending_distance.add_argument("--resolution-distance", choices=[d.value for d in TodoResolutionDistance])
+    p_pending_distance.add_argument(
+        "--unscoped-distance", action="store_true", help="Only Todos with no resolution_distance assessed yet"
+    )
     p_pending.add_argument("--all", action="store_true", help="Also include deferred Todos not yet due")
     if locked_kind is not None:
         p_pending.set_defaults(func=cmd_pending, kind=locked_kind.value)
@@ -294,6 +364,14 @@ def add_subparser(
     p_list.add_argument("--effort", choices=[e.value for e in WishlistEffort])
     if locked_kind is None:
         p_list.add_argument("--kind", choices=kind_choices)
+    p_list_severity = p_list.add_mutually_exclusive_group()
+    p_list_severity.add_argument("--severity", choices=[s.value for s in TodoSeverity])
+    p_list_severity.add_argument("--untriaged", action="store_true", help="Only Todos with no severity assessed yet")
+    p_list_distance = p_list.add_mutually_exclusive_group()
+    p_list_distance.add_argument("--resolution-distance", choices=[d.value for d in TodoResolutionDistance])
+    p_list_distance.add_argument(
+        "--unscoped-distance", action="store_true", help="Only Todos with no resolution_distance assessed yet"
+    )
     p_list.add_argument(
         "--all", action="store_true", help="Ignore an active --context and show Todos from every context"
     )

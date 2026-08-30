@@ -10,6 +10,11 @@ export default function TodoView(props: RendererProps) {
       <Field label="Kind" value={f.kind} editable={editableFieldProps(props, 'kind')} />
       <Field label="Effort" value={f.effort} />
       <Field label="Severity" value={f.severity} editable={editableFieldProps(props, 'severity')} />
+      <Field
+        label="Resolution distance"
+        value={f.resolution_distance}
+        editable={editableFieldProps(props, 'resolution_distance')}
+      />
       <Field label="Urgent" value={f.urgent ? 'yes' : null} />
       <Field label="Notes" value={f.notes} editable={editableFieldProps(props, 'notes')} />
     </div>

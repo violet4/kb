@@ -202,8 +202,10 @@ function EntityTableCell({ entity, column, onFieldSaved }: EntityTableCellProps)
   const { clear, saving: clearing } = useFieldEdit(entity.type, entity.id, column.name);
   const isEmpty = value === null || value === undefined || value === '';
 
-  if (column.editable && column.kind === 'enum' && !isEmpty) {
-    return <EnumFieldSelect type={entity.type} id={entity.id} schema={column} value={String(value)} onSaved={onFieldSaved} />;
+  if (column.editable && column.kind === 'enum') {
+    return (
+      <EnumFieldSelect type={entity.type} id={entity.id} schema={column} value={isEmpty ? '' : String(value)} onSaved={onFieldSaved} />
+    );
   }
 
   if (column.editable && column.kind === 'bool') {

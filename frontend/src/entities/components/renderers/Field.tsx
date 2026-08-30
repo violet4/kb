@@ -27,17 +27,25 @@ interface FieldProps {
 
 // Shared field-row layout used by every type-specific renderer, so each renderer
 // only has to say which fields it cares about, not how a label/value pair looks --
-// or, when `editable` is passed, not how editing works either. An enum field is
-// always a live dropdown (EnumFieldSelect, saves on change); text/number fields need
-// an explicit click-to-edit session (EditableFieldControl/NumberFieldControl,
-// Save/Cancel) since a keystroke isn't a complete value the way picking an option is.
-// A nullable field additionally gets NullableFieldWrapper's clear/set-value
-// affordance around whichever of those controls applies -- nullability composes with
-// any kind rather than each control handling it itself.
+// or, when `editable` is passed, not how editing works either. An enum/bool field is
+// always a live control (EnumFieldSelect/BoolFieldToggle, saves on change) that
+// renders unconditionally and handles its own empty state (see EnumFieldSelect's
+// blank option); text/number fields need an explicit click-to-edit session
+// (EditableFieldControl/NumberFieldControl, Save/Cancel) since a keystroke isn't a
+// complete value the way picking an option is, so a nullable text/number field gets
+// NullableFieldWrapper's placeholder-then-click-to-reveal/clear affordance around it
+// -- an always-live control skips that wrapper entirely (see `alwaysLive` below).
 export default function Field({ label, value, editable }: FieldProps) {
   const [isEditing, setIsEditing] = useState(false);
   const isEmpty = value === null || value === undefined || value === '';
   const nullable = editable?.schema.nullable ?? false;
+  // enum/bool are always-live controls (EnumFieldSelect/BoolFieldToggle) that
+  // render and handle their own empty/null state directly -- gating them behind
+  // NullableFieldWrapper's placeholder-then-click-to-reveal flow (built for the
+  // click-to-edit-session controls, text/number) would mean a null enum/bool
+  // renders no control at all until a first click, with nothing to click into.
+  const alwaysLive = editable?.schema.kind === 'enum' || editable?.schema.kind === 'bool';
+
   const { clear, saving: clearing } = useFieldEdit(
     editable?.type ?? 'Todo',
     editable?.id ?? 0,
@@ -46,7 +54,7 @@ export default function Field({ label, value, editable }: FieldProps) {
 
   if (isEmpty && !nullable) return null;
 
-  if (editable && nullable) {
+  if (editable && nullable && !alwaysLive) {
     return (
       <div style={{ display: 'flex', gap: 8, fontSize: 13, alignItems: 'center' }}>
         <span style={{ color: tokens.color.textMuted, minWidth: 90 }}>{label}</span>

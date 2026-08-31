@@ -5,6 +5,7 @@ import ChannelsView from './channels/ChannelsView';
 import DailiesView from './dailies/DailiesView';
 import BrowseView from './entities/BrowseView';
 import EntityView from './entities/EntityView';
+import EventsView from './events/EventsView';
 import SearchView from './search/SearchView';
 import NavBar from './shared/NavBar';
 import UsageView from './usage/UsageView';
@@ -34,6 +35,7 @@ export default function App() {
       >
         <Routes>
           <Route path="/" element={<DailiesView />} />
+          <Route path="/events" element={<EventsView />} />
           <Route path="/usage" element={<UsageView />} />
           <Route path="/agents" element={<AgentsView />} />
           <Route path="/agents/:sessionId" element={<AgentPage />} />

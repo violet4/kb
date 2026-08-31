@@ -7,6 +7,9 @@ export default function NavBar() {
       <Link to="/" style={{ color: tokens.color.text, textDecoration: 'none', fontSize: 13 }}>
         Dailies
       </Link>
+      <Link to="/events" style={{ color: tokens.color.text, textDecoration: 'none', fontSize: 13 }}>
+        Events
+      </Link>
       <Link to="/usage" style={{ color: tokens.color.text, textDecoration: 'none', fontSize: 13 }}>
         Usage
       </Link>

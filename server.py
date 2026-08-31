@@ -24,6 +24,7 @@ from api.channels_router import router as channels_router
 from api.core_router import router as core_router
 from api.dailies_router import router as dailies_router
 from api.entities_router import router as entities_router
+from api.events_router import router as events_router
 from api.search_router import router as search_router
 from api.sessions_router import router as sessions_router
 from api.usage_router import router as usage_router
@@ -81,6 +82,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(title="kb server", lifespan=_lifespan)
 app.include_router(core_router)
 app.include_router(dailies_router)
+app.include_router(events_router)
 app.include_router(entities_router)
 app.include_router(search_router)
 app.include_router(archivebox_router)

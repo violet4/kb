@@ -22,7 +22,20 @@ from sqlalchemy.orm import Session
 from api.deps import get_session
 from archivebox_compat.config import ArchiveBoxConfigError
 from kb_cli.archivebox import archivebox_url
-from models import ArchivedLink, Daily, EntityLink, Goal, Idea, Instruction, Journal, LogEntry, Note, Todo, Wishlist
+from models import (
+    ArchivedLink,
+    Daily,
+    EntityLink,
+    Event,
+    Goal,
+    Idea,
+    Instruction,
+    Journal,
+    LogEntry,
+    Note,
+    Todo,
+    Wishlist,
+)
 
 router = APIRouter(prefix="/entities")
 
@@ -34,6 +47,7 @@ ENTITY_TYPES: dict[str, type[Any]] = {
     "Wishlist": Wishlist,
     "Instruction": Instruction,
     "Daily": Daily,
+    "Event": Event,
     "ArchivedLink": ArchivedLink,
     "LogEntry": LogEntry,
 }

@@ -1343,6 +1343,21 @@ class Event(Base, HasContextOrTag, HasEmbedding):
         occurrence: Optional[datetime] = rule.after(after, inc=True)
         return occurrence
 
+    def occurrences_between(self, range_start: datetime, range_end: datetime) -> list[datetime]:
+        """Every instant this Event lands on within [range_start, range_end) -- the
+        week/month calendar-grid view's equivalent of next_occurrence's single-instant
+        answer. A non-recurring Event contributes at most its own starts_at; a recurring
+        one is expanded via dateutil.rrule.rrulestr.between, still the one place this
+        class touches dateutil (see class docstring)."""
+        from dateutil.rrule import rrulestr
+
+        starts_at = self.starts_at.replace(tzinfo=timezone.utc) if self.starts_at.tzinfo is None else self.starts_at
+        if not self.recurrence:
+            return [starts_at] if range_start <= starts_at < range_end else []
+        rule = rrulestr(self.recurrence, dtstart=starts_at)
+        occurrences: list[datetime] = rule.between(range_start, range_end, inc=True)
+        return [occ for occ in occurrences if occ < range_end]
+
     def __repr__(self) -> str:
         return f"<Event #{self.id} {self.title!r}{self.age_marker()}>"
 

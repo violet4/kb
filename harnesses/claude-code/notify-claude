@@ -1,42 +1,106 @@
-#!/usr/bin/env bash
-# Claude Code hook handler: extracts this event's own JSON payload (.cwd,
-# .session_id, .message) into a plain title/body and hands delivery off to
-# `kb notifications send`, which owns mute/volume/sound/ntfy -- this script
-# owns nothing but reading Claude Code's own hook envelope. Session titles
-# are resolved via `kb sessions show ID --title`, not read directly here,
-# so the transcript-parsing logic stays in kb and reusable outside this hook.
-#
-# Usage: notify-claude <event-label>
-#   event-label: free text distinguishing which hook fired (e.g. "waiting",
-#   "done") since one script backs multiple hook events.
+#!/usr/bin/env -S uv run --project /home/violet/kb python3
+"""Claude Code hook handler: extracts this event's own JSON payload (.cwd,
+.session_id, .message) into a plain title/body and hands delivery off to
+`kb notifications send`, which owns mute/volume/sound/ntfy -- this script
+owns nothing but reading Claude Code's own hook envelope. Session titles
+are resolved via `kb sessions show ID --title`, not read directly here,
+so the transcript-parsing logic stays in kb and reusable outside this hook.
+"""
 
-set -euo pipefail
+import argparse
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
 
-event_label="${1:-Claude Code}"
-payload="$(cat)"
+_SKIP_NOTIFICATION_TYPES = {
+    # Claude Code fires a "Notification" hook with this type roughly every 60s
+    # while idle after a response -- a repeat nag, not a new event worth surfacing.
+    "idle_prompt",
+}
 
-cwd=$(jq -r '.cwd // empty' <<<"$payload")
-session_id=$(jq -r '.session_id // empty' <<<"$payload")
-message=$(jq -r '.message // empty' <<<"$payload")
 
-project="${cwd:+$(basename "$cwd")}"
-title="Claude Code — ${project:-unknown} — ${event_label}"
-body="$message"
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Claude Code hook handler: reads one hook JSON payload on stdin, "
+            "delivers it via `kb notifications send`. Wired up as the command "
+            "for the Notification/Stop hooks in settings.json."
+        )
+    )
+    parser.add_argument(
+        "event_label",
+        nargs="?",
+        default="Claude Code",
+        help=(
+            'Free text distinguishing which hook fired (e.g. "waiting", "done") '
+            "since one script backs multiple hook events. Included in the "
+            'notification title; "waiting" also gets ntfy priority=high.'
+        ),
+    )
+    return parser.parse_args()
 
-if [ -n "$session_id" ]; then
-    session_title=$(kb sessions show "$session_id" --title 2>/dev/null || true)
-    if [ -n "$session_title" ]; then
-        body="${body:+$body }($session_title)"
-    else
-        body="${body:+$body }(session ${session_id:0:8})"
-    fi
-fi
 
-priority="default"
-[ "$event_label" = "waiting" ] && priority="high"
+def main() -> None:
+    args = _parse_args()
+    event_label = args.event_label
+    payload = json.load(sys.stdin)
 
-send_args=(notifications send "$title" "$body" --priority "$priority")
-[ -n "${NTFY_URL:-}" ] && send_args+=(--ntfy-url "$NTFY_URL")
-[ -n "${NTFY_TOKEN_FILE:-}" ] && send_args+=(--ntfy-token-file "$NTFY_TOKEN_FILE")
+    notification_type = payload.get("notification_type", "")
+    if notification_type in _SKIP_NOTIFICATION_TYPES:
+        return
 
-kb "${send_args[@]}" 2>/dev/null || true
+    cwd = payload.get("cwd", "")
+    session_id = payload.get("session_id", "")
+    message = payload.get("message", "")
+
+    project = Path(cwd).name if cwd else "unknown"
+    title = f"Claude Code — {project} — {event_label}"
+    body = message
+
+    if session_id:
+        session_title = _run_best_effort_output(
+            ["kb", "sessions", "show", session_id, "--title"]
+        )
+        if session_title:
+            body = f"{body} ({session_title})" if body else f"({session_title})"
+        else:
+            body = f"{body} (session {session_id[:8]})" if body else f"(session {session_id[:8]})"
+
+    priority = "high" if event_label == "waiting" else "default"
+
+    send_args = ["kb", "notifications", "send", title, body, "--priority", priority]
+    ntfy_url = _env("NTFY_URL")
+    if ntfy_url:
+        send_args += ["--ntfy-url", ntfy_url]
+    ntfy_token_file = _env("NTFY_TOKEN_FILE")
+    if ntfy_token_file:
+        send_args += ["--ntfy-token-file", ntfy_token_file]
+
+    _run_best_effort(send_args)
+
+
+def _run_best_effort(cmd: list[str]) -> None:
+    """Delivery is a non-critical side effect -- a missing `kb` binary or
+    other failure shouldn't crash the invoking hook."""
+    try:
+        subprocess.run(cmd, check=False, capture_output=True)
+    except OSError:
+        pass
+
+
+def _run_best_effort_output(cmd: list[str]) -> str:
+    try:
+        result = subprocess.run(cmd, check=False, capture_output=True, text=True)
+        return result.stdout.strip()
+    except OSError:
+        return ""
+
+
+def _env(name: str) -> str:
+    return os.environ.get(name, "")
+
+
+if __name__ == "__main__":
+    main()

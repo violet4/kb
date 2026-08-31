@@ -18,6 +18,7 @@ from models import (
     Collection,
     Context,
     Daily,
+    Event,
     Goal,
     GoalStatus,
     HasContextOrTag,
@@ -47,6 +48,7 @@ ALL_SEARCHABLE: tuple[Any, ...] = (
     Idea,
     Context,
     Daily,
+    Event,
     ArchivedLink,
     Vendor,
     Item,
@@ -183,6 +185,10 @@ def _fmt_result(item: Any, dist: float, truncate: bool = True) -> str:
         return f"#{item.id} {item.title!r} [Idea/{item.status.value}]{item.age_marker()} ({label})"
     if isinstance(item, Daily):
         return f"#{item.id} {item.description!r} [Daily] ({label})"
+    if isinstance(item, Event):
+        occ = item.next_occurrence()
+        when = "past" if occ is None else (occ.date().isoformat() if item.is_all_day else occ.isoformat())
+        return f"#{item.id} {item.title!r} [Event/{when}]{item.age_marker()} ({label})"
     if isinstance(item, LogEntry):
         when = item.occurred_at.strftime("%Y-%m-%d %H:%M")
         domain = f" [{item.domain}]" if item.domain else ""
@@ -241,6 +247,7 @@ SEMANTIC_SEARCHABLE: tuple[type[HasEmbedding], ...] = (
     Instruction,
     Idea,
     Daily,
+    Event,
     LogEntry,
     ArchivedLink,
     Vendor,

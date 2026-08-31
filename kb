@@ -70,6 +70,7 @@ from kb_cli import (
     bug,
     context_cmd,
     daily,
+    event,
     goal,
     hooks,
     idea,
@@ -160,6 +161,7 @@ todo.add_subparser(subparsers)
 bug.add_subparser(subparsers)
 tag.add_subparser(subparsers)
 daily.add_subparser(subparsers)
+event.add_subparser(subparsers)
 hooks.add_subparser(subparsers)
 inbox.add_subparser(subparsers)
 instruction.add_subparser(subparsers)

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Markdown from '../../shared/Markdown';
 import { tokens } from '../../shared/tokens';
 import { fetchSessionChat } from './api';
 import { addressBlocks, type AddressedBlock } from './blockAddress';
@@ -69,19 +70,7 @@ function BlockRow({
       </button>
       {!collapsed && (
         <>
-          {block.kind === 'text' && (
-            <p
-              style={{
-                margin: 0,
-                fontSize: 14,
-                whiteSpace: 'pre-wrap',
-                overflowWrap: 'anywhere',
-                color: tokens.color.text,
-              }}
-            >
-              {block.text}
-            </p>
-          )}
+          {block.kind === 'text' && <Markdown text={block.text ?? ''} />}
           {block.kind === 'tool_use' && (
             <pre
               style={{

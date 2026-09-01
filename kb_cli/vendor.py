@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from models import IrlItem, Item, Purchase, Vendor, VendorItem
 from kb_cli._util import resolve_text_arg
-from kb_cli.search import cmd_search_one
+from kb_cli.search import cmd_search_deprecated
 
 
 def _get_or_create_vendor_item(session: Session, vendor: Vendor, item: Item, vendor_sku: str) -> VendorItem:
@@ -135,12 +135,9 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     v_list.add_argument("--domain")
     v_list.set_defaults(func=cmd_vendor_list)
 
-    v_search = vsub.add_parser("search", help="Search vendors by text (substring + semantic)")
-    v_search.add_argument("query")
-    v_search.add_argument("--limit", type=int, default=10)
-    v_search.add_argument("--all", action="store_true", help="No-op (Vendor has no terminal status); kept for symmetry")
-    v_search.add_argument("--since")
-    v_search.set_defaults(func=cmd_search_one, model=Vendor, has_substring=True)
+    v_search = vsub.add_parser("search", help="Removed -- use top-level `kb search` instead")
+    v_search.add_argument("query", nargs="*", help="Ignored -- use `kb search` instead")
+    v_search.set_defaults(func=cmd_search_deprecated)
 
     item_parser = subparsers.add_parser("item", help="Item operations (real-world and in-game)")
     isub = item_parser.add_subparsers(dest="cmd", required=True)
@@ -158,12 +155,9 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     i_list.add_argument("--game")
     i_list.set_defaults(func=cmd_item_list)
 
-    i_search = isub.add_parser("search", help="Search items by text (substring + semantic)")
-    i_search.add_argument("query")
-    i_search.add_argument("--limit", type=int, default=10)
-    i_search.add_argument("--all", action="store_true", help="No-op (Item has no terminal status); kept for symmetry")
-    i_search.add_argument("--since")
-    i_search.set_defaults(func=cmd_search_one, model=Item, has_substring=True)
+    i_search = isub.add_parser("search", help="Removed -- use top-level `kb search` instead")
+    i_search.add_argument("query", nargs="*", help="Ignored -- use `kb search` instead")
+    i_search.set_defaults(func=cmd_search_deprecated)
 
     purchase_parser = subparsers.add_parser("purchase", help="Purchase operations (price/quantity history)")
     psub = purchase_parser.add_subparsers(dest="cmd", required=True)
@@ -183,11 +177,6 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_list.add_argument("--item")
     p_list.set_defaults(func=cmd_purchase_list)
 
-    p_search = psub.add_parser("search", help="Search purchase notes by text (substring + semantic)")
-    p_search.add_argument("query")
-    p_search.add_argument("--limit", type=int, default=10)
-    p_search.add_argument(
-        "--all", action="store_true", help="No-op (Purchase has no terminal status); kept for symmetry"
-    )
-    p_search.add_argument("--since")
-    p_search.set_defaults(func=cmd_search_one, model=Purchase, has_substring=True)
+    p_search = psub.add_parser("search", help="Removed -- use top-level `kb search` instead")
+    p_search.add_argument("query", nargs="*", help="Ignored -- use `kb search` instead")
+    p_search.set_defaults(func=cmd_search_deprecated)

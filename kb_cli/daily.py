@@ -18,7 +18,7 @@ from kb_cli._util import (
     print_table,
     resolve_text_arg,
 )
-from kb_cli.search import cmd_search_one
+from kb_cli.search import cmd_search_deprecated
 
 
 def _daily_fields(daily: Daily) -> list[tuple[str, object]]:
@@ -342,11 +342,9 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     )
     p_delete.set_defaults(func=cmd_delete)
 
-    p_search = sub.add_parser("search", help="Substring plus semantic search over Daily descriptions/notes")
-    p_search.add_argument("query")
-    p_search.add_argument("--all", action="store_true", help="Also include inactive dailies (excluded by default)")
-    p_search.add_argument("--limit", type=int, default=10)
-    p_search.set_defaults(func=cmd_search_one, model=Daily)
+    p_search = sub.add_parser("search", help="Removed -- use top-level `kb search` instead")
+    p_search.add_argument("query", nargs="*", help="Ignored -- use `kb search` instead")
+    p_search.set_defaults(func=cmd_search_deprecated)
 
     p_reembed = sub.add_parser("reembed", help="Recompute embeddings for all dailies")
     p_reembed.set_defaults(func=cmd_reembed)

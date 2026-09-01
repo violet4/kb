@@ -8,7 +8,7 @@ from harness import current_session_id
 from models import Context, LogEntry
 
 from kb_cli._util import resolve_text_arg
-from kb_cli.search import cmd_search_one
+from kb_cli.search import cmd_search_deprecated
 
 
 def cmd_add(args: argparse.Namespace) -> None:
@@ -84,15 +84,6 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_recent.add_argument("--limit", type=int, default=20)
     p_recent.set_defaults(func=cmd_recent)
 
-    p_search = sub.add_parser(
-        "search", help="Semantic search over log entry bodies (no substring pass -- see kb Todo #62)"
-    )
-    p_search.add_argument("query")
-    p_search.add_argument("--limit", type=int, default=10)
-    p_search.add_argument(
-        "--flags",
-        dest="flags_only",
-        action="store_true",
-        help="Only search entries created via `kb flag` (domain=claude-behavior), instead of all log entries",
-    )
-    p_search.set_defaults(func=cmd_search_one, model=LogEntry, has_substring=False)
+    p_search = sub.add_parser("search", help="Removed -- use top-level `kb search` instead")
+    p_search.add_argument("query", nargs="*", help="Ignored -- use `kb search` instead")
+    p_search.set_defaults(func=cmd_search_deprecated)

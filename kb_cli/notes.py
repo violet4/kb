@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from client import KBClient
 from kb_cli._util import apply_text_edit, print_links, print_timestamps, resolve_body_args, resolve_text_arg
-from kb_cli.search import cmd_search_all
+from kb_cli.search import cmd_search_deprecated
 from models import Collection, Note
 
 
@@ -70,16 +70,6 @@ def cmd_update(args: argparse.Namespace) -> None:
     note.update(title=args.title, body=body, tags=args.tags, collection=collection)
     args.session.commit()
     print(f"Updated: {note}")
-
-
-def cmd_search(args: argparse.Namespace) -> None:
-    print(
-        "Passing through to `kb search` -- use that directly in the future; it covers Notes "
-        "alongside Goals/Todos/Instructions/Ideas/etc. in one call, and takes multiple queries "
-        "at once (`kb search 'query1' 'query2' ...`).\n",
-        file=sys.stderr,
-    )
-    cmd_search_all(args)
 
 
 def cmd_reembed(args: argparse.Namespace) -> None:
@@ -149,28 +139,10 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
 
     p_search = sub.add_parser(
         "search",
-        help="Passthrough to top-level `kb search` -- use that directly instead",
+        help="Removed -- use top-level `kb search` instead",
     )
-    p_search.add_argument(
-        "query",
-        nargs="+",
-        help="One or more search queries (quote each one separately) -- results for each "
-        "are printed under their own header",
-    )
-    p_search.add_argument(
-        "--all", action="store_true", help="Also include done/abandoned/dropped/acquired items (excluded by default)"
-    )
-    p_search.add_argument(
-        "--limit",
-        type=int,
-        default=10,
-        help="Max results across all entities combined, ranked by score",
-    )
-    p_search.add_argument(
-        "--since",
-        help="Only include rows at or after this date/timestamp",
-    )
-    p_search.set_defaults(func=cmd_search)
+    p_search.add_argument("query", nargs="*", help="Ignored -- use `kb search` instead")
+    p_search.set_defaults(func=cmd_search_deprecated)
 
     p_reembed = sub.add_parser("reembed", help="Recompute embeddings for all notes")
     p_reembed.set_defaults(func=cmd_reembed)

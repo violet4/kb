@@ -7,6 +7,7 @@ description/notes) is defined once here rather than reimplemented per command.
 """
 
 import argparse
+import sys
 from datetime import datetime, timezone
 from typing import Any, Optional, Sequence
 
@@ -158,6 +159,19 @@ def cmd_search(args: argparse.Namespace) -> None:
     """Generic handler for a single-model `search` subcommand; set args.model beforehand."""
     context = args.context if args.context_explicit else None
     _print_results(search_entities(args.session, (args.model,), args.query, include_done=args.all, context=context))
+
+
+def cmd_search_deprecated(args: argparse.Namespace) -> None:
+    """Handler for every per-entity `search` subcommand -- these no longer search at all;
+    they point the user at the top-level `kb search`, which covers every entity at once
+    (substring plus semantic) in a single call, so the same search logic and ranking is
+    maintained in one place instead of once per entity."""
+    print(
+        "This subcommand no longer searches -- use `kb search` instead, which covers this "
+        "entity alongside every other kb entity in one call (`kb search 'query1' 'query2' ...`).",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 
 # Substring matches are exact hits, not distance-scored -- rank them ahead of every

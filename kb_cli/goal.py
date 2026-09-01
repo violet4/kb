@@ -20,7 +20,7 @@ from kb_cli._util import (
     resolve_text_arg,
     scope_to_context,
 )
-from kb_cli.search import cmd_search
+from kb_cli.search import cmd_search_deprecated
 
 
 def cmd_add(args: argparse.Namespace) -> None:
@@ -182,13 +182,6 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     )
     p_list.set_defaults(func=cmd_list)
 
-    p_search = sub.add_parser(
-        "search",
-        help="Search Goals by text (unscoped by default; pass the global "
-        "`kb --context NAME goal search ...` to restrict to that context's subtree)",
-    )
-    p_search.add_argument("query")
-    p_search.add_argument(
-        "--all", action="store_true", help="Also include completed/abandoned Goals (excluded by default)"
-    )
-    p_search.set_defaults(func=cmd_search, model=Goal)
+    p_search = sub.add_parser("search", help="Removed -- use top-level `kb search` instead")
+    p_search.add_argument("query", nargs="*", help="Ignored -- use `kb search` instead")
+    p_search.set_defaults(func=cmd_search_deprecated)

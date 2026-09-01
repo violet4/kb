@@ -18,7 +18,7 @@ from kb_cli._util import (
     resolve_text_arg,
     scope_to_context,
 )
-from kb_cli.search import cmd_search_one
+from kb_cli.search import cmd_search_deprecated
 
 
 def cmd_add(args: argparse.Namespace) -> None:
@@ -148,13 +148,9 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     )
     p_list.set_defaults(func=cmd_list)
 
-    p_search = sub.add_parser("search", help="Substring plus semantic search over idea titles/descriptions/notes")
-    p_search.add_argument("query")
-    p_search.add_argument(
-        "--all", action="store_true", help="Also include promoted/dropped ideas (excluded by default)"
-    )
-    p_search.add_argument("--limit", type=int, default=10)
-    p_search.set_defaults(func=cmd_search_one, model=Idea)
+    p_search = sub.add_parser("search", help="Removed -- use top-level `kb search` instead")
+    p_search.add_argument("query", nargs="*", help="Ignored -- use `kb search` instead")
+    p_search.set_defaults(func=cmd_search_deprecated)
 
     p_promote = sub.add_parser("promote", help="Mark an idea promoted -- record what it became in its Journal")
     p_promote.add_argument("id", type=int)

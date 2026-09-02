@@ -63,6 +63,10 @@ The LLM itself holds no memory between conversations — every model instance is
 
 kb's own content (the Instruction tree, `kb hooks` detectors, Goals/Todos/Notes) works from any harness driving it — a harness supplies only the trigger mechanism, never a second copy of kb's own logic (see `CLAUDE.md`'s harness paragraph). See `docs/harnesses/` for per-harness wiring instructions, one file per harness, covering every hook set up for it.
 
+## Contributing
+
+Bug reports and feature requests are welcome as GitHub issues. See `CONTRIBUTING.md` before opening a pull request, and `CODE_OF_CONDUCT.md` for community expectations.
+
 ## License
 
 MIT — see `LICENSE`.

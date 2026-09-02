@@ -1,0 +1,14 @@
+title: code-level-implementation
+trigger: when writing or editing code
+
+Correctness and appropriate complexity for the actual constraint are the two universal bars for code at the level of a single function, class, or module — everything below is a corollary of one or the other, not a separate concern.
+
+Search the codebase for existing functionality — a function, module, library, or established pattern — before implementing new logic that duplicates it. Reuse or extend what exists; write new code only when nothing already serves the need. This generalizes DRY ("Don't Repeat Yourself": every piece of knowledge should have a single, unambiguous, authoritative representation within a system — Hunt & Thomas, *The Pragmatic Programmer*, 1999) from data and knowledge to logic itself, and is the same discipline large engineering organizations enforce with codebase-wide search tools specifically so engineers do not unknowingly reinvent a solution that already exists (*Software Engineering at Google*, Winters/Manshreck/Tanner).
+
+A function's name is its contract: code should read as a sequence of domain operations, not implementation detail. When a line requires tracing through mechanics to understand what it does, that is a signal to find a better abstraction, not to add a comment explaining the mechanics.
+
+Use the idiomatic construct a language, framework, or library already provides for a given need rather than reimplementing it with lower-level primitives. Before adding another case to a hand-rolled implementation of a well-known problem domain (recurrence rules, calendar/unit/currency math, parsing a real grammar), check whether a mature library already solves it; a small, page-sized grammar is reasonable to hand-roll, but each added edge case and each repeated boundary bug is a data point toward the library instead.
+
+Finding a second, similar bug in a sibling function to one just fixed means the underlying concept has no single owner. Stop patching individual call sites and introduce the one function or module that owns the concept, making every caller a thin, verifiable check against its output rather than a parallel implementation.
+
+Before implementing, explicitly ask whether an established structural pattern (strategy, factory, observer, adapter, decorator, state machine, or similar) fits the problem's shape — not only whether prior art exists in the same problem domain, but what reusable structural shape this specific piece of logic has. Naming the candidate pattern (or naming why none fits and a bespoke shape is correct) belongs in the plan, not as something discovered mid-implementation; a named absence is a valid outcome, not a failure to find a fit — do not force a pattern where none applies.

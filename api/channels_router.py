@@ -60,7 +60,7 @@ async def list_channels(display_name: str, session: Session = Depends(get_sessio
 
     summaries = []
     for agent in HarnessSession.live(session):
-        refresh_agent_title(agent)
+        refresh_agent_title(session, agent)
         dm_channel = Channel.find_dm(session, human.id, agent.id)
         channel_id = dm_channel.id if dm_channel is not None else None
         summaries.append(

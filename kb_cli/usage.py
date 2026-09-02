@@ -102,7 +102,11 @@ def _parse_resets_at(resets: str) -> datetime:
 def _fetch_usage_uncached() -> Usage:
     try:
         result = subprocess.run(
-            ["claude", "-p", "/usage", "--output-format", "json"],
+            # --no-session-persistence: this is a throwaway status check, not a real
+            # conversation -- without it, every poll (frontend UsageBar refresh, `kb stats
+            # usage`) wrote a new transcript file under ~/.claude/projects, flooding the
+            # Agents UI's past-sessions list with thousands of empty-content /usage entries.
+            ["claude", "-p", "/usage", "--output-format", "json", "--no-session-persistence"],
             capture_output=True,
             text=True,
             timeout=30,

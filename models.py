@@ -530,11 +530,6 @@ class Instruction(Base, HasContextOrTag, HasEmbedding):
     rather than letting any level's fanout grow past that. See kb Goal #23 for full design rationale,
     and kb Todo #127 for the parent_id -> EntityLink graph migration rationale specifically.
 
-    system_level marks a node as a candidate for the eventual kb si (filesystem/git-shippable,
-    identical for every user) split, tagged incrementally as nodes are created/edited rather than
-    sorted in one big pass later -- see kb Todo #101. Defaults false (personal/user content);
-    doesn't yet do anything mechanically, it's metadata for that future split.
-
     This is the one table meant for shareable, git-trackable export (a design in progress as of
     2026-07 -- see Goal #23) -- unlike Note (a personal notebook), Instruction's content is
     operational reference documentation, genuinely useful to someone else running this system."""
@@ -545,7 +540,6 @@ class Instruction(Base, HasContextOrTag, HasEmbedding):
     title: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     trigger: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    system_level: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     context_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("context.id"), nullable=True)
 
     context: Mapped[Optional[Context]] = relationship("Context")
@@ -2566,6 +2560,78 @@ class HarnessSession(Base):
     def __repr__(self) -> str:
         listening_str = " listening" if self.is_listening else ""
         return f"<HarnessSession {self.id[:8]} [{self.status.value}]{listening_str} cwd={self.cwd!r}>"
+
+
+class TranscriptCache(Base):
+    """Memoizes the per-line-scan result of parsing one Claude Code session transcript
+    (~/.claude/projects/*/*.jsonl) -- title, message_count -- keyed by session id (the
+    transcript's filename stem, already globally unique per HarnessSession's own docstring).
+    Every caller that needs a transcript's derived fields (kb_cli.sessions.list_history_sessions
+    for `kb sessions history`/the frontend's past-sessions list, refresh_agent_title for the
+    live Agents view) should read through get_or_refresh() rather than opening the file directly,
+    so a transcript already scanned once this session/day is never re-parsed for the same
+    unchanged content -- these files are append-only during a live session and immutable once
+    it ends, but both the live Agents view (polled continuously) and the history view (opened
+    repeatedly while browsing) were re-scanning the same bytes on every single read before
+    this existed, confirmed live 2026-09-01 as measurably slow on a 20MB/5000-line transcript.
+
+    file_mtime is the dirty check: read via one cheap os.stat() (no file open) on every
+    lookup and compared against the stored value -- a real Claude Code transcript is
+    append-only while its session is live and untouched once the session ends, so mtime
+    strictly increases with new content and never regresses without the file being rewritten
+    out from under us (not a real case for these files), making it a sound proxy for content
+    change; not a content hash, since a hash still requires reading the whole file, defeating
+    the point of caching in the first place. mtime is stored as a DateTime for consistency
+    with every other timestamp column in this file, not a Float epoch value which nothing
+    else here uses."""
+
+    __tablename__ = "transcript_cache"
+
+    session_id: Mapped[str] = mapped_column(String, primary_key=True)
+    project: Mapped[str] = mapped_column(String, nullable=False)
+    file_mtime: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    message_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+
+    @classmethod
+    def get_or_refresh(cls, session: Session, path: Path) -> Optional["TranscriptCache"]:
+        """Returns the cached row for `path`'s session id, re-parsing and upserting it first
+        if the row is missing or its stored file_mtime doesn't match the file's current
+        mtime. None if the transcript is empty/unreadable (nothing worth caching) --
+        matches kb_cli.sessions._session_info's own None-on-empty contract, which this
+        method wraps rather than replaces (parsing logic has exactly one owner, there;
+        imported locally to avoid a models.py <-> kb_cli.sessions import cycle)."""
+        from kb_cli.sessions import _session_info
+
+        mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+        row = session.get(cls, path.stem)
+        # row.file_mtime reads back tz-naive (SQLite drops tzinfo on DateTime(timezone=True)
+        # columns, see base.py's docstring / AGENTS.md) even though it was always written as
+        # UTC via mtime above -- .replace(tzinfo=utc) makes this comparison apples-to-apples;
+        # without it every lookup mismatches (naive != aware) and the cache never hits.
+        if row is not None and row.file_mtime.replace(tzinfo=timezone.utc) == mtime:
+            return row
+
+        info = _session_info(path)
+        if info is None:
+            if row is not None:
+                session.delete(row)
+            return None
+
+        if row is None:
+            row = cls(session_id=path.stem, project=path.parent.name)
+            session.add(row)
+        row.project = path.parent.name
+        row.file_mtime = mtime
+        row.title = info["title"]
+        row.message_count = info["message_count"]
+        row.updated_at = _now()
+        session.flush()
+        return row
+
+    def __repr__(self) -> str:
+        return f"<TranscriptCache {self.session_id[:8]} {self.message_count} msgs>"
 
 
 class Channel(Base):

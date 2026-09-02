@@ -22,7 +22,8 @@ Usage: kb [--context NAME] [--as-of WHEN] <command> [subcommand ...] [args ...]
   kb inbox add ... | pending | triage ID
   kb instructions root [--set TITLE] | show TITLE | search QUERY | add TITLE BODY [--parent TITLE] [--trigger "..."] | set-parent TITLE [--parent TITLE] | edit TITLE [--title T] [--body B|--append TEXT|--replace OLD NEW] [--trigger "..."] | delete TITLE [--reparent-children] | tree [--bodies]
     # nodes are referenced by title everywhere; prefix with # for an id (only needed if a title is ambiguous). Use global --context to link a node into the Context tree.
-  kb si root   # system instructions, shipped with kb via git -- same for every user, distinct from `kb instructions` (this user's own DB tree)
+  kb si show TITLE|#ID|root [--links] | add TITLE BODY [--parent TITLE] [--trigger "..."] | set-parent TITLE [--parent TITLE] | edit TITLE [--title T] [--body B|--append TEXT|--replace OLD NEW] [--trigger "..."] | delete TITLE [--reparent-children] | tree [--bodies]
+    # system instructions, shipped with kb via git under instructions_system/ -- same for every user, distinct from `kb instructions` (this user's own DB tree). Full CRUD, same shape as `kb instructions` above, but every write prints a warning since it changes the shared git-tracked copy, not personal state.
   kb journal add ENTITY_TYPE ID NOTE | show ENTITY_TYPE ID
   kb notes show ID | add ... | update ... | search ... | reembed
   kb notifications mute | unmute | volume 0-100 | status | send TITLE [BODY] [--priority high]
@@ -72,6 +73,7 @@ from kb_cli import (
     daily,
     event,
     goal,
+    health,
     hooks,
     idea,
     inbox,
@@ -156,6 +158,7 @@ parser.add_argument("--as-of", metavar="WHEN", help="Run as if the current time 
 subparsers = parser.add_subparsers(dest="command", required=False)
 
 goal.add_subparser(subparsers)
+health.add_subparser(subparsers)
 idea.add_subparser(subparsers)
 todo.add_subparser(subparsers)
 bug.add_subparser(subparsers)

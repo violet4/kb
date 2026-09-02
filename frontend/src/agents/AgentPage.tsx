@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import AgentContentTabs, { type AgentContentTab } from './AgentContentTabs';
 import { useChannelList } from '../channels/hooks/useChannelList';
 import { useChannelListRefreshInterval } from '../channels/hooks/useChannelListRefreshInterval';
@@ -13,6 +13,15 @@ export default function AgentPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const tab: AgentContentTab = searchParams.get('tab') === 'chat' ? 'chat' : 'session';
+
+  // Set by AgentHistoryView's session links (via Link's `state` prop) so a session opened
+  // from the past-sessions drilldown returns there instead of always landing on the live
+  // Agents table -- state, not a query param, since this is navigation-origin metadata, not
+  // shareable/bookmarkable URL state.
+  const location = useLocation();
+  const fromHistoryProject = (location.state as { fromHistoryProject?: string } | null)?.fromHistoryProject;
+  const backHref = fromHistoryProject ? `/agents/history/${encodeURIComponent(fromHistoryProject)}` : '/agents';
+  const backLabel = fromHistoryProject ? '← Project' : '← Agents';
 
   const [displayName] = useDisplayName();
   const [intervalSeconds] = useChannelListRefreshInterval();
@@ -48,8 +57,8 @@ export default function AgentPage() {
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <Link to="/agents" style={{ color: tokens.color.textMuted, fontSize: 13, textDecoration: 'none' }}>
-          ← Agents
+        <Link to={backHref} style={{ color: tokens.color.textMuted, fontSize: 13, textDecoration: 'none' }}>
+          {backLabel}
         </Link>
         <h1 style={{ margin: 0, fontSize: 18, fontFamily: 'monospace' }} title={sessionId}>
           {dmChannel?.agent_title || sessionId}

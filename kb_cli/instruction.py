@@ -47,29 +47,19 @@ def _size_line(node: Instruction) -> str:
 
 
 def _trigger_marker(node: Instruction) -> str:
-    trigger = f"  (trigger: {node.trigger})" if node.trigger else ""
-    system = "  [system]" if node.system_level else ""
-    return f"{trigger}{system}"
+    return f"  (trigger: {node.trigger})" if node.trigger else ""
 
 
-def _link_filter(session: Session, instructions_only: bool, system_only: bool) -> Optional[Callable[[str, int], bool]]:
+def _link_filter(session: Session, instructions_only: bool) -> Optional[Callable[[str, int], bool]]:
     """Builds the (other_type, other_id) -> bool predicate for print_links's other_filter,
-    from --instructions-only/--system-only. Returns None (no filtering) when both are False,
-    the default -- show every linked node, matching kb i show root's current framing that
-    reachable connections should be cheap to see, not gated behind flags by default."""
-    if not instructions_only and not system_only:
+    from --instructions-only. Returns None (no filtering) when False, the default -- show
+    every linked node, matching kb i show root's current framing that reachable connections
+    should be cheap to see, not gated behind flags by default."""
+    if not instructions_only:
         return None
 
     def accept(other_type: str, other_id: int) -> bool:
-        if instructions_only and other_type != "Instruction":
-            return False
-        if system_only:
-            if other_type != "Instruction":
-                return False
-            other = session.get(Instruction, other_id)
-            if other is None or not other.system_level:
-                return False
-        return True
+        return other_type == "Instruction"
 
     return accept
 
@@ -79,13 +69,10 @@ def _print_node(
     node: Instruction,
     show_body: bool,
     instructions_only: bool = False,
-    system_only: bool = False,
     show_links: bool = False,
 ) -> None:
     trigger_line = f"\ntrigger: {node.trigger}" if node.trigger else ""
     print(f"#{node.id} {node.title}{trigger_line}")
-    if node.system_level:
-        print("system_level: true")
     print(_size_line(node))
     if show_body:
         print_timestamps(node)
@@ -98,7 +85,7 @@ def _print_node(
         for c in children:
             print(f"  {c.title} #{c.id}{_trigger_marker(c)}{c.age_marker()}")
     if show_body and show_links:
-        print_links(session, "Instruction", node.id, other_filter=_link_filter(session, instructions_only, system_only))
+        print_links(session, "Instruction", node.id, other_filter=_link_filter(session, instructions_only))
 
 
 def _check_title_valid(title: str) -> None:
@@ -184,7 +171,6 @@ def cmd_show(args: argparse.Namespace) -> None:
                 node,
                 show_body=True,
                 instructions_only=args.instructions_only,
-                system_only=args.system_only,
                 show_links=args.links,
             )
     if len(nodes) > 1:
@@ -253,7 +239,6 @@ def cmd_add(args: argparse.Namespace) -> None:
         title=args.title,
         body=resolve_text_arg(args.body),
         trigger=args.trigger,
-        system_level=args.system_level,
         context=args.context,
     )
     node.reembed()
@@ -304,8 +289,6 @@ def cmd_edit(args: argparse.Namespace) -> None:
         node.body = apply_replace_range(node.body, f"body of {node.title!r}", tuple(args.replace_range))
     if args.trigger is not None:
         node.trigger = None if args.trigger == "" else args.trigger
-    if args.system_level is not None:
-        node.system_level = args.system_level
     args.session.commit()
     show_output = _rendered_show_output(args.session, node)
     print(show_output, end="")
@@ -404,11 +387,6 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         help="With --links, only show links to other Instruction nodes (hide links to Notes/Goals/etc.)",
     )
     p_show.add_argument(
-        "--system-only",
-        action="store_true",
-        help="With --links, only show links to system_level Instruction nodes (implies --instructions-only)",
-    )
-    p_show.add_argument(
         "--extract",
         nargs=2,
         metavar=("BEGIN", "END"),
@@ -424,12 +402,6 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_add.add_argument("--parent", metavar="TITLE|#ID", help="Parent node (omit for a root node)")
     p_add.add_argument(
         "--trigger", required=True, help='"If/when ..." condition -- required, even a couple words beats none'
-    )
-    p_add.add_argument(
-        "--system-level",
-        dest="system_level",
-        action="store_true",
-        help="Mark as a candidate for the eventual kb si (filesystem-shippable) split -- see kb Todo #101",
     )
     p_add.set_defaults(func=cmd_add)
 
@@ -457,13 +429,6 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         "give short, unique anchors rather than the whole span, e.g. to delete/shrink a paragraph",
     )
     p_edit.add_argument("--trigger", help='New "if/when ..." condition; pass "" to clear it')
-    system_level_group = p_edit.add_mutually_exclusive_group()
-    system_level_group.add_argument(
-        "--system-level", dest="system_level", action="store_true", default=None, help="Mark as system-level"
-    )
-    system_level_group.add_argument(
-        "--no-system-level", dest="system_level", action="store_false", help="Clear system-level"
-    )
     p_edit.set_defaults(func=cmd_edit)
 
     p_delete = sub.add_parser("delete", help="Delete a node (must have no children, unless --reparent-children)")

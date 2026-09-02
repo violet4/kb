@@ -29,8 +29,8 @@ import psutil
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from harness import current_session_id, find_session_transcript_path, session_transcript_title
-from models import Channel, ChannelMessage, ChannelRead, ChannelSubscription, HarnessSession
+from harness import current_session_id, find_session_transcript_path
+from models import Channel, ChannelMessage, ChannelRead, ChannelSubscription, HarnessSession, TranscriptCache
 
 from kb_cli._util import print_table, resolve_text_arg
 
@@ -78,13 +78,22 @@ def _last_message_at(session: Session, session_id: str) -> Optional[datetime]:
     return session.scalar(select(func.max(ChannelMessage.created_at)).where(ChannelMessage.channel_id.in_(channel_ids)))
 
 
-def _session_info(path: Path) -> dict[str, str] | None:
-    """Return {'title', 'timestamp'} for a session transcript, or None if empty/unreadable.
-    Title resolution itself lives in harness.session_transcript_title (shared with the web
-    UI's channels_router, which refreshes HarnessSession.title from the same transcripts) --
-    this wrapper adds only the last-activity timestamp, which that shared function doesn't
-    need for its own callers."""
-    last_ts = None
+def _session_info(path: Path) -> Optional[dict[str, Any]]:
+    """Return {'title', 'message_count'} for a session transcript in one read, or None if
+    empty/unreadable. This is the one place that actually opens and parses a transcript file
+    for these two fields -- every caller should go through TranscriptCache.get_or_refresh
+    (models.py) instead of calling this directly, so a transcript already parsed with an
+    unchanged mtime is never re-read; this function has no cache awareness of its own; it's
+    the pure "parse this file" step TranscriptCache wraps.
+
+    message_count is the number of real chat turns (type "user" or "assistant", the same
+    definition list_chat_messages uses for what counts as a message) -- not the raw line
+    count, which is dominated by bookkeeping events (attachment, mode, permission-mode, ...)
+    unrelated to conversation content and would be a misleading size proxy."""
+    title = None
+    custom_title = None
+    first_user_text = None
+    message_count = 0
     with path.open() as fh:
         for line in fh:
             line = line.strip()
@@ -94,14 +103,37 @@ def _session_info(path: Path) -> dict[str, str] | None:
                 d = json.loads(line)
             except ValueError:
                 continue
-            ts = d.get("timestamp")
-            if ts:
-                last_ts = ts
 
-    resolved_title = session_transcript_title(path)
-    if resolved_title is None or last_ts is None:
+            t = d.get("type")
+            if t in ("user", "assistant"):
+                message_count += 1
+            if t == "ai-title":
+                title = d.get("aiTitle")
+            elif t == "custom-title":
+                custom_title = d.get("customTitle")
+            elif t == "user" and first_user_text is None and not d.get("isMeta"):
+                content = d.get("message", {}).get("content")
+                if isinstance(content, str):
+                    first_user_text = content
+                elif isinstance(content, list):
+                    for c in content:
+                        if isinstance(c, dict) and c.get("type") == "text":
+                            first_user_text = c["text"]
+                            break
+
+    resolved_title = custom_title or title
+    if resolved_title is None:
+        resolved_title = first_user_text
+        if resolved_title is not None:
+            resolved_title = " ".join(resolved_title.split())
+            if len(resolved_title) > 70:
+                resolved_title = resolved_title[:67] + "..."
+    else:
+        resolved_title = " ".join(resolved_title.split())
+
+    if resolved_title is None:
         return None
-    return {"title": resolved_title, "timestamp": last_ts}
+    return {"title": resolved_title, "message_count": message_count}
 
 
 def _require_session_id() -> str:
@@ -152,21 +184,29 @@ def cmd_register(args: argparse.Namespace) -> None:
     args.session.commit()
 
 
-def refresh_agent_title(agent: HarnessSession) -> None:
+def refresh_agent_title(session: Session, agent: HarnessSession) -> None:
     """Pull the current title (custom-title event, else ai-title, else first user message --
     same resolution Claude Code's own session picker uses) from the agent's own transcript
     and write it onto HarnessSession.title if it changed. HarnessSession.title is only ever
     set once, at SessionStart (kb sessions register), so a mid-session /rename never reaches
     it on its own -- this keeps it current on every live-session read rather than adding a
-    second write path for the CLI-side rename event, since a transcript read is cheap and both
-    `kb sessions list` and the frontend's session listings read every live agent's identity
-    per call anyway."""
+    second write path for the CLI-side rename event.
+
+    Reads through TranscriptCache.get_or_refresh (models.py), not a direct
+    session_transcript_title(path) call -- this runs on every live-session poll (both
+    `kb sessions list` and the frontend's continuously-polled Agents view read every live
+    agent's identity per call), so re-parsing a multi-thousand-line transcript from scratch
+    on every single poll (confirmed live 2026-09-01 as measurably slow, the same finding that
+    motivated the cache in the first place) would make this the single hottest unbounded-cost
+    path in the whole module; the cache makes a poll against an unchanged transcript (the
+    overwhelmingly common case -- most polls land between two user messages) a cheap
+    mtime-stat, not a full re-scan."""
     path = find_session_transcript_path(agent.id)
     if path is None:
         return
-    title = session_transcript_title(path)
-    if title is not None and title != agent.title:
-        agent.title = title
+    cached = TranscriptCache.get_or_refresh(session, path)
+    if cached is not None and cached.title != agent.title:
+        agent.title = cached.title
 
 
 class LiveSessionInfo(NamedTuple):
@@ -193,7 +233,7 @@ def list_live_sessions(session: Session) -> tuple[list[LiveSessionInfo], int]:
     now = datetime.now(timezone.utc)
     infos = []
     for row in live:
-        refresh_agent_title(row)
+        refresh_agent_title(session, row)
         if row.is_listening_live():
             listening = f"yes (pid {row.listener_pid})"
         elif row.is_listening:
@@ -233,7 +273,7 @@ def cmd_list(args: argparse.Namespace) -> None:
         cmd_history(args)
         return
     infos, cleared_count = list_live_sessions(args.session)
-    args.session.commit()  # persists clear_stale_listeners' cleanup
+    args.session.commit()  # persists clear_stale_listeners' cleanup + TranscriptCache upserts
     if cleared_count:
         print(
             f"(cleared {cleared_count} stale listener flag{'s' if cleared_count != 1 else ''} -- "
@@ -262,29 +302,90 @@ def cmd_list(args: argparse.Namespace) -> None:
     print_table(headers, rows)
 
 
-def cmd_history(args: argparse.Namespace) -> None:
+class HistorySessionInfo(NamedTuple):
+    """One past session transcript found under ~/.claude/projects -- shared by `kb sessions
+    history`'s own table and the frontend's JSON API (api/sessions_router.py), the same
+    split LiveSessionInfo/list_live_sessions uses for currently-live sessions, so the CLI and
+    web UI can never drift on what a past session's id/title/project means."""
+
+    id: str
+    project: str
+    title: str
+    timestamp: str
+    message_count: int
+
+
+class HistoryProjectInfo(NamedTuple):
+    """One project directory under ~/.claude/projects and how many session transcripts it
+    holds -- see list_history_projects."""
+
+    project: str
+    session_count: int
+
+
+def list_history_projects() -> list[HistoryProjectInfo]:
+    """Every project directory under ~/.claude/projects that holds at least one session
+    transcript, most sessions first -- directory names and a *.jsonl file count only, no
+    transcript parsing, so this stays cheap regardless of how many/how large the transcripts
+    themselves are. The frontend's project picker calls this instead of
+    list_history_sessions(project=None) for exactly that reason: populating the picker must
+    never pay the cost of parsing every transcript on disk before a project is even chosen."""
     if not _PROJECTS_DIR.is_dir():
-        print(f"No sessions directory found at {_PROJECTS_DIR}")
-        return
+        return []
+    projects = [
+        HistoryProjectInfo(project=project_dir.name, session_count=len(list(project_dir.glob("*.jsonl"))))
+        for project_dir in _PROJECTS_DIR.iterdir()
+        if project_dir.is_dir()
+    ]
+    projects = [p for p in projects if p.session_count > 0]
+    projects.sort(key=lambda p: p.session_count, reverse=True)
+    return projects
+
+
+def list_history_sessions(session: Session, project: Optional[str] = None) -> list[HistorySessionInfo]:
+    """Every past session transcript under ~/.claude/projects, most recent first. `project`
+    (a raw directory name under that path, e.g. "-home-violet-kb") restricts to one project;
+    None (the default) returns every project's sessions -- reads every transcript's cached
+    row (TranscriptCache.get_or_refresh, models.py), which only re-parses a file whose mtime
+    changed since it was last cached, so this is a full directory walk but not a full
+    re-parse on every call. Callers that only need the set of project names should use
+    list_history_projects() instead, which needs neither the cache nor a DB session."""
+    if not _PROJECTS_DIR.is_dir():
+        return []
 
     sessions = []
     for project_dir in _PROJECTS_DIR.iterdir():
         if not project_dir.is_dir():
             continue
+        if project is not None and project_dir.name != project:
+            continue
         for jsonl_path in project_dir.glob("*.jsonl"):
-            info = _session_info(jsonl_path)
-            if info:
-                sessions.append({"project": project_dir.name, **info})
+            cached = TranscriptCache.get_or_refresh(session, jsonl_path)
+            if cached:
+                sessions.append(
+                    HistorySessionInfo(
+                        id=cached.session_id,
+                        project=cached.project,
+                        title=cached.title,
+                        timestamp=cached.file_mtime.replace(tzinfo=timezone.utc).isoformat(),
+                        message_count=cached.message_count,
+                    )
+                )
 
+    sessions.sort(key=lambda s: s.timestamp, reverse=True)
+    return sessions
+
+
+def cmd_history(args: argparse.Namespace) -> None:
+    sessions = list_history_sessions(args.session)
+    args.session.commit()  # persists TranscriptCache upserts from get_or_refresh
     if not sessions:
         print("No sessions found.")
         return
 
-    sessions.sort(key=lambda s: s["timestamp"], reverse=True)
-
     counts: dict[str, int] = {}
     for s in sessions:
-        counts[s["project"]] = counts.get(s["project"], 0) + 1
+        counts[s.project] = counts.get(s.project, 0) + 1
 
     print("Directories:")
     for project, count in sorted(counts.items(), key=lambda kv: kv[0]):
@@ -292,7 +393,7 @@ def cmd_history(args: argparse.Namespace) -> None:
     print()
 
     headers = ["Date", "Directory", "Title"]
-    rows = [[s["timestamp"][:16].replace("T", " "), s["project"], s["title"]] for s in sessions]
+    rows = [[s.timestamp[:16].replace("T", " "), s.project, s.title] for s in sessions]
     print_table(headers, rows)
 
 
@@ -487,17 +588,18 @@ def cmd_show(args: argparse.Namespace) -> None:
             print(f"No session found with id {args.session_id}")
         return
 
-    info = _session_info(path)
-    if info is None:
+    cached = TranscriptCache.get_or_refresh(args.session, path)
+    args.session.commit()  # persists TranscriptCache upsert from get_or_refresh
+    if cached is None:
         return
 
     if args.title:
-        print(info["title"])
+        print(cached.title)
         return
 
     print(f"Project: {path.parent.name}")
-    print(f"Title:   {info['title']}")
-    print(f"Updated: {info['timestamp']}")
+    print(f"Title:   {cached.title}")
+    print(f"Updated: {cached.file_mtime.replace(tzinfo=timezone.utc).isoformat()}")
 
 
 def cmd_send(args: argparse.Namespace) -> None:

@@ -1,0 +1,57 @@
+[
+  {
+    "from": "0001",
+    "to": "0002",
+    "relation": "parent-of"
+  },
+  {
+    "from": "0002",
+    "to": "0003",
+    "relation": "parent-of"
+  },
+  {
+    "from": "0002",
+    "to": "0004",
+    "relation": "parent-of"
+  },
+  {
+    "from": "0002",
+    "to": "0005",
+    "relation": "parent-of"
+  },
+  {
+    "from": "0002",
+    "to": "0006",
+    "relation": "parent-of"
+  },
+  {
+    "from": "0002",
+    "to": "0007",
+    "relation": "parent-of"
+  },
+  {
+    "from": "0002",
+    "to": "0008",
+    "relation": "parent-of"
+  },
+  {
+    "from": "0002",
+    "to": "0009",
+    "relation": "parent-of"
+  },
+  {
+    "from": "0002",
+    "to": "0010",
+    "relation": "parent-of"
+  },
+  {
+    "from": "0002",
+    "to": "0011",
+    "relation": "parent-of"
+  },
+  {
+    "from": "0002",
+    "to": "0012",
+    "relation": "parent-of"
+  }
+]

@@ -4,6 +4,7 @@ depending on it being reported by hand each time it's hit."""
 
 import argparse
 import io
+import sys
 from collections import Counter
 from contextlib import redirect_stdout
 from datetime import datetime, timedelta
@@ -13,7 +14,16 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from cli_instrumentation.stats import add_stats_subparser
+try:
+    from cli_instrumentation.stats import add_stats_subparser
+
+    _HAVE_CLI_INSTRUMENTATION = True
+except ImportError:
+    # cli_instrumentation is an optional, not-yet-public dependency -- see the `kb` script's
+    # own fallback for why. Without it, `kb stats` still works for the subcommands that don't
+    # need it (errors, session-header-cost, usage); only the cli_instrumentation.stats report
+    # itself is unavailable, with a clear message instead of an ImportError at startup.
+    _HAVE_CLI_INSTRUMENTATION = False
 
 from base import _now
 from models import CliInvocation, SessionFactory
@@ -155,4 +165,13 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_header.set_defaults(func=cmd_session_header_cost)
 
     add_usage_subparser(sub)
-    add_stats_subparser(sub, fetch_rows=_fetch_instrumentation_rows)
+    if _HAVE_CLI_INSTRUMENTATION:
+        add_stats_subparser(sub, fetch_rows=_fetch_instrumentation_rows)
+    else:
+        p_unavailable = sub.add_parser("invocations", help="Unavailable -- cli_instrumentation is not installed")
+        p_unavailable.set_defaults(
+            func=lambda args: print(
+                "kb stats invocations: cli_instrumentation is not installed -- this report is unavailable.",
+                file=sys.stderr,
+            )
+        )

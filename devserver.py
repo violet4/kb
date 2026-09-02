@@ -6,13 +6,12 @@ from pathlib import Path
 from watchfiles import run_process
 
 KB_DIR = Path(__file__).parent
-UV = "/home/violet/.local/bin/uv"
 
 
 def main() -> None:
     run_process(
         str(KB_DIR),
-        target=f"{UV} run server.py",
+        target="uv run server.py",
         target_type="command",
         watch_filter=lambda change, path: path.endswith(".py"),
     )

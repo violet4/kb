@@ -1,4 +1,5 @@
-#!/usr/bin/env -S uv run --project /home/violet/kb python3
+#!/bin/sh
+''''exec uv run --project "$(dirname "$(readlink -f "$0")")" python3 "$0" "$@" # '''
 """Global kb CLI entry point. Usable from any directory (see ~/bin/kb symlink).
 
 Usage: kb [--context NAME] [--as-of WHEN] <command> [subcommand ...] [args ...]
@@ -53,7 +54,29 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from cli_instrumentation import InstrumentedArgumentParser, attach_recording, instrumented_run
+try:
+    from cli_instrumentation import InstrumentedArgumentParser, attach_recording, instrumented_run
+
+    _HAVE_CLI_INSTRUMENTATION = True
+except ImportError:
+    # cli_instrumentation is an optional, not-yet-public dependency (CLI usage/error
+    # analytics, `kb stats`) -- kb must work without it so a fresh clone never fails
+    # `uv sync`/first-run just because this piece isn't installed. Falls back to a plain
+    # argparse.ArgumentParser and a no-op instrumented_run; `kb stats` degrades to a clear
+    # "not installed" message instead of crashing (see kb_cli/stats.py).
+    from contextlib import contextmanager
+    from typing import Iterator
+
+    InstrumentedArgumentParser = argparse.ArgumentParser
+
+    def attach_recording(parser: argparse.ArgumentParser, *, record: Any) -> None:
+        pass
+
+    @contextmanager
+    def instrumented_run(parser: argparse.ArgumentParser, args: argparse.Namespace, *, record: Any) -> Iterator[None]:
+        yield
+
+    _HAVE_CLI_INSTRUMENTATION = False
 
 sys.path.insert(0, str(Path(__file__).parent))
 

@@ -1,4 +1,7 @@
-#!/usr/bin/env -S uv run --project /home/violet/kb python3
+#!/bin/sh
+# fmt: off
+''''exec uv run --project "$(dirname "$(readlink -f "$0")")" python3 "$0" "$@" # '''
+# fmt: on
 """Personal knowledge base REPL/runner."""
 
 import argparse

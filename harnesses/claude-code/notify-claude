@@ -1,4 +1,5 @@
-#!/usr/bin/env -S uv run --project /home/violet/kb python3
+#!/bin/sh
+''''exec uv run --project "$(dirname "$(readlink -f "$0")")" python3 "$0" "$@" # '''
 """Claude Code hook handler: extracts this event's own JSON payload (.cwd,
 .session_id, .message) into a plain title/body and hands delivery off to
 `kb notifications send`, which owns mute/volume/sound/ntfy -- this script

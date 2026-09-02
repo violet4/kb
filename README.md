@@ -6,6 +6,8 @@ This README covers only what setup requires or what isn't easily discovered by r
 
 ## Setup (first clone, or a new machine)
 
+Requires [uv](https://docs.astral.sh/uv/) — every script here (including `kb`/`kb_repl.py`) is directly executable via a `uv run` shebang, so `uv` itself must already be on `PATH` before anything below will run.
+
 ```bash
 uv sync                        # install dependencies
 scripts/model/download         # fetch the embedding model from HuggingFace once; after this, embedding runs offline/local

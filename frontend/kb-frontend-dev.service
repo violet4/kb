@@ -4,8 +4,10 @@ After=default.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/violet/kb/frontend
-ExecStart=/home/violet/.nvm/versions/node/v24.14.0/bin/npm run dev
+WorkingDirectory=%h/kb/frontend
+# npm must be resolvable via PATH -- set it explicitly here if not already on systemd's
+# default PATH for user services (e.g. an nvm-installed node: Environment=PATH=%h/.nvm/versions/node/vX.Y.Z/bin:/usr/bin:/bin).
+ExecStart=npm run dev
 Restart=on-failure
 RestartSec=2
 

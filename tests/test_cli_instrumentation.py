@@ -17,7 +17,12 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from cli_instrumentation import InstrumentedArgumentParser, attach_recording, instrumented_run
+cli_instrumentation = pytest.importorskip(
+    "cli_instrumentation", reason="cli_instrumentation is an optional, not-yet-public dependency"
+)
+InstrumentedArgumentParser = cli_instrumentation.InstrumentedArgumentParser
+attach_recording = cli_instrumentation.attach_recording
+instrumented_run = cli_instrumentation.instrumented_run
 
 from kb_cli import stats, todo
 from kb_cli.cli_instrumentation_sink import invocation_kwargs, should_record
@@ -91,6 +96,7 @@ def _build_kb_subparser_tree() -> argparse.ArgumentParser:
     own dest-naming convention (dest="cmd" reused at every level) is caught here, not
     only by cli_instrumentation's own generic unit tests."""
     parser = InstrumentedArgumentParser(prog="kb")
+    assert isinstance(parser, argparse.ArgumentParser)
     subparsers = parser.add_subparsers(dest="command", required=True)
     todo.add_subparser(subparsers)
     return parser

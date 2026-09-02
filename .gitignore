@@ -9,3 +9,4 @@ data/kb.sock
 data/kb.pid
 .coverage
 /scratch/
+.claude/

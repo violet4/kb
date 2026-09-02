@@ -4,10 +4,10 @@ After=default.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/violet/kb
+WorkingDirectory=%h/kb
 Environment=HF_HUB_DISABLE_TELEMETRY=1
 Environment=PATH=%h/.local/bin:/usr/bin:/bin
-ExecStart=/home/violet/.local/bin/uv run devserver.py
+ExecStart=uv run devserver.py
 Restart=on-failure
 RestartSec=2
 

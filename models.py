@@ -2843,15 +2843,17 @@ class ChannelRead(Base):
 class CliInvocation(Base):
     """One record per top-level `kb` CLI invocation -- command text, resolved subcommand
     path, timing, whether it succeeded, the error message if it didn't, and a size-capped
-    snapshot of parsed args. Written by the shared `cli_instrumentation` library (see
-    ~/dev/cli_instrumentation) via the `kb` script's own entry point, independent of any one
+    snapshot of parsed args. Written by the optional `cli_instrumentation` library (a
+    private, not-yet-public dependency -- see the `kb` script's own ImportError fallback
+    and kb_cli/stats.py) via the `kb` script's own entry point, independent of any one
     subcommand knowing about it, so every invocation is covered without each kb_cli/*.py
-    module having to opt in. The point is to make CLI friction (a confusing error, a command
-    that fails the same way repeatedly) and CLI usage patterns (unused commands, commonly
-    used flags) queryable (`kb stats`) instead of relying on friction being reported by hand
-    each time it's hit -- see kb Instruction root, "the tree's own re-check mechanisms...
-    exist for exactly this: surfacing friction proactively, not after the fact," applied to
-    the CLI's own errors and usage.
+    module having to opt in. Without cli_instrumentation installed, this table simply stays
+    empty -- nothing else in kb depends on it being populated. The point is to make CLI
+    friction (a confusing error, a command that fails the same way repeatedly) and CLI usage
+    patterns (unused commands, commonly used flags) queryable (`kb stats`) instead of relying
+    on friction being reported by hand each time it's hit -- see kb Instruction root, "the
+    tree's own re-check mechanisms... exist for exactly this: surfacing friction proactively,
+    not after the fact," applied to the CLI's own errors and usage.
 
     `args_json` stores cli_instrumentation's already-truncated args snapshot verbatim, as a
     single JSON column rather than normalized per-arg columns/rows -- its shape varies by

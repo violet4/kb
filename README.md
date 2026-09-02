@@ -62,3 +62,7 @@ The backend it proxies to is `server.py`, served by `kb.service` above (`devserv
 The LLM itself holds no memory between conversations — every model instance is generic and stateless, shared across every user of that model. kb is what supplies continuity: identity, history, and personal context live here, not in the model, which is why kb must work the same regardless of which harness or which LLM is driving it.
 
 kb's own content (the Instruction tree, `kb hooks` detectors, Goals/Todos/Notes) works from any harness driving it — a harness supplies only the trigger mechanism, never a second copy of kb's own logic (see `CLAUDE.md`'s harness paragraph). See `docs/harnesses/` for per-harness wiring instructions, one file per harness, covering every hook set up for it.
+
+## License
+
+MIT — see `LICENSE`.

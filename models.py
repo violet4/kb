@@ -50,6 +50,7 @@ from base import Base, _now
 from mixins import HasUniqueName, HasWeight
 
 _DB_PATH = Path(__file__).parent / "data" / "kb.db"
+_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 _engine = create_engine(f"sqlite:///{_DB_PATH}", echo=False)
 
 

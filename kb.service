@@ -7,7 +7,7 @@ Type=simple
 WorkingDirectory=%h/kb
 Environment=HF_HUB_DISABLE_TELEMETRY=1
 Environment=PATH=%h/.local/bin:/usr/bin:/bin
-ExecStart=uv run devserver.py
+ExecStart=%h/.local/bin/uv run devserver.py
 Restart=on-failure
 RestartSec=2
 

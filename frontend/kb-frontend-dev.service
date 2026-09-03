@@ -6,7 +6,11 @@ After=default.target
 Type=simple
 WorkingDirectory=%h/kb/frontend
 # npm must be resolvable via PATH -- set it explicitly here if not already on systemd's
-# default PATH for user services (e.g. an nvm-installed node: Environment=PATH=%h/.nvm/versions/node/vX.Y.Z/bin:/usr/bin:/bin).
+# default PATH for user services (e.g. an nvm-installed node). Setting Environment=PATH=...
+# alone is not enough for systemd to resolve a relative ExecStart binary -- ExecSearchPath=
+# must be set to the same value too, e.g.:
+#   Environment=PATH=%h/.nvm/versions/node/vX.Y.Z/bin:/usr/bin:/bin
+#   ExecSearchPath=%h/.nvm/versions/node/vX.Y.Z/bin:/usr/bin:/bin
 ExecStart=npm run dev
 Restart=on-failure
 RestartSec=2

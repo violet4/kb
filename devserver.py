@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Dev server wrapper. Runs server.py and restarts it on any .py file change in ~/kb."""
+"""Dev server wrapper. Runs server.py and restarts it on any .py file change in this repo."""
 
 import sys
 from pathlib import Path

@@ -6,11 +6,12 @@ This README covers only what setup requires or what isn't easily discovered by r
 
 ## Setup (first clone, or a new machine)
 
-Requires [uv](https://docs.astral.sh/uv/) — every script here (including `kb`/`kb_repl.py`) is directly executable via a `uv run` shebang, so `uv` itself must already be on `PATH` before anything below will run. Clone this repo to `~/kb` — `kb.service` (below) assumes that path.
+Requires [uv](https://docs.astral.sh/uv/) — every script here (including `kb`/`kb_repl.py`) is directly executable via a `uv run` shebang, so `uv` itself must already be on `PATH` before anything below will run. `kb.service` (below) is a systemd user unit whose `WorkingDirectory` is fixed to `~/kb`, so clone this repo there if you plan to use it — cloning anywhere else works for the CLI, but you'll need to edit `kb.service`'s `WorkingDirectory` (and `frontend/kb-frontend-dev.service`'s, if using the web UI) to match.
 
 ```bash
 uv sync                        # install dependencies
 scripts/model/download         # fetch the embedding model from HuggingFace once; after this, embedding runs offline/local
+                                # caches to HuggingFace's default location (~/.cache/huggingface/hub, or $HF_HOME/$HUGGINGFACE_HUB_CACHE if set)
 scripts/db/upgrade             # apply migrations, creating data/kb.db on first run
 scripts/dev/setup-hooks        # install git pre-commit/post-commit hooks (idempotent, safe to re-run)
 ```
@@ -55,7 +56,7 @@ npm install
 npm run dev                    # Vite dev server on :25691, proxies /api to the backend on :25690
 ```
 
-The backend it proxies to is `server.py`, served by `kb.service` above (`devserver.py` runs `server.py` and restarts it on `.py` file changes) — start that first, or `kb search`-style API calls from the frontend will fail. `npm run dev` is a manual foreground process; to run the frontend as a background service the same way as the backend, install `frontend/kb-frontend-dev.service` the same way as `kb.service` above (symlink into `~/.config/systemd/user/`, `daemon-reload`, `enable --now`).
+Open `http://127.0.0.1:25691` in a browser — that's the web UI. The backend on `:25690` (`server.py`, served by `kb.service` above) is a plain JSON API, not a page to open directly; it exists only for the frontend to proxy `/api` requests to, so start `kb.service` first or `kb search`-style API calls from the frontend will fail. `npm run dev` is a manual foreground process; to run the frontend as a background service the same way as the backend, install `frontend/kb-frontend-dev.service` the same way as `kb.service` above (symlink into `~/.config/systemd/user/`, `daemon-reload`, `enable --now`).
 
 ## Connecting a harness (Claude Code, or another agent tool)
 

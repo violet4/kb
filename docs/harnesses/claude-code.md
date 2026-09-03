@@ -264,7 +264,7 @@ Pipe-test a specific hook's exact command before relying on it — synthesize th
 
 ```bash
 echo '{"tool_response":{"stdout":"Found 1 error in 1 file","stderr":""}}' | jq -r '(.tool_response.stdout // "") + "\n" + (.tool_response.stderr // "")' | /path/to/kb hooks mypy-check
-echo '{"cwd":"/home/violet/kb","session_id":"abcd1234","message":"hello"}' | /path/to/kb-repo/harnesses/claude-code/notify-claude waiting
+echo '{"cwd":"/path/to/kb-repo","session_id":"abcd1234","message":"hello"}' | /path/to/kb-repo/harnesses/claude-code/notify-claude waiting
 /path/to/kb notifications send "Test" "hello" --priority high   # exercise delivery directly, bypassing the JSON envelope
 hint=$(/path/to/kb hooks tree-reminder); jq -n --arg h "$hint" '{hookSpecificOutput: {hookEventName: "UserPromptSubmit", additionalContext: $h}}'
 echo '{"session_id":"abcd1234","source":"startup"}' | jq -r '.session_id' | /path/to/kb hooks daily-check   # first session today: prints the priming reminder

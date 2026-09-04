@@ -1,10 +1,11 @@
-import { useState } from 'react';
 import { tokens } from '../shared/tokens';
 import CalendarNav from './components/CalendarNav';
 import DayCell from './components/DayCell';
-import NewEventModal from './components/NewEventModal';
+import EventFormModal from './components/EventFormModal';
 import { addDays, isSameMonth, monthGridDays, monthGridStart } from './calendarMath';
+import { useCalendarKeyNav } from './hooks/useCalendarKeyNav';
 import { useCalendarNav } from './hooks/useCalendarNav';
+import { useEventFormModalState } from './hooks/useEventFormModalState';
 import { useEventsInRange } from './hooks/useEventsInRange';
 
 const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -15,11 +16,12 @@ interface MonthViewProps {
 
 export default function MonthView({ todayHighlightColor }: MonthViewProps) {
   const { anchor, goToPrev, goToNext, goToToday } = useCalendarNav('month');
+  useCalendarKeyNav(goToPrev, goToNext, goToToday);
   const days = monthGridDays(anchor);
   const rangeStart = monthGridStart(anchor);
   const rangeEnd = addDays(rangeStart, 42);
   const { occurrences, loading, error, refetch } = useEventsInRange(rangeStart, rangeEnd);
-  const [newEventDate, setNewEventDate] = useState<Date | null>(null);
+  const modal = useEventFormModalState();
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1, minHeight: 0, padding: '0 8px 8px' }}>
@@ -27,7 +29,7 @@ export default function MonthView({ todayHighlightColor }: MonthViewProps) {
       {loading && <p style={{ color: tokens.color.textMuted, margin: 0 }}>Loading...</p>}
       {error && <p style={{ color: tokens.color.danger, margin: 0 }}>{error}</p>}
       {!loading && !error && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 1, flex: 1, minHeight: 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 1, flex: 1, minHeight: 0, userSelect: 'none' }}>
           <WeekdayHeaderRow />
           <div
             style={{
@@ -46,13 +48,14 @@ export default function MonthView({ todayHighlightColor }: MonthViewProps) {
                 occurrences={occurrences}
                 dimmed={!isSameMonth(date, anchor)}
                 todayHighlightColor={todayHighlightColor}
-                onDoubleClick={setNewEventDate}
+                onDoubleClick={(d) => modal.openForNewEvent(withDefaultTime(d))}
+                onEventDoubleClick={modal.openForEdit}
               />
             ))}
           </div>
         </div>
       )}
-      <NewEventModal date={newEventDate} onClose={() => setNewEventDate(null)} onCreated={refetch} />
+      <EventFormModal date={modal.date} existing={modal.existing} onClose={modal.close} onSaved={refetch} />
     </div>
   );
 }
@@ -71,4 +74,14 @@ function WeekdayHeaderRow() {
 
 function formatMonthLabel(date: Date): string {
   return date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+}
+
+/** Month view's day cells carry no time-of-day (local midnight) -- unlike WeekView's
+ * time grid, where a double-click position maps to a real hour, there's nothing here
+ * to derive a time from, so this fills in the same 9am default useEventForm used to
+ * hardcode before the time field started reading it off the clicked date. */
+function withDefaultTime(date: Date): Date {
+  const withTime = new Date(date);
+  withTime.setHours(9, 0, 0, 0);
+  return withTime;
 }

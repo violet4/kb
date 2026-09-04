@@ -16,10 +16,10 @@ interface UseRecurrenceFieldResult {
  * the preset's generated string; typing directly into the raw textbox (setRruleDirect)
  * switches the preset to 'custom' so the two controls never silently disagree about
  * what the field currently holds. */
-export function useRecurrenceField(date: Date): UseRecurrenceFieldResult {
-  const [preset, setPresetState] = useState<RecurrencePreset>('none');
+export function useRecurrenceField(date: Date, initialRrule = ''): UseRecurrenceFieldResult {
+  const [preset, setPresetState] = useState<RecurrencePreset>(initialRrule ? 'custom' : 'none');
   const [everyN, setEveryNState] = useState(2);
-  const [rrule, setRrule] = useState('');
+  const [rrule, setRrule] = useState(initialRrule);
 
   const setPreset = (next: RecurrencePreset): void => {
     setPresetState(next);

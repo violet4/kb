@@ -3,11 +3,13 @@ import type { Event } from '../types';
 
 interface EventRowProps {
   event: Event;
+  onDoubleClick?: (event: Event) => void;
 }
 
-export default function EventRow({ event }: EventRowProps) {
+export default function EventRow({ event, onDoubleClick }: EventRowProps) {
   return (
     <div
+      onDoubleClick={onDoubleClick ? () => onDoubleClick(event) : undefined}
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -17,6 +19,7 @@ export default function EventRow({ event }: EventRowProps) {
         background: tokens.color.surface,
         border: `1px solid ${tokens.color.border}`,
         borderRadius: 6,
+        cursor: onDoubleClick ? 'pointer' : undefined,
       }}
     >
       <EventRowInfo event={event} />

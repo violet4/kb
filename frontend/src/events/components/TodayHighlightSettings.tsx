@@ -1,3 +1,4 @@
+import Popover from '../../shared/Popover';
 import { tokens } from '../../shared/tokens';
 import { rgbTripletToHex, hexToRgbTriplet } from '../colorFormat';
 
@@ -15,13 +16,12 @@ export default function TodayHighlightSettings({
   onChangeAlpha,
 }: TodayHighlightSettingsProps) {
   return (
-    <details style={{ fontSize: 13, color: tokens.color.textMuted }}>
-      <summary style={{ cursor: 'pointer' }}>Settings</summary>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8, minWidth: 220 }}>
+    <Popover label="Settings">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13 }}>
         <TodayColorField rgb={rgb} onChange={onChangeRgb} />
         <TodayAlphaField alpha={alpha} onChange={onChangeAlpha} />
       </div>
-    </details>
+    </Popover>
   );
 }
 

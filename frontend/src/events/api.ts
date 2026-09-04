@@ -39,3 +39,13 @@ export async function createEvent(input: NewEvent): Promise<Event> {
   if (!response.ok) throw new Error(`Failed to create event: ${response.status} ${await response.text()}`);
   return response.json();
 }
+
+export async function updateEvent(id: number, input: NewEvent): Promise<Event> {
+  const response = await fetch(`${API_BASE}/events/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) throw new Error(`Failed to update event: ${response.status} ${await response.text()}`);
+  return response.json();
+}

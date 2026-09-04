@@ -11,6 +11,20 @@ if TYPE_CHECKING:
 _MODEL_NAME = "all-MiniLM-L6-v2"
 _model: Optional["SentenceTransformer"] = None
 
+# Set by server.py's own lifespan once it has warmed the model in-process. Lets embed()
+# below skip entirely the "is the warm server running" HTTP self-check when this
+# process *is* that server -- a synchronous httpx.get() back to 127.0.0.1:25690 from
+# inside one of that same server's own single-threaded request handlers blocks the
+# event loop from ever answering that /ping request, stalling every embed() call made
+# during request handling (e.g. Event.create's reembed()) by about a second, observed
+# via `time curl -X POST .../events`.
+_warm_in_process = False
+
+
+def mark_warm_in_process() -> None:
+    global _warm_in_process
+    _warm_in_process = True
+
 
 def model_name() -> str:
     return _MODEL_NAME
@@ -30,6 +44,9 @@ def _local_embed(text: str) -> list[float]:
 
 
 def embed(text: str) -> list[float]:
+    if _warm_in_process:
+        return _local_embed(text)
+
     from client import KBClient, is_server_running
 
     if is_server_running():

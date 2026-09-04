@@ -3,7 +3,7 @@ dailies_router.py, computed fields (next_occurrence) added the same way is_due_n
 is_overdue are added to DailyOut. Unscoped by default, matching dailies_router.py's
 "frontend browses everything for now" convention."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -43,6 +43,12 @@ def _to_out(event: Event) -> EventOut:
     )
 
 
+def _as_utc(dt: datetime) -> datetime:
+    """SQLite drops tzinfo on read-back (see AGENTS.md's DateTime(timezone=True) note)
+    -- every stored instant is UTC, so a naive value here is safely known to be UTC."""
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+
+
 def _get_event_or_404(session: Session, event_id: int) -> Event:
     event = session.get(Event, event_id)
     if event is None:
@@ -56,7 +62,7 @@ async def list_events(upcoming_only: bool = True, session: Session = Depends(get
     out = [_to_out(e) for e in events]
     if upcoming_only:
         out = [e for e in out if e.next_occurrence is not None]
-    out.sort(key=lambda e: e.next_occurrence or e.starts_at)
+    out.sort(key=lambda e: e.next_occurrence or _as_utc(e.starts_at))
     return out
 
 
@@ -78,6 +84,26 @@ async def create_event(body: EventCreateIn, session: Session = Depends(get_sessi
         recurrence=body.recurrence,
         notes=body.notes,
     )
+    session.commit()
+    return _to_out(event)
+
+
+class EventUpdateIn(BaseModel):
+    title: str
+    starts_at: datetime
+    is_all_day: bool = False
+    recurrence: Optional[str] = None
+    notes: Optional[str] = None
+
+
+@router.put("/{event_id}", response_model=EventOut)
+async def update_event(event_id: int, body: EventUpdateIn, session: Session = Depends(get_session)) -> EventOut:
+    event = _get_event_or_404(session, event_id)
+    event.title = body.title
+    event.starts_at = body.starts_at
+    event.is_all_day = body.is_all_day
+    event.recurrence = body.recurrence
+    event.notes = body.notes
     session.commit()
     return _to_out(event)
 

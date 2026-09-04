@@ -1,6 +1,7 @@
 import { tokens } from '../../shared/tokens';
 import type { EventOccurrence } from '../api';
 import { isSameDay, occurrenceFallsOnDay } from '../calendarMath';
+import type { Event } from '../types';
 import OccurrenceChip from './OccurrenceChip';
 
 interface DayCellProps {
@@ -9,9 +10,17 @@ interface DayCellProps {
   dimmed?: boolean;
   todayHighlightColor: string;
   onDoubleClick?: (date: Date) => void;
+  onEventDoubleClick?: (event: Event) => void;
 }
 
-export default function DayCell({ date, occurrences, dimmed, todayHighlightColor, onDoubleClick }: DayCellProps) {
+export default function DayCell({
+  date,
+  occurrences,
+  dimmed,
+  todayHighlightColor,
+  onDoubleClick,
+  onEventDoubleClick,
+}: DayCellProps) {
   const dayOccurrences = occurrences.filter((occ) =>
     occurrenceFallsOnDay(new Date(occ.occurs_at), date, occ.event.is_all_day),
   );
@@ -36,7 +45,11 @@ export default function DayCell({ date, occurrences, dimmed, todayHighlightColor
       <DayCellHeader date={date} today={today} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, overflow: 'auto', minHeight: 0 }}>
         {dayOccurrences.map((occ) => (
-          <OccurrenceChip key={`${occ.event.id}-${occ.occurs_at}`} occurrence={occ} />
+          <OccurrenceChip
+            key={`${occ.event.id}-${occ.occurs_at}`}
+            occurrence={occ}
+            onDoubleClick={onEventDoubleClick}
+          />
         ))}
       </div>
     </div>

@@ -28,7 +28,7 @@ from api.events_router import router as events_router
 from api.search_router import router as search_router
 from api.sessions_router import router as sessions_router
 from api.usage_router import router as usage_router
-from embed import _local_embed as embed, model_name
+from embed import _local_embed as embed, mark_warm_in_process, model_name
 from kb_cli.archivebox import resolve_or_push
 from models import ArchivedLink, SessionFactory
 
@@ -73,6 +73,7 @@ def _reconcile_stuck_archivebox_pushes() -> None:
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     log.info("warming up embedding model...")
     embed("warmup")
+    mark_warm_in_process()
     log.info("model ready: %s", model_name())
     reconcile_task = asyncio.create_task(asyncio.to_thread(_reconcile_stuck_archivebox_pushes))
     yield

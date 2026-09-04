@@ -6,6 +6,7 @@ interface UseEventsResult {
   events: Event[];
   loading: boolean;
   error: string | null;
+  refetch: () => void;
 }
 
 export function useEvents(upcomingOnly: boolean): UseEventsResult {
@@ -29,5 +30,5 @@ export function useEvents(upcomingOnly: boolean): UseEventsResult {
     load();
   }, [load]);
 
-  return { events, loading, error };
+  return { events, loading, error, refetch: load };
 }

@@ -193,6 +193,44 @@ def cmd_dependency_install_check(args: argparse.Namespace) -> None:
     args.session.commit()
 
 
+_HEREDOC_BODY_RE = re.compile(r"<<-?\s*'?(\w+)'?.*?\n.*?\n\1\b", re.DOTALL)
+_QUOTED_STRING_RE = re.compile(r"'[^']*'|\"[^\"]*\"")
+
+# Requires nohup/setsid to sit immediately before the invocation (an optional env-var prefix,
+# e.g. `nohup kb sessions listen`, matching dependency-install-check's own env-var-skip
+# pattern), or a trailing `&`/`disown` immediately after -- not mere co-occurrence anywhere in
+# the command string, so a heredoc body or quoted string that only *mentions* the pattern in
+# prose (e.g. a `kb journal add` call documenting this exact bug) doesn't false-positive.
+_SESSIONS_LISTEN_BACKGROUNDED_RE = re.compile(
+    r"(?:(?<![\w.-])(?:nohup|setsid)\s+(?:\w+=\S+\s+)*(?:\S*/)?kb\s+sessions\s+listen\b"
+    r"|(?<![\w.-])(?:\S*/)?kb\s+sessions\s+listen\b[^\n;|]*(?:&\s*(?:[;&|]|$)|;\s*disown\b))"
+)
+
+_SESSIONS_LISTEN_SHELL_BACKGROUND_BLOCK = (
+    "Blocked: this backgrounds `kb sessions listen` at the shell level (nohup/setsid/disown/trailing `&`). "
+    "A shell-backgrounded process cannot deliver its result back into this conversation. Run it as its own "
+    "Bash tool call using the tool's own run_in_background parameter instead: "
+    'Bash({ command: "kb sessions listen", run_in_background: true }).'
+)
+
+
+def cmd_sessions_listen_check(args: argparse.Namespace) -> None:
+    """Read a Bash command string on stdin; if it invokes `kb sessions listen` with shell-level
+    backgrounding (nohup/setsid immediately prefixed, or a trailing `&`/`; disown` immediately
+    after the invocation itself), print a block reason to stdout -- shell-backgrounded output
+    can't be delivered back into the conversation, only the Bash tool's own run_in_background
+    parameter can. Heredoc bodies and quoted strings are stripped before matching, so a command
+    that merely quotes or documents the bad pattern as text (e.g. a `kb journal add`/`kb notes
+    add` call about this exact detector) doesn't false-positive. Prints nothing (exit 0)
+    otherwise, so a harness adapter can pipe any Bash command through unconditionally and only
+    block on non-empty output."""
+    command = sys.stdin.read()
+    scannable = _HEREDOC_BODY_RE.sub("", command)
+    scannable = _QUOTED_STRING_RE.sub("", scannable)
+    if _SESSIONS_LISTEN_BACKGROUNDED_RE.search(scannable):
+        print(_SESSIONS_LISTEN_SHELL_BACKGROUND_BLOCK)
+
+
 _TREE_REMINDER = (
     "Re-check the Instruction tree for a child relevant to what you're about to do now, not just at session start."
 )
@@ -408,6 +446,12 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         help="Detect a new-dependency install command on stdin; require AUDITED=noteN or print a block reason",
     )
     p_dep_install.set_defaults(func=cmd_dependency_install_check)
+
+    p_sessions_listen = sub.add_parser(
+        "sessions-listen-check",
+        help="Detect `kb sessions listen` shell-backgrounded (nohup/setsid/disown/&) on stdin; print a block reason if it matches",
+    )
+    p_sessions_listen.set_defaults(func=cmd_sessions_listen_check)
 
     p_memory_md = sub.add_parser(
         "memory-md-check",

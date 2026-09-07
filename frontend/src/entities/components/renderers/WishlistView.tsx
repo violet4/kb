@@ -11,7 +11,7 @@ export default function WishlistView(props: RendererProps) {
       <Field label="Priority" value={f.priority} editable={editableFieldProps(props, 'priority')} />
       <Field label="Price min" value={f.price_min} />
       <Field label="Price max" value={f.price_max} />
-      <Field label="Notes" value={f.notes} editable={editableFieldProps(props, 'notes')} />
+      <Field label="Notes" value={f.notes} editable={editableFieldProps(props, 'notes')} markdown />
     </div>
   );
 }

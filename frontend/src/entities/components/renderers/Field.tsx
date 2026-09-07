@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import Markdown from '../../../shared/Markdown';
 import { tokens } from '../../../shared/tokens';
 import { useFieldEdit } from '../../hooks/useFieldEdit';
 import { rowToEntityDetail } from '../../rowToEntityDetail';
@@ -23,6 +24,11 @@ interface FieldProps {
   label: string;
   value: unknown;
   editable?: EditableFieldProps;
+  // Render the display (non-editing) value as markdown -- for long free-text
+  // fields (Body/Description/Notes) where the source may contain markdown,
+  // matching SessionTranscript's chat-message rendering. Editing still shows
+  // and edits the raw text; only the read view is rendered as markdown.
+  markdown?: boolean;
 }
 
 // Shared field-row layout used by every type-specific renderer, so each renderer
@@ -35,7 +41,7 @@ interface FieldProps {
 // complete value the way picking an option is, so a nullable text/number field gets
 // NullableFieldWrapper's placeholder-then-click-to-reveal/clear affordance around it
 // -- an always-live control skips that wrapper entirely (see `alwaysLive` below).
-export default function Field({ label, value, editable }: FieldProps) {
+export default function Field({ label, value, editable, markdown }: FieldProps) {
   const [isEditing, setIsEditing] = useState(false);
   const isEmpty = value === null || value === undefined || value === '';
   const nullable = editable?.schema.nullable ?? false;
@@ -64,7 +70,13 @@ export default function Field({ label, value, editable }: FieldProps) {
           onClear={() => clear().then((row) => editable.onSaved(rowToEntityDetail(row)))}
           onSetValue={() => setIsEditing(true)}
         >
-          <EditableControl editable={editable} value={value} isEditing={isEditing} setIsEditing={setIsEditing} />
+          <EditableControl
+            editable={editable}
+            value={value}
+            isEditing={isEditing}
+            setIsEditing={setIsEditing}
+            markdown={markdown}
+          />
         </NullableFieldWrapper>
       </div>
     );
@@ -73,7 +85,7 @@ export default function Field({ label, value, editable }: FieldProps) {
   return (
     <div style={{ display: 'flex', gap: 8, fontSize: 13, alignItems: 'center' }}>
       <span style={{ color: tokens.color.textMuted, minWidth: 90 }}>{label}</span>
-      <EditableControl editable={editable} value={value} isEditing={isEditing} setIsEditing={setIsEditing} />
+      <EditableControl editable={editable} value={value} isEditing={isEditing} setIsEditing={setIsEditing} markdown={markdown} />
     </div>
   );
 }
@@ -83,11 +95,12 @@ interface EditableControlProps {
   value: unknown;
   isEditing: boolean;
   setIsEditing: (editing: boolean) => void;
+  markdown?: boolean;
 }
 
 // Picks the concrete control for this field's kind -- the one place that decision is
 // made, shared by both the plain and nullable-wrapped layouts above.
-function EditableControl({ editable, value, isEditing, setIsEditing }: EditableControlProps) {
+function EditableControl({ editable, value, isEditing, setIsEditing, markdown }: EditableControlProps) {
   if (editable?.schema.kind === 'enum') {
     return (
       <EnumFieldSelect
@@ -138,6 +151,18 @@ function EditableControl({ editable, value, isEditing, setIsEditing }: EditableC
         onSaved={onSaved}
         onCancel={() => setIsEditing(false)}
       />
+    );
+  }
+
+  if (markdown && value !== null && value !== undefined && value !== '') {
+    return (
+      <span
+        style={{ cursor: editable ? 'pointer' : undefined }}
+        onClick={editable ? () => setIsEditing(true) : undefined}
+        title={editable ? 'Click to edit' : undefined}
+      >
+        <Markdown text={String(value)} />
+      </span>
     );
   }
 

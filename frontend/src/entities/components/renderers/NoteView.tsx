@@ -8,7 +8,7 @@ export default function NoteView(props: RendererProps) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <Field label="Collection" value={f.collection} editable={editableFieldProps(props, 'collection')} />
       <Field label="Tags" value={f.tags} editable={editableFieldProps(props, 'tags')} />
-      <Field label="Body" value={f.body} editable={editableFieldProps(props, 'body')} />
+      <Field label="Body" value={f.body} editable={editableFieldProps(props, 'body')} markdown />
     </div>
   );
 }

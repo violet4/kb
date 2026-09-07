@@ -12,7 +12,7 @@ export default function DailyView(props: RendererProps) {
       <Field label="Is active" value={f.is_active} editable={editableFieldProps(props, 'is_active')} />
       <Field label="Location" value={f.location} editable={editableFieldProps(props, 'location')} />
       <Field label="Next due date" value={f.next_due_date} />
-      <Field label="Notes" value={f.notes} editable={editableFieldProps(props, 'notes')} />
+      <Field label="Notes" value={f.notes} editable={editableFieldProps(props, 'notes')} markdown />
     </div>
   );
 }

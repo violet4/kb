@@ -16,7 +16,7 @@ export default function TodoView(props: RendererProps) {
         editable={editableFieldProps(props, 'resolution_distance')}
       />
       <Field label="Urgent" value={f.urgent ? 'yes' : null} />
-      <Field label="Notes" value={f.notes} editable={editableFieldProps(props, 'notes')} />
+      <Field label="Notes" value={f.notes} editable={editableFieldProps(props, 'notes')} markdown />
     </div>
   );
 }

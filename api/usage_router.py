@@ -1,13 +1,16 @@
-"""Usage endpoint -- thin wrapper around kb_cli.usage's shared fetch/parse logic
+"""Usage endpoints -- thin wrapper around kb_cli.usage's shared fetch/parse logic
 (see that module for `claude -p /usage` shelling-out details), returned as JSON
 for the frontend's ambient usage page."""
 
 import asyncio
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import select
 
 from kb_cli.usage import UsageFetchError, fetch_usage
+from models import SessionFactory, UsageSample
 
 router = APIRouter(prefix="/usage")
 
@@ -45,3 +48,37 @@ async def get_usage() -> UsageOut:
         week_resets=usage.week_resets,
         week_resets_at=usage.week_resets_at.isoformat(),
     )
+
+
+class UsageSampleOut(BaseModel):
+    sampled_at: str
+    session_pct: int
+    session_resets_at: str
+    week_pct: int
+    week_resets_at: str
+
+
+def _fetch_history_sync(since: datetime) -> list[UsageSampleOut]:
+    session = SessionFactory()
+    try:
+        samples = session.scalars(
+            select(UsageSample).where(UsageSample.sampled_at >= since).order_by(UsageSample.sampled_at)
+        ).all()
+        return [
+            UsageSampleOut(
+                sampled_at=s.sampled_at.replace(tzinfo=timezone.utc).isoformat(),
+                session_pct=s.session_pct,
+                session_resets_at=s.session_resets_at.replace(tzinfo=timezone.utc).isoformat(),
+                week_pct=s.week_pct,
+                week_resets_at=s.week_resets_at.replace(tzinfo=timezone.utc).isoformat(),
+            )
+            for s in samples
+        ]
+    finally:
+        session.close()
+
+
+@router.get("/history", response_model=list[UsageSampleOut])
+async def get_usage_history(hours: float = 5.0) -> list[UsageSampleOut]:
+    since = datetime.now(timezone.utc) - timedelta(hours=hours)
+    return await asyncio.to_thread(_fetch_history_sync, since)

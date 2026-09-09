@@ -1,4 +1,4 @@
-import type { Usage } from './types';
+import type { Usage, UsageSample } from './types';
 
 // /api (not http://127.0.0.1:25690) so requests go through Vite's dev
 // proxy (see vite.config.ts) and stay same-origin.
@@ -7,5 +7,11 @@ const API_BASE = '/api';
 export async function fetchUsage(): Promise<Usage> {
   const response = await fetch(`${API_BASE}/usage`);
   if (!response.ok) throw new Error(`Failed to load usage: ${response.status} ${await response.text()}`);
+  return response.json();
+}
+
+export async function fetchUsageHistory(hours: number): Promise<UsageSample[]> {
+  const response = await fetch(`${API_BASE}/usage/history?hours=${hours}`);
+  if (!response.ok) throw new Error(`Failed to load usage history: ${response.status} ${await response.text()}`);
   return response.json();
 }

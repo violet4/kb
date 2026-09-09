@@ -2876,6 +2876,28 @@ class CliInvocation(Base):
         return f"<CliInvocation #{self.id} [{status}] {self.command!r}>"
 
 
+class UsageSample(Base):
+    """A single point-in-time reading of `claude -p /usage`'s session/week percentages,
+    recorded by `kb_cli.usage.fetch_usage()` each time it performs a real (non-cached) fetch --
+    never on a cache hit, so samples are naturally throttled to at most 1/minute by
+    `_CACHE_MAX_AGE` regardless of how many CLI/web callers ask in that window. The point is an
+    over-time record (`kb stats usage --history`, future charts) that can answer "was that spike
+    10 minutes or 2 hours" after the fact, not just show the current instantaneous reading.
+    `raw_text` samples (no usage yet) are not recorded -- there is nothing numeric to chart."""
+
+    __tablename__ = "usage_sample"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    sampled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+    session_pct: Mapped[int] = mapped_column(Integer, nullable=False)
+    session_resets_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    week_pct: Mapped[int] = mapped_column(Integer, nullable=False)
+    week_resets_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    def __repr__(self) -> str:
+        return f"<UsageSample #{self.id} session={self.session_pct}% week={self.week_pct}%>"
+
+
 # ---------------------------------------------------------------------------
 # Bootstrap
 # ---------------------------------------------------------------------------

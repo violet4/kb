@@ -7,11 +7,14 @@ import fcntl
 import json
 import re
 import subprocess
+import sys
 import tempfile
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
+
+from sqlalchemy import select
 
 _SESSION_RE = re.compile(r"Current session:\s*(\d+)%\s*used\s*.*?resets\s*(.+)")
 _WEEK_RE = re.compile(r"Current week \(all models\):\s*(\d+)%\s*used\s*.*?resets\s*(.+)")
@@ -27,10 +30,11 @@ WEEK_PERIOD = timedelta(days=7)
 _CACHE_PATH = Path(tempfile.gettempdir()) / "kb-usage-fetch.json"
 _LOCK_PATH = Path(tempfile.gettempdir()) / "kb-usage-fetch.lock"
 
-# A result already in flight counts as fresh for any caller that arrives while the flock is
-# held; this only guards the short window after the lock is released, in case two callers
-# start close enough together that the second acquires the lock just after the first wrote.
-_CACHE_MAX_AGE = timedelta(seconds=5)
+# Deliberately capped at 1 minute: sub-minute resolution isn't valuable enough to justify the
+# multi-second `claude -p /usage` subprocess cost, and this cap is also what throttles
+# UsageSample recording (see fetch_usage) to at most 1 sample/minute regardless of how many
+# CLI/web callers ask in that window -- no separate polling loop needed for history recording.
+_CACHE_MAX_AGE = timedelta(minutes=1)
 
 
 class UsageFetchError(RuntimeError):
@@ -147,11 +151,45 @@ def _fetch_usage_uncached() -> Usage:
     )
 
 
+def _record_sample(usage: Usage) -> None:
+    """Records one UsageSample row for a real (non-cached) fetch. A fresh, short-lived session
+    -- same rationale as kb_cli/stats.py's _fetch_instrumentation_rows -- and a DB error here
+    must never break the usage fetch itself (callers still get their Usage either way), so it's
+    caught rather than raised -- but reported to stderr rather than fully silenced, since a
+    recurring failure here would otherwise degrade history silently with no visible signal."""
+    if usage.raw_text is not None:
+        return
+    assert usage.session_pct is not None and usage.session_resets_at is not None
+    assert usage.week_pct is not None and usage.week_resets_at is not None
+    try:
+        from models import SessionFactory, UsageSample
+
+        session = SessionFactory()
+        try:
+            session.add(
+                UsageSample(
+                    session_pct=usage.session_pct,
+                    session_resets_at=usage.session_resets_at,
+                    week_pct=usage.week_pct,
+                    week_resets_at=usage.week_resets_at,
+                )
+            )
+            session.commit()
+        finally:
+            session.close()
+    except Exception as e:
+        print(f"kb: failed to record UsageSample: {e}", file=sys.stderr)
+
+
 def fetch_usage() -> Usage:
     """Single-flighted across every caller (any thread/process on this machine): holds an
     flock for the duration of the underlying `claude -p /usage` call, so a caller that arrives
     while one is already in flight blocks on the lock rather than starting a second redundant
-    subprocess, then reads the result the first caller just wrote instead of re-fetching."""
+    subprocess, then reads the result the first caller just wrote instead of re-fetching.
+
+    Records a UsageSample only on a real (non-cached) fetch -- since _CACHE_MAX_AGE is 1 minute,
+    this naturally throttles recorded history to at most 1 sample/minute, matching the
+    resolution decided to be worth the subprocess cost, with no separate polling loop."""
     _LOCK_PATH.touch(exist_ok=True)
     with open(_LOCK_PATH) as lock_file:
         fcntl.flock(lock_file, fcntl.LOCK_EX)
@@ -163,6 +201,7 @@ def fetch_usage() -> Usage:
 
             usage = _fetch_usage_uncached()
             _CACHE_PATH.write_text(usage.to_json())
+            _record_sample(usage)
             return usage
         finally:
             fcntl.flock(lock_file, fcntl.LOCK_UN)
@@ -224,6 +263,28 @@ Last 7d · 7996 requests · 78 sessions
 
 
 def cmd_usage(args: argparse.Namespace) -> None:
+    if args.history is not None:
+        from models import SessionFactory, UsageSample
+
+        since = datetime.now(timezone.utc) - timedelta(hours=args.history)
+        session = SessionFactory()
+        try:
+            samples = session.scalars(
+                select(UsageSample).where(UsageSample.sampled_at >= since).order_by(UsageSample.sampled_at)
+            ).all()
+        finally:
+            session.close()
+
+        if not samples:
+            print(f"No usage samples recorded in the last {args.history}h.")
+            return
+        for s in samples:
+            sampled_at = s.sampled_at.replace(tzinfo=timezone.utc).astimezone()
+            print(
+                f"{sampled_at.strftime('%Y-%m-%d %H:%M:%S')}  " f"session {s.session_pct:>3}%  ·  week {s.week_pct:>3}%"
+            )
+        return
+
     if args.sample_passthrough:
         # Written through the same cache file fetch_usage() reads, so a concurrent web
         # request against api/usage_router.py (not just this CLI's own printing) picks it up
@@ -261,5 +322,13 @@ def add_usage_subparser(sub: "argparse._SubParsersAction[argparse.ArgumentParser
         help="Print sample no-usage-yet output instead of fetching real usage, to exercise "
         "the raw_text passthrough path (real API/frontend, not this CLI's own printing) "
         "without waiting for an actual empty usage window.",
+    )
+    parser.add_argument(
+        "--history",
+        type=float,
+        metavar="HOURS",
+        default=None,
+        help="Print recorded UsageSample history from the last HOURS hours (one row per "
+        "~minute of actual client requests) instead of fetching current usage.",
     )
     parser.set_defaults(func=cmd_usage)

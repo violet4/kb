@@ -10,3 +10,12 @@ export interface Usage {
   week_resets_at: string | null;
   raw_text: string | null;
 }
+
+// Mirrors api/usage_router.py's UsageSampleOut Pydantic model -- one recorded history point.
+export interface UsageSample {
+  sampled_at: string;
+  session_pct: number;
+  session_resets_at: string;
+  week_pct: number;
+  week_resets_at: string;
+}

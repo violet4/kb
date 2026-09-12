@@ -347,24 +347,14 @@ def cmd_session_register(args: argparse.Namespace) -> None:
     args.session.commit()
 
 
-_SESSION_INBOX_HINT_NO_LISTENER = (
-    "No `kb sessions listen` currently running for this session -- messages from other "
-    "sessions will only surface on your next prompt (this check), not proactively. Start it "
-    "now as its own backgrounded Bash call (see CLAUDE_GLOBAL.md): required every session, "
-    "not optional, and needs restarting each time it delivers a message and exits."
-)
-
-
 def cmd_session_inbox_check(args: argparse.Namespace) -> None:
     """Layer 1 of kb Goal #46's cross-session messaging delivery: called from
     UserPromptSubmit on every prompt, prints any of this session's unread SessionMessages
-    (marking them read). The "no listener running" nudge fires on EVERY prompt while no
-    listener is running, not just alongside a delivered message -- a deliberate exception to
-    the usual "don't nag every turn" default, made because a session silently going without
-    Layer 2 delivery indefinitely (having simply forgotten to start it, or never having
-    restarted it after a prior delivery) is worse than the repetition cost of a one-line
-    reminder on every prompt. See CLAUDE_GLOBAL.md for the paired instruction to background
-    `kb sessions listen` right after the mandatory `kb i show root; kb` first call."""
+    (marking them read). `kb sessions listen` (Layer 2, proactive delivery) is opt-in, not
+    started or nagged-for by default -- forcing it onto every session proved too heavyweight
+    once kb had more than one user (see CLAUDE_GLOBAL.md's own history and kb Goal #23/#46).
+    A session that never runs Layer 2 simply only sees messages via this per-prompt check,
+    which is an acceptable degraded mode, not an error state to nag about."""
     from base import _now
     from harness import current_session_id
     from models import ChannelMessage, ChannelRead, HarnessSession, HarnessSessionStatus
@@ -385,8 +375,6 @@ def cmd_session_inbox_check(args: argparse.Namespace) -> None:
     if messages:
         args.session.commit()
 
-    if row is None or not row.is_listening:
-        lines.append(_SESSION_INBOX_HINT_NO_LISTENER)
     if lines:
         print("\n\n".join(lines))
 

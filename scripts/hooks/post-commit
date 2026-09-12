@@ -2,6 +2,11 @@
 # Auto-push after every commit (solo repo, backup safety only).
 # Never blocks or fails the commit — push errors are reported, not enforced.
 # Skipped entirely under CI, where an automatic push is never wanted.
+#
+# Disabled 2026-09-11: this environment has no SSH agent/key loaded, so every
+# commit was failing the push and printing a scary "AUTO-PUSH FAILED" error.
+# Re-enable by restoring the body below once push access is reliable here.
+exit 0
 
 if [ -n "$CI" ]; then
     exit 0

@@ -232,7 +232,8 @@ def cmd_sessions_listen_check(args: argparse.Namespace) -> None:
 
 
 _TREE_REMINDER = (
-    "Re-check the Instruction tree for a child relevant to what you're about to do now, not just at session start."
+    "Re-check the Instruction tree for a child relevant to what you're about to do now, "
+    "e.g. `kb si show engineering code-level-implementation`."
 )
 
 

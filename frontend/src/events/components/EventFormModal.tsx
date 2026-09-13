@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import Modal from '../../shared/Modal';
 import { tokens } from '../../shared/tokens';
 import { useEventForm } from '../hooks/useEventForm';
@@ -62,7 +62,7 @@ function EventForm({
         e.preventDefault();
         await form.submit();
       }}
-      style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: 20, width: 380 }}
+      style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: 20, width: 440 }}
     >
       <h2 style={{ margin: 0, fontSize: 16 }}>{existing ? 'Edit event' : 'New event'}</h2>
       <TitleField value={form.title} onChange={form.setTitle} />
@@ -77,7 +77,13 @@ function EventForm({
       <RecurrenceField field={form.recurrenceField} date={parseDateInput(form.date)} />
       <NotesField value={form.notes} onChange={form.setNotes} />
       {form.error && <p style={{ color: tokens.color.danger, margin: 0, fontSize: 13 }}>{form.error}</p>}
-      <ModalActions submitting={form.submitting} onCancel={onClose} submitLabel={existing ? 'Save' : 'Create'} />
+      <ModalActions
+        submitting={form.submitting}
+        onCancel={onClose}
+        submitLabel={existing ? 'Save' : 'Create'}
+        deleting={form.deleting}
+        onDelete={existing ? form.remove : undefined}
+      />
     </form>
   );
 }
@@ -185,22 +191,88 @@ function ModalActions({
   submitting,
   onCancel,
   submitLabel,
+  deleting,
+  onDelete,
 }: {
   submitting: boolean;
   onCancel: () => void;
   submitLabel: string;
+  deleting: boolean;
+  onDelete?: () => Promise<boolean>;
 }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
-      <button type="button" onClick={onCancel} style={secondaryButtonStyle}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 4 }}>
+      <div>{onDelete && <DeleteButton deleting={deleting} onDelete={onDelete} />}</div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button type="button" onClick={onCancel} style={secondaryButtonStyle}>
+          Cancel
+        </button>
+        <button type="submit" disabled={submitting} style={primaryButtonStyle}>
+          {submitting ? `${submitLabel}ing...` : submitLabel}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Two-step inline delete. Unarmed: a plain "Delete" button. Clicking it arms
+ * confirmation, which swaps that one button for a *pair* -- "Cancel" in the original
+ * button's place, "Confirm delete" off to the side -- rather than turning "Delete"
+ * itself into a confirm button in place. A same-position double-click (the exact
+ * accidental input this guards against) then lands on Cancel both times, not on
+ * Confirm, since Confirm never occupies the position the first click landed on.
+ * Arming also auto-disarms after a few seconds or on blur, for the same reason. Both
+ * states reserve a fixed-width, single-line slot (see DELETE_SLOT_WIDTH) so neither
+ * arming nor a long label wrapping onto a second line changes this row's height
+ * (cumulative layout shift). */
+const DELETE_SLOT_WIDTH = 76;
+
+function DeleteButton({ deleting, onDelete }: { deleting: boolean; onDelete: () => Promise<boolean> }) {
+  const [confirming, setConfirming] = useState(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const disarm = () => {
+    setConfirming(false);
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+  };
+
+  const arm = () => {
+    setConfirming(true);
+    timeoutRef.current = setTimeout(disarm, 4000);
+  };
+
+  if (!confirming) {
+    return (
+      <button type="button" disabled={deleting} onClick={arm} style={{ ...secondaryButtonStyle, ...deleteSlotStyle }}>
+        {deleting ? 'Deleting...' : 'Delete'}
+      </button>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: 8 }} onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && disarm()}>
+      <button type="button" onClick={disarm} style={{ ...secondaryButtonStyle, ...deleteSlotStyle }} autoFocus>
         Cancel
       </button>
-      <button type="submit" disabled={submitting} style={primaryButtonStyle}>
-        {submitting ? `${submitLabel}ing...` : submitLabel}
+      <button
+        type="button"
+        onClick={() => {
+          disarm();
+          void onDelete();
+        }}
+        style={{ ...dangerButtonStyle, ...deleteSlotStyle, width: 120 }}
+      >
+        Confirm delete
       </button>
     </div>
   );
 }
+
+const deleteSlotStyle: React.CSSProperties = {
+  width: DELETE_SLOT_WIDTH,
+  textAlign: 'center',
+  whiteSpace: 'nowrap',
+};
 
 const inputStyle: React.CSSProperties = {
   padding: '6px 8px',
@@ -225,6 +297,16 @@ const secondaryButtonStyle: React.CSSProperties = {
   background: tokens.color.surface,
   color: tokens.color.text,
   border: `1px solid ${tokens.color.border}`,
+  borderRadius: 4,
+  padding: '6px 14px',
+  fontSize: 13,
+  cursor: 'pointer',
+};
+
+const dangerButtonStyle: React.CSSProperties = {
+  background: tokens.color.danger,
+  color: tokens.color.background,
+  border: 'none',
   borderRadius: 4,
   padding: '6px 14px',
   fontSize: 13,

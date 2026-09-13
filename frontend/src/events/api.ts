@@ -49,3 +49,8 @@ export async function updateEvent(id: number, input: NewEvent): Promise<Event> {
   if (!response.ok) throw new Error(`Failed to update event: ${response.status} ${await response.text()}`);
   return response.json();
 }
+
+export async function deleteEvent(id: number): Promise<void> {
+  const response = await fetch(`${API_BASE}/events/${id}`, { method: 'DELETE' });
+  if (!response.ok) throw new Error(`Failed to delete event: ${response.status} ${await response.text()}`);
+}

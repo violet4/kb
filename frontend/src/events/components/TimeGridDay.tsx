@@ -10,6 +10,8 @@ interface TimeGridDayProps {
   date: Date;
   occurrences: EventOccurrence[];
   todayHighlightColor: string;
+  recurringColor: string;
+  oneTimeColor: string;
   onDoubleClick?: (date: Date) => void;
   onEventDoubleClick?: (event: Event) => void;
 }
@@ -26,6 +28,8 @@ export default function TimeGridDay({
   date,
   occurrences,
   todayHighlightColor,
+  recurringColor,
+  oneTimeColor,
   onDoubleClick,
   onEventDoubleClick,
 }: TimeGridDayProps) {
@@ -41,7 +45,13 @@ export default function TimeGridDay({
       {allDay.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '2px 4px' }}>
           {allDay.map((occ) => (
-            <EventBlock key={occ.event.id} event={occ.event} onDoubleClick={onEventDoubleClick} />
+            <EventBlock
+              key={occ.event.id}
+              event={occ.event}
+              onDoubleClick={onEventDoubleClick}
+              recurringColor={recurringColor}
+              oneTimeColor={oneTimeColor}
+            />
           ))}
         </div>
       )}
@@ -69,6 +79,8 @@ export default function TimeGridDay({
             key={`${occ.event.id}-${occ.occurs_at}`}
             occurrence={occ}
             onDoubleClick={onEventDoubleClick}
+            recurringColor={recurringColor}
+            oneTimeColor={oneTimeColor}
           />
         ))}
       </div>
@@ -98,9 +110,13 @@ function HourLines() {
 function TimedEventBlock({
   occurrence,
   onDoubleClick,
+  recurringColor,
+  oneTimeColor,
 }: {
   occurrence: EventOccurrence;
   onDoubleClick?: (event: Event) => void;
+  recurringColor: string;
+  oneTimeColor: string;
 }) {
   const occursAt = new Date(occurrence.occurs_at);
   const minutesFromMidnight = occursAt.getHours() * 60 + occursAt.getMinutes();
@@ -114,7 +130,15 @@ function TimedEventBlock({
         right: 2,
       }}
     >
-      <EventBlock event={occurrence.event} onDoubleClick={onDoubleClick} showTime occursAt={occursAt} fillHeight />
+      <EventBlock
+        event={occurrence.event}
+        onDoubleClick={onDoubleClick}
+        showTime
+        occursAt={occursAt}
+        fillHeight
+        recurringColor={recurringColor}
+        oneTimeColor={oneTimeColor}
+      />
     </div>
   );
 }
@@ -125,12 +149,16 @@ function EventBlock({
   showTime,
   occursAt,
   fillHeight,
+  recurringColor,
+  oneTimeColor,
 }: {
   event: Event;
   onDoubleClick?: (event: Event) => void;
   showTime?: boolean;
   occursAt?: Date;
   fillHeight?: boolean;
+  recurringColor: string;
+  oneTimeColor: string;
 }) {
   return (
     <div
@@ -149,7 +177,7 @@ function EventBlock({
         fontSize: 11,
         padding: '2px 4px',
         borderRadius: 3,
-        borderLeft: `3px solid ${event.recurrence ? tokens.color.accent : tokens.color.textMuted}`,
+        borderLeft: `3px solid ${event.recurrence ? recurringColor : oneTimeColor}`,
         background: tokens.color.background,
         color: tokens.color.text,
         whiteSpace: 'nowrap',

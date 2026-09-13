@@ -7,6 +7,10 @@ interface TodayHighlightSettingsProps {
   alpha: number;
   onChangeRgb: (rgb: string) => void;
   onChangeAlpha: (alpha: number) => void;
+  recurringRgb: string;
+  oneTimeRgb: string;
+  onChangeRecurringRgb: (rgb: string) => void;
+  onChangeOneTimeRgb: (rgb: string) => void;
 }
 
 export default function TodayHighlightSettings({
@@ -14,23 +18,53 @@ export default function TodayHighlightSettings({
   alpha,
   onChangeRgb,
   onChangeAlpha,
+  recurringRgb,
+  oneTimeRgb,
+  onChangeRecurringRgb,
+  onChangeOneTimeRgb,
 }: TodayHighlightSettingsProps) {
   return (
     <Popover label="Settings">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13 }}>
         <TodayColorField rgb={rgb} onChange={onChangeRgb} />
         <TodayAlphaField alpha={alpha} onChange={onChangeAlpha} />
+        <ColorField
+          id="event-color-recurring"
+          label="Recurring event color"
+          rgb={recurringRgb}
+          onChange={onChangeRecurringRgb}
+        />
+        <ColorField
+          id="event-color-one-time"
+          label="One-time event color"
+          rgb={oneTimeRgb}
+          onChange={onChangeOneTimeRgb}
+        />
       </div>
     </Popover>
   );
 }
 
 function TodayColorField({ rgb, onChange }: { rgb: string; onChange: (rgb: string) => void }) {
+  return <ColorField id="today-highlight-color" label="Today highlight color" rgb={rgb} onChange={onChange} />;
+}
+
+function ColorField({
+  id,
+  label,
+  rgb,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  rgb: string;
+  onChange: (rgb: string) => void;
+}) {
   return (
-    <label style={{ display: 'flex', alignItems: 'center', gap: 8 }} htmlFor="today-highlight-color">
-      Today highlight color
+    <label style={{ display: 'flex', alignItems: 'center', gap: 8 }} htmlFor={id}>
+      {label}
       <input
-        id="today-highlight-color"
+        id={id}
         type="color"
         value={rgbTripletToHex(rgb)}
         onChange={(e) => onChange(hexToRgbTriplet(e.target.value))}

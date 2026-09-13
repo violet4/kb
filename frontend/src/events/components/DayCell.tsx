@@ -9,6 +9,8 @@ interface DayCellProps {
   occurrences: EventOccurrence[];
   dimmed?: boolean;
   todayHighlightColor: string;
+  recurringColor: string;
+  oneTimeColor: string;
   onDoubleClick?: (date: Date) => void;
   onEventDoubleClick?: (event: Event) => void;
 }
@@ -18,6 +20,8 @@ export default function DayCell({
   occurrences,
   dimmed,
   todayHighlightColor,
+  recurringColor,
+  oneTimeColor,
   onDoubleClick,
   onEventDoubleClick,
 }: DayCellProps) {
@@ -49,6 +53,8 @@ export default function DayCell({
             key={`${occ.event.id}-${occ.occurs_at}`}
             occurrence={occ}
             onDoubleClick={onEventDoubleClick}
+            recurringColor={recurringColor}
+            oneTimeColor={oneTimeColor}
           />
         ))}
       </div>

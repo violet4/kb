@@ -5,6 +5,7 @@ import EventsList from './components/EventsList';
 import TodayHighlightSettings from './components/TodayHighlightSettings';
 import ViewModeTabs from './components/ViewModeTabs';
 import type { ViewMode } from './components/ViewModeTabs';
+import { useEventColors } from './hooks/useEventColors';
 import { useEventFormModalState } from './hooks/useEventFormModalState';
 import { useEvents } from './hooks/useEvents';
 import { useTodayHighlight } from './hooks/useTodayHighlight';
@@ -13,16 +14,29 @@ import MonthView from './MonthView';
 import WeekView from './WeekView';
 
 export default function EventsView() {
-  const [mode, setMode] = useState<ViewMode>('list');
+  const [mode, setMode] = useState<ViewMode>('month');
   const todayHighlight = useTodayHighlight();
+  const eventColors = useEventColors();
   useViewModeKeyNav(setMode);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1, minHeight: 0 }}>
-      <EventsHeader mode={mode} onModeChange={setMode} todayHighlight={todayHighlight} />
+      <EventsHeader mode={mode} onModeChange={setMode} todayHighlight={todayHighlight} eventColors={eventColors} />
       {mode === 'list' && <EventsListPane />}
-      {mode === 'week' && <WeekView todayHighlightColor={todayHighlight.color} />}
-      {mode === 'month' && <MonthView todayHighlightColor={todayHighlight.color} />}
+      {mode === 'week' && (
+        <WeekView
+          todayHighlightColor={todayHighlight.color}
+          recurringColor={eventColors.recurringColor}
+          oneTimeColor={eventColors.oneTimeColor}
+        />
+      )}
+      {mode === 'month' && (
+        <MonthView
+          todayHighlightColor={todayHighlight.color}
+          recurringColor={eventColors.recurringColor}
+          oneTimeColor={eventColors.oneTimeColor}
+        />
+      )}
     </div>
   );
 }
@@ -31,10 +45,12 @@ function EventsHeader({
   mode,
   onModeChange,
   todayHighlight,
+  eventColors,
 }: {
   mode: ViewMode;
   onModeChange: (mode: ViewMode) => void;
   todayHighlight: ReturnType<typeof useTodayHighlight>;
+  eventColors: ReturnType<typeof useEventColors>;
 }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '8px 8px 0' }}>
@@ -44,6 +60,10 @@ function EventsHeader({
         alpha={todayHighlight.alpha}
         onChangeRgb={todayHighlight.setRgb}
         onChangeAlpha={todayHighlight.setAlpha}
+        recurringRgb={eventColors.recurringRgb}
+        oneTimeRgb={eventColors.oneTimeRgb}
+        onChangeRecurringRgb={eventColors.setRecurringRgb}
+        onChangeOneTimeRgb={eventColors.setOneTimeRgb}
       />
       <ViewModeTabs mode={mode} onChange={onModeChange} />
     </div>

@@ -12,9 +12,11 @@ const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 interface MonthViewProps {
   todayHighlightColor: string;
+  recurringColor: string;
+  oneTimeColor: string;
 }
 
-export default function MonthView({ todayHighlightColor }: MonthViewProps) {
+export default function MonthView({ todayHighlightColor, recurringColor, oneTimeColor }: MonthViewProps) {
   const { anchor, goToPrev, goToNext, goToToday } = useCalendarNav('month');
   useCalendarKeyNav(goToPrev, goToNext, goToToday);
   const days = monthGridDays(anchor);
@@ -25,7 +27,7 @@ export default function MonthView({ todayHighlightColor }: MonthViewProps) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1, minHeight: 0, padding: '0 8px 8px' }}>
-      <CalendarNav label={formatMonthLabel(anchor)} onPrev={goToPrev} onNext={goToNext} onToday={goToToday} />
+      <CalendarNav label={formatMonthLabel(anchor)} onPrev={goToPrev} onNext={goToNext} onToday={goToToday} centerLabel />
       {loading && <p style={{ color: tokens.color.textMuted, margin: 0 }}>Loading...</p>}
       {error && <p style={{ color: tokens.color.danger, margin: 0 }}>{error}</p>}
       {!loading && !error && (
@@ -48,6 +50,8 @@ export default function MonthView({ todayHighlightColor }: MonthViewProps) {
                 occurrences={occurrences}
                 dimmed={!isSameMonth(date, anchor)}
                 todayHighlightColor={todayHighlightColor}
+                recurringColor={recurringColor}
+                oneTimeColor={oneTimeColor}
                 onDoubleClick={(d) => modal.openForNewEvent(withDefaultTime(d))}
                 onEventDoubleClick={modal.openForEdit}
               />

@@ -10,7 +10,7 @@ import { useEventsInRange } from './hooks/useEventsInRange';
 
 const HOUR_HEIGHT = 48; // px per hour -- must match TimeGridDay's own HOUR_HEIGHT
 
-export default function WeekView({ todayHighlightColor }: WeekViewProps) {
+export default function WeekView({ todayHighlightColor, recurringColor, oneTimeColor }: WeekViewProps) {
   const { anchor, goToPrev, goToNext, goToToday } = useCalendarNav(7);
   useCalendarKeyNav(goToPrev, goToNext, goToToday);
   const days = weekDays(anchor);
@@ -41,6 +41,8 @@ export default function WeekView({ todayHighlightColor }: WeekViewProps) {
                   date={date}
                   occurrences={occurrences}
                   todayHighlightColor={todayHighlightColor}
+                  recurringColor={recurringColor}
+                  oneTimeColor={oneTimeColor}
                   onDoubleClick={modal.openForNewEvent}
                   onEventDoubleClick={modal.openForEdit}
                 />
@@ -56,6 +58,8 @@ export default function WeekView({ todayHighlightColor }: WeekViewProps) {
 
 interface WeekViewProps {
   todayHighlightColor: string;
+  recurringColor: string;
+  oneTimeColor: string;
 }
 
 function DayHeader({ date }: { date: Date }) {

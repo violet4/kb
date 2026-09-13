@@ -108,6 +108,13 @@ async def update_event(event_id: int, body: EventUpdateIn, session: Session = De
     return _to_out(event)
 
 
+@router.delete("/{event_id}", status_code=204)
+async def delete_event(event_id: int, session: Session = Depends(get_session)) -> None:
+    event = _get_event_or_404(session, event_id)
+    session.delete(event)
+    session.commit()
+
+
 class EventOccurrenceOut(BaseModel):
     """One (Event, occurrence instant) pair -- a recurring Event contributes one of
     these per occurrence landing inside the queried range, so a calendar grid gets a

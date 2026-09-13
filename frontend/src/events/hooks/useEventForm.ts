@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { createEvent, updateEvent } from '../api';
+import { createEvent, deleteEvent, updateEvent } from '../api';
 import type { Event } from '../types';
 import { useRecurrenceField } from './useRecurrenceField';
 
@@ -19,6 +19,8 @@ interface UseEventFormResult {
   error: string | null;
   dirty: boolean;
   submit: () => Promise<boolean>;
+  deleting: boolean;
+  remove: () => Promise<boolean>;
 }
 
 /** Local form state plus submit logic for creating or editing an Event -- `initialDate`
@@ -39,6 +41,7 @@ export function useEventForm(initialDate: Date, existing: Event | null, onSaved:
   const recurrenceField = useRecurrenceField(parseDateInput(date), initial.recurrence);
   const [notes, setNotes] = useState(initial.notes);
   const [submitting, setSubmitting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const dirty =
@@ -76,6 +79,22 @@ export function useEventForm(initialDate: Date, existing: Event | null, onSaved:
     }
   };
 
+  const remove = async (): Promise<boolean> => {
+    if (!existing) return false;
+    setDeleting(true);
+    setError(null);
+    try {
+      await deleteEvent(existing.id);
+      onSaved();
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      return false;
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return {
     title,
     setTitle,
@@ -92,6 +111,8 @@ export function useEventForm(initialDate: Date, existing: Event | null, onSaved:
     error,
     dirty,
     submit,
+    deleting,
+    remove,
   };
 }
 
@@ -118,7 +139,12 @@ function initialFieldsFor(initialDate: Date, existing: Event | null): InitialFie
   const startsAt = new Date(existing.starts_at);
   return {
     title: existing.title,
-    date: formatDateInput(startsAt),
+    // An all-day starts_at is UTC midnight on the intended calendar date (see
+    // models.py's Event docstring) -- read it back with UTC getters, not local ones,
+    // or a viewer whose local zone is offset from UTC sees the previous/next day
+    // (the exact bug this comment documents: re-saving an all-day event, or toggling
+    // an existing timed event to all-day, shifted its date by one).
+    date: existing.is_all_day ? formatDateInputUtc(startsAt) : formatDateInput(startsAt),
     time: existing.is_all_day ? '09:00' : formatTimeInput(startsAt),
     isAllDay: existing.is_all_day,
     recurrence: existing.recurrence ?? '',
@@ -128,6 +154,10 @@ function initialFieldsFor(initialDate: Date, existing: Event | null): InitialFie
 
 function formatDateInput(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function formatDateInputUtc(date: Date): string {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
 }
 
 function formatTimeInput(date: Date): string {

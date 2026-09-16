@@ -1,0 +1,4 @@
+title: fail-open-access-control-defaults
+trigger: when designing an access-control, permission, or filtering mechanism specifically
+
+This is the access-control instance of the general brittle-forgettable-defaults problem: prefer a positive security model (deny by default, explicitly allow only what is known-good) over a negative security model (allow by default, explicitly deny only what is known-bad) wherever the full set of safe cases can be enumerated. A positive model fails closed when someone forgets to update it; a negative model — an allowlist that admits anything not explicitly excluded — fails open, and security correctness has less legitimate stylistic variance than most engineering concerns: a fail-open gap is objectively exploitable, independent of team or project style preference.

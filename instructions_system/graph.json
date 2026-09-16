@@ -60,8 +60,13 @@
     "relation": "parent-of"
   },
   {
-    "from": "0008",
+    "from": "0002",
     "to": "0015",
+    "relation": "parent-of"
+  },
+  {
+    "from": "0008",
+    "to": "0016",
     "relation": "parent-of"
   },
   {

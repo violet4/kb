@@ -11,6 +11,7 @@ BARE_INSTRUCTIONS = """\
 
 Routing a plain statement to the right subcommand (the noun -- which table):
   A stated fact/observation about the world -> log
+  A piece of completed work not tied to an existing Todo/Goal (nothing was ever "pending") -> win add BODY
   Claude used a phrase or showed a habit worth flagging for later analysis -> flag NOTE (see kb Goal #41)
   A stated need/intent, not yet done -> todo
   Existing behavior that's wrong (a defect/regression, not just unfinished work) -> bug
@@ -112,6 +113,19 @@ Prints the row's id as ABn (e.g. "AB23") -- embed that exact token in whatever N
 Journal body cites the URL (e.g. "Sources: AB23"), not the bare URL alone, so the citation
 travels with the prose. Run `kb ab -h` for the full picture (list/show, ArchiveBox migration
 plan, why title and reason are split).
+
+## Tracking Completed Work
+
+`kb win add "..."` records a piece of completed work that was never tracked as a Todo/Goal --
+it was conceived, done, and finished in one sitting, so there's no "pending" state it ever
+needed. This is distinct from completing an existing Todo/Goal (`kb todo complete ID`): a win
+is for work that had no prior record at all, not the resolution of one that did -- don't
+retroactively create a Todo just to complete it. `kb win recent` (default: last 7 calendar
+days including today, `--days 1` for just today) answers "what did we accomplish
+today/this week?" directly, without mixing in ordinary `kb log` observations -- it's a thin
+wrapper over `kb log` with a reserved domain, so a win is still visible via
+`kb log recent --domain win`/`kb search` too, but `kb win` is the ergonomic front door for
+both writing and querying it.
 
 ## Searching Documents
 

@@ -1782,13 +1782,20 @@ class LogEntry(Base, HasEmbedding):
 
     @classmethod
     def recent(
-        cls, session: Session, domain: Optional[str] = None, context: Optional[Context] = None, limit: int = 20
+        cls,
+        session: Session,
+        domain: Optional[str] = None,
+        context: Optional[Context] = None,
+        limit: int = 20,
+        since: Optional[datetime] = None,
     ) -> Sequence[LogEntry]:
         q = select(cls).order_by(cls.occurred_at.desc()).limit(limit)
         if domain is not None:
             q = q.where(cls.domain == domain)
         if context is not None:
             q = q.where(cls.context_id == context.id)
+        if since is not None:
+            q = q.where(cls.occurred_at >= since)
         return session.scalars(q).all()
 
     def __repr__(self) -> str:

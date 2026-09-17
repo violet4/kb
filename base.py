@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Optional
 
 from sqlalchemy import DateTime, MetaData
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -26,6 +27,16 @@ class Base(DeclarativeBase):
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
+    # Soft-delete marker, on every model structurally (not a per-entity opt-in mixin) so a new
+    # table can never be forgotten -- see kb si brittle-forgettable-defaults. NULL = not
+    # deleted. `show`-ish commands intentionally do NOT filter on this (a deleted record is
+    # still directly retrievable by id, with its deletion visible), only bulk list/search/
+    # active-style queries do -- see kb_cli._util.not_deleted.
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    @property
+    def is_deleted(self) -> bool:
+        return self.deleted_at is not None
 
     def age_marker(self) -> str:
         """Renders as " (Nd old)"/" (Nw old)" from updated_at, or "" if updated within the last day --

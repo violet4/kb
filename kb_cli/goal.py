@@ -13,6 +13,9 @@ from models import Goal, GoalStatus, Journal
 from kb_cli._util import (
     add_history_arg,
     apply_context_or_tag_update,
+    apply_purge,
+    apply_restore,
+    apply_soft_delete,
     apply_updates,
     print_journal_history,
     print_links,
@@ -88,7 +91,7 @@ def cmd_list(args: argparse.Namespace) -> None:
         # Goal.active() only returns ACTIVE Goals -- an explicit non-ACTIVE status needs a
         # plain query instead. --all still applies to this query as scoping-only, same as
         # the ACTIVE-status branch below.
-        q = select(Goal).where(Goal.status == status)
+        q = select(Goal).where(Goal.status == status, Goal.deleted_at.is_(None))
         if not args.all:
             in_scope = scope_to_context(args.session, args.context)
             if in_scope is not None:
@@ -132,6 +135,24 @@ def cmd_hold(args: argparse.Namespace) -> None:
 
 def cmd_reactivate(args: argparse.Namespace) -> None:
     _set_status(args.session, args.ids, GoalStatus.ACTIVE, "active")
+
+
+def cmd_delete(args: argparse.Namespace) -> None:
+    goal = apply_soft_delete(args.session, Goal, args.id, "Goal")
+    args.session.commit()
+    print(f"Goal #{goal.id} {goal.title!r}: soft-deleted (restore with `kb goal restore {goal.id}`)")
+
+
+def cmd_restore(args: argparse.Namespace) -> None:
+    goal = apply_restore(args.session, Goal, args.id, "Goal")
+    args.session.commit()
+    print(f"Goal #{goal.id} {goal.title!r}: restored")
+
+
+def cmd_purge(args: argparse.Namespace) -> None:
+    goal = apply_purge(args.session, Goal, args.id, "Goal", args.force_delete_links)
+    args.session.commit()
+    print(f"Goal #{goal.id} {goal.title!r}: purged (irreversible)")
 
 
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
@@ -185,3 +206,16 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_search = sub.add_parser("search", help="Removed -- use top-level `kb search` instead")
     p_search.add_argument("query", nargs="*", help="Ignored -- use `kb search` instead")
     p_search.set_defaults(func=cmd_search_deprecated)
+
+    p_delete = sub.add_parser("delete", help="Soft-delete a Goal (reversible, see restore)")
+    p_delete.add_argument("id", type=int)
+    p_delete.set_defaults(func=cmd_delete)
+
+    p_restore = sub.add_parser("restore", help="Undo a soft delete on a Goal")
+    p_restore.add_argument("id", type=int)
+    p_restore.set_defaults(func=cmd_restore)
+
+    p_purge = sub.add_parser("purge", help="Permanently delete a Goal (irreversible)")
+    p_purge.add_argument("id", type=int)
+    p_purge.add_argument("--force-delete-links", action="store_true", help="Also delete any EntityLinks pointing at it")
+    p_purge.set_defaults(func=cmd_purge)

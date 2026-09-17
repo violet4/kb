@@ -11,6 +11,9 @@ from models import Idea, IdeaStatus, Journal
 from kb_cli._util import (
     add_history_arg,
     apply_context_or_tag_update,
+    apply_purge,
+    apply_restore,
+    apply_soft_delete,
     apply_updates,
     print_journal_history,
     print_links,
@@ -82,7 +85,9 @@ def cmd_show(args: argparse.Namespace) -> None:
 
 def cmd_list(args: argparse.Namespace) -> None:
     if args.all:
-        ideas = args.session.scalars(select(Idea).where(Idea.status == IdeaStatus.ACTIVE)).all()
+        ideas = args.session.scalars(
+            select(Idea).where(Idea.status == IdeaStatus.ACTIVE, Idea.deleted_at.is_(None))
+        ).all()
     else:
         in_scope = scope_to_context(args.session, args.context)
         ideas = Idea.active(args.session, contexts=in_scope, include_no_context=True)
@@ -113,6 +118,24 @@ def cmd_drop(args: argparse.Namespace) -> None:
     idea.status = IdeaStatus.DROPPED
     args.session.commit()
     print(f"Idea #{idea.id}: {idea.title!r} -> dropped")
+
+
+def cmd_delete(args: argparse.Namespace) -> None:
+    idea = apply_soft_delete(args.session, Idea, args.id, "Idea")
+    args.session.commit()
+    print(f"Idea #{idea.id} {idea.title!r}: soft-deleted (restore with `kb idea restore {idea.id}`)")
+
+
+def cmd_restore(args: argparse.Namespace) -> None:
+    idea = apply_restore(args.session, Idea, args.id, "Idea")
+    args.session.commit()
+    print(f"Idea #{idea.id} {idea.title!r}: restored")
+
+
+def cmd_purge(args: argparse.Namespace) -> None:
+    idea = apply_purge(args.session, Idea, args.id, "Idea", args.force_delete_links)
+    args.session.commit()
+    print(f"Idea #{idea.id} {idea.title!r}: purged (irreversible)")
 
 
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
@@ -160,3 +183,16 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_drop = sub.add_parser("drop", help="Mark an idea dropped")
     p_drop.add_argument("id", type=int)
     p_drop.set_defaults(func=cmd_drop)
+
+    p_delete = sub.add_parser("delete", help="Soft-delete an Idea (reversible, see restore)")
+    p_delete.add_argument("id", type=int)
+    p_delete.set_defaults(func=cmd_delete)
+
+    p_restore = sub.add_parser("restore", help="Undo a soft delete on an Idea")
+    p_restore.add_argument("id", type=int)
+    p_restore.set_defaults(func=cmd_restore)
+
+    p_purge = sub.add_parser("purge", help="Permanently delete an Idea (irreversible)")
+    p_purge.add_argument("id", type=int)
+    p_purge.add_argument("--force-delete-links", action="store_true", help="Also delete any EntityLinks pointing at it")
+    p_purge.set_defaults(func=cmd_purge)

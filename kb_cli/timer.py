@@ -10,7 +10,7 @@ from context import creation_context
 from context_tree import render_context_tree
 from models import Tag, Timer, TimerStatus
 
-from kb_cli._util import get_by_name
+from kb_cli._util import apply_purge, apply_restore, apply_soft_delete, get_by_name
 
 
 def _parse_duration(raw: str) -> int:
@@ -75,6 +75,24 @@ def cmd_cancel(args: argparse.Namespace) -> None:
     args.session.commit()
 
 
+def cmd_delete(args: argparse.Namespace) -> None:
+    timer = apply_soft_delete(args.session, Timer, args.id, "Timer")
+    args.session.commit()
+    print(f"Timer #{timer.id}: soft-deleted (restore with `kb timer restore {timer.id}`)")
+
+
+def cmd_restore(args: argparse.Namespace) -> None:
+    timer = apply_restore(args.session, Timer, args.id, "Timer")
+    args.session.commit()
+    print(f"Timer #{timer.id}: restored")
+
+
+def cmd_purge(args: argparse.Namespace) -> None:
+    timer = apply_purge(args.session, Timer, args.id, "Timer", args.force_delete_links)
+    args.session.commit()
+    print(f"Timer #{timer.id}: purged (irreversible)")
+
+
 def cmd_tree(args: argparse.Namespace) -> None:
     """Render active Timers nested under the Context tree, tree(1)-style -- see
     `kb todo tree` for the shared rendering logic this reuses."""
@@ -113,3 +131,16 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
 
     p_tree = sub.add_parser("tree", help="Render active Timers nested under the Context tree")
     p_tree.set_defaults(func=cmd_tree)
+
+    p_delete = sub.add_parser("delete", help="Soft-delete a Timer (reversible, see restore)")
+    p_delete.add_argument("id", type=int)
+    p_delete.set_defaults(func=cmd_delete)
+
+    p_restore = sub.add_parser("restore", help="Undo a soft delete on a Timer")
+    p_restore.add_argument("id", type=int)
+    p_restore.set_defaults(func=cmd_restore)
+
+    p_purge = sub.add_parser("purge", help="Permanently delete a Timer (irreversible)")
+    p_purge.add_argument("id", type=int)
+    p_purge.add_argument("--force-delete-links", action="store_true", help="Also delete any EntityLinks pointing at it")
+    p_purge.set_defaults(func=cmd_purge)

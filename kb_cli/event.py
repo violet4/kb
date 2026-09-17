@@ -13,6 +13,9 @@ from models import Event
 
 from kb_cli._util import (
     apply_context_or_tag_update,
+    apply_purge,
+    apply_restore,
+    apply_soft_delete,
     apply_updates,
     print_fields,
     print_links,
@@ -145,30 +148,21 @@ def cmd_update(args: argparse.Namespace) -> None:
 
 
 def cmd_delete(args: argparse.Namespace) -> None:
-    """Two-stage confirm (--yes required), matching Daily/Todo/etc. -- see daily.py's
-    cmd_delete for the full reasoning (no reliable interactive stdin in an agent harness)."""
-    events = []
-    missing = []
-    for event_id in args.ids:
-        event = args.session.get(Event, event_id)
-        if event is None:
-            missing.append(event_id)
-        else:
-            events.append(event)
-    for event_id in missing:
-        print(f"Event #{event_id}: not found", file=sys.stderr)
-    if not events:
-        return
-    if not args.yes:
-        print("This would permanently delete:")
-        for event in events:
-            print(f"  #{event.id} {event.title!r}")
-        print("\nRe-run this same command with --yes to actually delete.")
-        return
-    for event in events:
-        print(f"Deleted Event #{event.id} {event.title!r}")
-        args.session.delete(event)
+    event = apply_soft_delete(args.session, Event, args.id, "Event")
     args.session.commit()
+    print(f"Event #{event.id} {event.title!r}: soft-deleted (restore with `kb event restore {event.id}`)")
+
+
+def cmd_restore(args: argparse.Namespace) -> None:
+    event = apply_restore(args.session, Event, args.id, "Event")
+    args.session.commit()
+    print(f"Event #{event.id} {event.title!r}: restored")
+
+
+def cmd_purge(args: argparse.Namespace) -> None:
+    event = apply_purge(args.session, Event, args.id, "Event", args.force_delete_links)
+    args.session.commit()
+    print(f"Event #{event.id} {event.title!r}: purged (irreversible)")
 
 
 def cmd_reembed(args: argparse.Namespace) -> None:
@@ -224,12 +218,18 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_update.add_argument("--tag", dest="new_tag", metavar="NAME", help="Address by Tag instead of context")
     p_update.set_defaults(func=cmd_update)
 
-    p_delete = sub.add_parser(
-        "delete", help="Permanently delete Event(s) (e.g. an accidental duplicate) -- requires --yes to confirm"
-    )
-    p_delete.add_argument("ids", nargs="+", type=int)
-    p_delete.add_argument("--yes", action="store_true", help="Actually perform the delete.")
+    p_delete = sub.add_parser("delete", help="Soft-delete an Event (reversible, see restore)")
+    p_delete.add_argument("id", type=int)
     p_delete.set_defaults(func=cmd_delete)
+
+    p_restore = sub.add_parser("restore", help="Undo a soft delete on an Event")
+    p_restore.add_argument("id", type=int)
+    p_restore.set_defaults(func=cmd_restore)
+
+    p_purge = sub.add_parser("purge", help="Permanently delete an Event (irreversible)")
+    p_purge.add_argument("id", type=int)
+    p_purge.add_argument("--force-delete-links", action="store_true", help="Also delete any EntityLinks pointing at it")
+    p_purge.set_defaults(func=cmd_purge)
 
     p_search = sub.add_parser("search", help="Removed -- use top-level `kb search` instead")
     p_search.add_argument("query", nargs="*", help="Ignored -- use `kb search` instead")

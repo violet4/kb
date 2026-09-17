@@ -423,7 +423,7 @@ class HasEmbedding:
             vec = struct.pack(f"{len(raw)}f", *raw)
         mn = model_name()
         table = cls.__tablename__
-        where_clauses = ["embedding_model = ?"]
+        where_clauses = ["embedding_model = ?", "deleted_at IS NULL"]
         params: list[Any] = [vec, mn]
         for col, value in filters.items():
             where_clauses.append(f"{col} = ?")
@@ -621,6 +621,7 @@ class Settings(Base):
     notifications_muted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     notifications_volume: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
     archivebox_host: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    hard_delete_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     @classmethod
     def get(cls, session: Session) -> Settings:
@@ -774,7 +775,7 @@ class Goal(Base, HasContextOrTag, HasEmbedding):
         use the latter for a context-plus-sub-contexts filter. include_no_context also
         surfaces Goals with no context/tag at all (e.g. for a summary view that treats
         untagged items as always-relevant, regardless of which context is active)."""
-        q = select(cls).where(cls.status == GoalStatus.ACTIVE)
+        q = select(cls).where(cls.status == GoalStatus.ACTIVE, cls.deleted_at.is_(None))
         if context is not None:
             q = q.where(cls.context_id == context.id)
         if contexts is not None:
@@ -878,7 +879,7 @@ class Todo(Base, HasContextOrTag, HasEmbedding):
         (resolution_distance IS NULL) and `resolution_distance` (a specific assessed
         value) are the same pairing for that column -- the caller (kb_cli/todo.py's
         argparse groups) is responsible for not passing both of either pair."""
-        q = select(cls).where(cls.status.in_([TodoStatus.PENDING, TodoStatus.IN_PROGRESS]))
+        q = select(cls).where(cls.status.in_([TodoStatus.PENDING, TodoStatus.IN_PROGRESS]), cls.deleted_at.is_(None))
         if context is not None:
             q = q.where(cls.context_id == context.id)
         if contexts is not None:
@@ -1076,7 +1077,7 @@ class Daily(Base, HasContextOrTag, HasEmbedding):
         """`context` matches that single context exactly; `contexts` (e.g. from
         Context.self_and_descendants) matches any context in the given set, plus any
         Daily whose tag_id is carried by a Context in that set (see HasContextOrTag)."""
-        q = select(cls).where(cls.is_active.is_(True))
+        q = select(cls).where(cls.is_active.is_(True), cls.deleted_at.is_(None))
         if context is not None:
             q = q.where(cls.context_id == context.id)
         if contexts is not None:
@@ -1118,7 +1119,7 @@ class Daily(Base, HasContextOrTag, HasEmbedding):
     @classmethod
     def due(cls, session: Session, domain: Optional[str] = None, tier: Optional[DailyTier] = None) -> list[Daily]:
         """Active dailies currently due, per is_due_now()."""
-        q = select(cls).where(cls.is_active.is_(True))
+        q = select(cls).where(cls.is_active.is_(True), cls.deleted_at.is_(None))
         if domain is not None:
             q = q.where(cls.domain == domain)
         if tier is not None:
@@ -1299,7 +1300,7 @@ class Event(Base, HasContextOrTag, HasEmbedding):
         """`context` matches that single context exactly; `contexts` (e.g. from
         Context.self_and_descendants) matches any context in the given set, plus any Event
         whose tag_id is carried by a Context in that set (see HasContextOrTag)."""
-        q = select(cls)
+        q = select(cls).where(cls.deleted_at.is_(None))
         if context is not None:
             q = q.where(cls.context_id == context.id)
         if contexts is not None:
@@ -2119,7 +2120,7 @@ class Wishlist(Base):
 
     @classmethod
     def active(cls, session: Session, effort: Optional[WishlistEffort] = None) -> Sequence[Wishlist]:
-        q = select(cls).where(cls.status == WishlistStatus.ACTIVE)
+        q = select(cls).where(cls.status == WishlistStatus.ACTIVE, cls.deleted_at.is_(None))
         if effort is not None:
             q = q.where(cls.effort == effort)
         return session.scalars(q).all()
@@ -2186,7 +2187,7 @@ class Idea(Base, HasContextOrTag, HasEmbedding):
         """`context` matches that single context exactly; `contexts` (e.g. from
         Context.self_and_descendants) matches any context in the given set, plus any
         Idea whose tag_id is carried by a Context in that set (see HasContextOrTag)."""
-        q = select(cls).where(cls.status == IdeaStatus.ACTIVE)
+        q = select(cls).where(cls.status == IdeaStatus.ACTIVE, cls.deleted_at.is_(None))
         if context is not None:
             q = q.where(cls.context_id == context.id)
         if contexts is not None:
@@ -2270,7 +2271,7 @@ class Timer(Base, HasContextOrTag):
     ) -> Sequence[Timer]:
         """Same shape as Goal/Todo/Daily/Idea's .active() -- see Todo.active's docstring
         for why every context/tag-addressable entity matches this signature."""
-        q = select(cls).where(cls.status == TimerStatus.ACTIVE)
+        q = select(cls).where(cls.status == TimerStatus.ACTIVE, cls.deleted_at.is_(None))
         if context is not None:
             q = q.where(cls.context_id == context.id)
         if contexts is not None:

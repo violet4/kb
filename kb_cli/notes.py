@@ -7,7 +7,16 @@ from typing import Optional
 from sqlalchemy import select
 
 from client import KBClient
-from kb_cli._util import apply_text_edit, print_links, print_timestamps, resolve_body_args, resolve_text_arg
+from kb_cli._util import (
+    apply_purge,
+    apply_restore,
+    apply_soft_delete,
+    apply_text_edit,
+    print_links,
+    print_timestamps,
+    resolve_body_args,
+    resolve_text_arg,
+)
 from kb_cli.search import cmd_search_deprecated
 from models import Collection, Note
 
@@ -70,6 +79,24 @@ def cmd_update(args: argparse.Namespace) -> None:
     note.update(title=args.title, body=body, tags=args.tags, collection=collection)
     args.session.commit()
     print(f"Updated: {note}")
+
+
+def cmd_delete(args: argparse.Namespace) -> None:
+    note = apply_soft_delete(args.session, Note, args.id, "Note")
+    args.session.commit()
+    print(f"Note #{note.id} {note.title!r}: soft-deleted (restore with `kb notes restore {note.id}`)")
+
+
+def cmd_restore(args: argparse.Namespace) -> None:
+    note = apply_restore(args.session, Note, args.id, "Note")
+    args.session.commit()
+    print(f"Note #{note.id} {note.title!r}: restored")
+
+
+def cmd_purge(args: argparse.Namespace) -> None:
+    note = apply_purge(args.session, Note, args.id, "Note", args.force_delete_links)
+    args.session.commit()
+    print(f"Note #{note.id} {note.title!r}: purged (irreversible)")
 
 
 def cmd_reembed(args: argparse.Namespace) -> None:
@@ -146,3 +173,16 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
 
     p_reembed = sub.add_parser("reembed", help="Recompute embeddings for all notes")
     p_reembed.set_defaults(func=cmd_reembed)
+
+    p_delete = sub.add_parser("delete", help="Soft-delete a note (reversible, see restore)")
+    p_delete.add_argument("id", type=int)
+    p_delete.set_defaults(func=cmd_delete)
+
+    p_restore = sub.add_parser("restore", help="Undo a soft delete on a note")
+    p_restore.add_argument("id", type=int)
+    p_restore.set_defaults(func=cmd_restore)
+
+    p_purge = sub.add_parser("purge", help="Permanently delete a note (irreversible)")
+    p_purge.add_argument("id", type=int)
+    p_purge.add_argument("--force-delete-links", action="store_true", help="Also delete any EntityLinks pointing at it")
+    p_purge.set_defaults(func=cmd_purge)

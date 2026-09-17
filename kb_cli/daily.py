@@ -12,6 +12,9 @@ from models import Daily, DailyTier
 
 from kb_cli._util import (
     apply_context_or_tag_update,
+    apply_purge,
+    apply_restore,
+    apply_soft_delete,
     apply_updates,
     print_fields,
     print_links,
@@ -52,7 +55,7 @@ def cmd_show(args: argparse.Namespace) -> None:
 def cmd_list(args: argparse.Namespace) -> None:
     dailies: Sequence[Daily]
     if args.all:
-        q = select(Daily)
+        q = select(Daily).where(Daily.deleted_at.is_(None))
         if args.domain:
             q = q.where(Daily.domain == args.domain)
         if args.tier:
@@ -175,36 +178,21 @@ def cmd_update(args: argparse.Namespace) -> None:
 
 
 def cmd_delete(args: argparse.Namespace) -> None:
-    """Two-stage confirm (--yes required) rather than an interactive y/n prompt -- an
-    interactive prompt has no reliable stdin to answer it when run from an agent harness
-    like Claude Code, so it either hangs or silently fails. Printing what would be deleted,
-    then requiring the caller to re-run the identical command with --yes, gives a human (or
-    an agent acting on a human's behalf) a real chance to notice a mistake before it's
-    permanent, without depending on an interactive TTY."""
-    dailies = []
-    missing = []
-    for daily_id in args.ids:
-        daily = args.session.get(Daily, daily_id)
-        if daily is None:
-            missing.append(daily_id)
-        else:
-            dailies.append(daily)
-    for daily_id in missing:
-        print(f"Daily #{daily_id}: not found", file=sys.stderr)
-    if not dailies:
-        return
-    if not args.yes:
-        print("This would permanently delete:")
-        for daily in dailies:
-            print(
-                f"  #{daily.id} {daily.description!r} ({daily.recurrence}, next due {daily.next_due_date.isoformat()})"
-            )
-        print("\nRe-run this same command with --yes to actually delete.")
-        return
-    for daily in dailies:
-        print(f"Deleted Daily #{daily.id} {daily.description!r}")
-        args.session.delete(daily)
+    daily = apply_soft_delete(args.session, Daily, args.id, "Daily")
     args.session.commit()
+    print(f"Daily #{daily.id} {daily.description!r}: soft-deleted (restore with `kb daily restore {daily.id}`)")
+
+
+def cmd_restore(args: argparse.Namespace) -> None:
+    daily = apply_restore(args.session, Daily, args.id, "Daily")
+    args.session.commit()
+    print(f"Daily #{daily.id} {daily.description!r}: restored")
+
+
+def cmd_purge(args: argparse.Namespace) -> None:
+    daily = apply_purge(args.session, Daily, args.id, "Daily", args.force_delete_links)
+    args.session.commit()
+    print(f"Daily #{daily.id} {daily.description!r}: purged (irreversible)")
 
 
 def cmd_activate(args: argparse.Namespace) -> None:
@@ -329,18 +317,18 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_deactivate.add_argument("ids", nargs="+", type=int)
     p_deactivate.set_defaults(func=cmd_deactivate)
 
-    p_delete = sub.add_parser(
-        "delete", help="Permanently delete Daily(s) (e.g. an accidental duplicate) -- requires --yes to confirm"
-    )
-    p_delete.add_argument("ids", nargs="+", type=int)
-    p_delete.add_argument(
-        "--yes",
-        action="store_true",
-        help="Actually perform the delete. Without this, prints what would be deleted and exits -- "
-        "re-run the identical command with --yes once you've confirmed. Prefer `deactivate` over this "
-        "for anything that isn't a genuine mistake (e.g. no-longer-relevant but historically real).",
-    )
+    p_delete = sub.add_parser("delete", help="Soft-delete a Daily (reversible, see restore)")
+    p_delete.add_argument("id", type=int)
     p_delete.set_defaults(func=cmd_delete)
+
+    p_restore = sub.add_parser("restore", help="Undo a soft delete on a Daily")
+    p_restore.add_argument("id", type=int)
+    p_restore.set_defaults(func=cmd_restore)
+
+    p_purge = sub.add_parser("purge", help="Permanently delete a Daily (irreversible)")
+    p_purge.add_argument("id", type=int)
+    p_purge.add_argument("--force-delete-links", action="store_true", help="Also delete any EntityLinks pointing at it")
+    p_purge.set_defaults(func=cmd_purge)
 
     p_search = sub.add_parser("search", help="Removed -- use top-level `kb search` instead")
     p_search.add_argument("query", nargs="*", help="Ignored -- use `kb search` instead")

@@ -13,9 +13,10 @@ from typing import Any, Callable, Iterable, Optional, Sequence, Type, TypeVar
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from base import Base, _now
 from context import resolve_context
 from mixins import HasUniqueName
-from models import Context, EntityLink, HasContextOrTag, Journal, Tag
+from models import Context, EntityLink, HasContextOrTag, Journal, Settings, Tag
 from models_pg import PgItem
 
 # SQLAlchemy declarative classes don't satisfy structural Protocol matching (their
@@ -66,7 +67,7 @@ def check_no_links(session: Session, entity_type: str, entity_id: int, force: bo
         session.delete(link)
 
 
-E = TypeVar("E")
+E = TypeVar("E", bound=Base)
 
 
 def apply_text_edit(current: str, entity_label: str, append: Optional[str], replace: Optional[tuple[str, str]]) -> str:
@@ -205,6 +206,64 @@ def apply_updates(session: Session, model: Type[E], entity_id: int, entity_label
     return row
 
 
+def not_deleted(q: Any, model: Type[Any]) -> Any:
+    """Filter a select(model) query to exclude soft-deleted rows -- every bulk list/search/
+    active-style query must route through this (see base.py's `deleted_at` comment: it's on
+    every model structurally, but the exclusion itself is only applied where callers ask for
+    it, at each such query site). `show`/get-by-id lookups deliberately do NOT use this --
+    a deleted record must still be directly retrievable by id, with its deletion visible
+    (print_timestamps prints deleted_at when set), never made to look not-found."""
+    return q.where(model.deleted_at.is_(None))
+
+
+def apply_soft_delete(session: Session, model: Type[E], entity_id: int, entity_label: str) -> E:
+    """`kb <noun> delete ID` -- reversible, no settings gate: stamps deleted_at rather than
+    removing the row, so it drops out of list/search/active-style queries (not_deleted) but
+    remains directly reachable via `show`/`kb <noun> restore ID`. Idempotent: deleting an
+    already-deleted row just re-stamps deleted_at."""
+    row = session.get(model, entity_id)
+    if row is None:
+        print(f"{entity_label} #{entity_id}: not found", file=sys.stderr)
+        sys.exit(1)
+    row.deleted_at = _now()
+    return row
+
+
+def apply_restore(session: Session, model: Type[E], entity_id: int, entity_label: str) -> E:
+    """Undo apply_soft_delete -- clears deleted_at so the row reappears in list/search/active
+    queries again."""
+    row = session.get(model, entity_id)
+    if row is None:
+        print(f"{entity_label} #{entity_id}: not found", file=sys.stderr)
+        sys.exit(1)
+    row.deleted_at = None
+    return row
+
+
+def apply_purge(session: Session, model: Type[E], entity_id: int, entity_label: str, force_delete_links: bool) -> E:
+    """`kb <noun> purge ID` -- irreversible, actually removes the row. Gated by
+    Settings.hard_delete_enabled (default True; a user can flip it off to make purge
+    unavailable while leaving soft delete/restore untouched, since soft delete is cheap to
+    undo and purge is not). Refuses a row with EntityLinks pointing at it unless
+    force_delete_links, same as Instruction's own hard-delete precedent
+    (check_no_links) -- a purged row cannot leave dangling links behind."""
+    if not Settings.get(session).hard_delete_enabled:
+        print(
+            "Hard delete is disabled (Settings.hard_delete_enabled=False) -- use "
+            f"`kb <noun> delete {entity_id}` for a reversible soft delete instead, or "
+            "`kb settings hard-delete on` to re-enable purge",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    row = session.get(model, entity_id)
+    if row is None:
+        print(f"{entity_label} #{entity_id}: not found", file=sys.stderr)
+        sys.exit(1)
+    check_no_links(session, entity_label, entity_id, force_delete_links)
+    session.delete(row)
+    return row
+
+
 def apply_context_or_tag_update(
     session: Session, row: HasContextOrTag, new_context: Optional[str], new_tag: Optional[str]
 ) -> None:
@@ -309,6 +368,8 @@ def print_timestamps(entity: Any) -> None:
     every writer goes through Base's _now(), always UTC, so this is always correct."""
     print(f"created_at: {entity.created_at.replace(tzinfo=timezone.utc)}")
     print(f"updated_at: {entity.updated_at.replace(tzinfo=timezone.utc)}")
+    if entity.deleted_at is not None:
+        print(f"deleted_at: {entity.deleted_at.replace(tzinfo=timezone.utc)} (soft-deleted)")
 
 
 def add_history_arg(parser: argparse.ArgumentParser) -> None:

@@ -127,7 +127,7 @@ def search_entities(
     results: list[Any] = []
     for model in models:
         columns = [getattr(model, col) for col in _TEXT_COLUMNS if hasattr(model, col)]
-        q = select(model).where(or_(*(c.ilike(pattern) for c in columns)))
+        q = select(model).where(or_(*(c.ilike(pattern) for c in columns)), model.deleted_at.is_(None))
         if in_scope is not None and issubclass(model, HasContextOrTag):
             match = model.matches_contexts(in_scope)
             q = q.where(match | (model.context_id.is_(None) & model.tag_id.is_(None)))

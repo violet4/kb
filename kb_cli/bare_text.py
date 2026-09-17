@@ -11,7 +11,7 @@ BARE_INSTRUCTIONS = """\
 
 Routing a plain statement to the right subcommand (the noun -- which table):
   A stated fact/observation about the world -> log
-  A piece of completed work not tied to an existing Todo/Goal (nothing was ever "pending") -> win add BODY
+  A piece of completed work not tied to an existing Todo/Goal (nothing was ever "pending") -> win add TITLE [BODY]
   Claude used a phrase or showed a habit worth flagging for later analysis -> flag NOTE (see kb Goal #41)
   A stated need/intent, not yet done -> todo
   Existing behavior that's wrong (a defect/regression, not just unfinished work) -> bug
@@ -116,16 +116,19 @@ plan, why title and reason are split).
 
 ## Tracking Completed Work
 
-`kb win add "..."` records a piece of completed work that was never tracked as a Todo/Goal --
-it was conceived, done, and finished in one sitting, so there's no "pending" state it ever
-needed. This is distinct from completing an existing Todo/Goal (`kb todo complete ID`): a win
-is for work that had no prior record at all, not the resolution of one that did -- don't
-retroactively create a Todo just to complete it. `kb win recent` (default: last 7 calendar
-days including today, `--days 1` for just today) answers "what did we accomplish
-today/this week?" directly, without mixing in ordinary `kb log` observations -- it's a thin
-wrapper over `kb log` with a reserved domain, so a win is still visible via
-`kb log recent --domain win`/`kb search` too, but `kb win` is the ergonomic front door for
-both writing and querying it.
+`kb win add TITLE [BODY]` records a piece of completed work that was never tracked as a
+pending Todo -- it was conceived, done, and finished in one sitting. A win IS a Todo (same
+title/notes/context/effort/embedding shape as `kb todo add`, so it's reachable via `kb search`,
+`context tree`, `journal`, `link` like any other Todo); the only difference is that it's
+created already `status=DONE` instead of passing through `pending`/`in_progress` first, so it
+never shows up in `todo pending`/`todo list`. This is distinct from completing an existing
+Todo/Goal (`kb todo complete ID`): a win is for work that had no prior record at all, not the
+resolution of one that did -- don't retroactively create a Todo just to complete it, and don't
+use `kb win add` for something that was already tracked as pending. `kb win recent` (default:
+last 7 calendar days including today, `--days 1` for just today) answers "what did we
+accomplish today/this week?" -- any Todo completed in the window, not only ones added via
+`kb win add`, since a Todo that really was pending first and got completed is equally "work
+that got done recently."
 
 ## Searching Documents
 

@@ -913,6 +913,21 @@ class Todo(Base, HasContextOrTag, HasEmbedding):
         return session.scalars(q).all()
 
     @classmethod
+    def recently_completed(
+        cls, session: Session, since: datetime, context: Optional[Context] = None, limit: int = 50
+    ) -> Sequence[Todo]:
+        """DONE Todos updated since the given cutoff, most-recent first -- backs `kb win recent`,
+        but also covers a Todo that really was pending first and got completed within the
+        window, which is correct: both are "work that got done recently." Not scoped by
+        include_deferred/tag fan-out the way active() is, since a completed Todo has no
+        remaining defer/pending state to filter on."""
+        q = select(cls).where(cls.status == TodoStatus.DONE, cls.updated_at >= since)
+        if context is not None:
+            q = q.where(cls.context_id == context.id)
+        q = q.order_by(cls.updated_at.desc()).limit(limit)
+        return session.scalars(q).all()
+
+    @classmethod
     def create(
         cls,
         session: Session,

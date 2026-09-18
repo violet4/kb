@@ -27,6 +27,7 @@ from api.entities_router import router as entities_router
 from api.events_router import router as events_router
 from api.search_router import router as search_router
 from api.sessions_router import router as sessions_router
+from api.settings_router import router as settings_router
 from api.usage_router import router as usage_router
 from embed import _local_embed as embed, mark_warm_in_process, model_name
 from kb_cli.archivebox import resolve_or_push
@@ -90,6 +91,7 @@ app.include_router(archivebox_router)
 app.include_router(usage_router)
 app.include_router(sessions_router)
 app.include_router(channels_router)
+app.include_router(settings_router)
 
 
 def main() -> None:

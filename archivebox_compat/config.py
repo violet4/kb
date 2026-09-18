@@ -22,8 +22,8 @@ from dataclasses import dataclass
 
 import httpx
 
-# archivebox.internal (and other private-CA-signed internal hosts) are signed by
-# violet.com's own CA, present in the system trust store but not in the bundled
+# archivebox.internal (and other private-CA-signed internal hosts) are signed by a
+# self-issued internal CA, present in the system trust store but not in the bundled
 # certifi store httpx uses by default -- verified 2026-08-11, httpx.get() with the
 # default verify=True fails CERTIFICATE_VERIFY_FAILED against archivebox.internal,
 # succeeds once pointed at the system store below.

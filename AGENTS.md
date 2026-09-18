@@ -38,7 +38,7 @@ Bare `kb_repl.py` (no command, `-f`, or `-i`) errors instead of silently droppin
 
 `sess` and all models are pre-loaded, including game-specific ones (`PgPlayer`, `PgNpc`, `PgQuest`, `PgItem`, ...). No imports needed. Everything shares a single database and session.
 
-`--context NAME` acts in that context for one command only (pre-loaded as `context` in the namespace) without changing the persisted current context — e.g. `./kb_repl.py --context pg.violet "Goal.active(context)"`.
+`--context NAME` acts in that context for one command only (pre-loaded as `context` in the namespace) without changing the persisted current context — e.g. `./kb_repl.py --context pg.alice "Goal.active(context)"`.
 
 Enum columns take the member (uppercase name, e.g. `Collection.GORGON`), not the lowercase `.value` shown in old muscle memory. `scripts/dev/gen-api` lists valid members per enum.
 
@@ -70,7 +70,7 @@ SQLite silently drops timezone info on `DateTime(timezone=True)` columns on read
 
 `Todo.effort` (reusing `WishlistEffort`) marks how much a Todo actually takes — `grab` for something quick/batchable now, `research`/`project` for bigger asks — so `todo pending --effort grab` finds exactly the small stuff worth batching, without it getting lost among everything else.
 
-`Goal`/`Todo`/`Daily`/`Item` all take an optional `context`. `Context` is a real single-parent tree (`parent_id` adjacency list, see `models.py`) — a node's plain leaf name (e.g. `"violet"`, `"levels"`) is unique on its own, with position in the hierarchy expressed through `parent_id`, not by encoding ancestry into the name itself (no more `"pg.violet"`-style dotted names). `kb context tree` prints the current shape.
+`Goal`/`Todo`/`Daily`/`Item` all take an optional `context`. `Context` is a real single-parent tree (`parent_id` adjacency list, see `models.py`) — a node's plain leaf name (e.g. `"alice"`, `"levels"`) is unique on its own, with position in the hierarchy expressed through `parent_id`, not by encoding ancestry into the name itself (no more `"pg.alice"`-style dotted names). `kb context tree` prints the current shape.
 
 `context.py` has two distinct entry points for two distinct questions, never conflated: `resolve_context(cli_override=None)` answers "what should a **read**-scoped command (`todo list`, `context tree`, `kb summary`, ...) show me" — with no override it returns `None`, meaning "show everything." There is no ambient persisted default context to fall back to (a `CurrentContext` singleton, switched via `kb context switch`, used to fill this role, but a context switched once for an unrelated task would silently narrow every later read across sessions and days without ever showing up as a strange result — it was removed for exactly that reason; `--context` now only ever affects the single invocation it's passed on). Every caller must print what it resolved to (`kb_cli._util.scope_to_context` does this for the common case) so the scope is never invisible. `creation_context(args)` answers the different question "what context does a new row from an `add` command get" — with no explicit `--context` it pins the new row to the fixed `inbox` Context directly, so a fresh session can never silently create a record under an unrelated leftover context. Relocate out of `inbox` later with `kb <noun> update ID --context NAME`. Any script that needs the active context should call one of these two functions, never query `Context` directly.
 

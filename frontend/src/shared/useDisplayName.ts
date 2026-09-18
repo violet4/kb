@@ -1,17 +1,29 @@
 import { useEffect, useState } from 'react';
 
-const STORAGE_KEY = 'kb-display-name';
-export const DEFAULT_DISPLAY_NAME = 'violet';
+const API_BASE = '/api';
 
 // The one name every page that can send a Channel message (currently just the Agents chat
-// view) attaches to an outgoing message as its sender -- shared here, not per-page, so
-// setting it once in Settings applies everywhere a message can be sent.
+// view) attaches to an outgoing message as its sender -- backed by Settings.display_name
+// (DB), not per-device storage, so it's the same everywhere the person opens the UI. No
+// hardcoded fallback: an unset name means the settings input renders empty until the
+// person fills it in.
 export function useDisplayName(): [string, (value: string) => void] {
-  const [displayName, setDisplayNameState] = useState(() => localStorage.getItem(STORAGE_KEY) || DEFAULT_DISPLAY_NAME);
+  const [displayName, setDisplayNameState] = useState('');
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, displayName);
-  }, [displayName]);
+    fetch(`${API_BASE}/settings`)
+      .then((r) => r.json())
+      .then((data) => setDisplayNameState(data.display_name ?? ''));
+  }, []);
 
-  return [displayName, setDisplayNameState];
+  const setDisplayName = (value: string) => {
+    setDisplayNameState(value);
+    fetch(`${API_BASE}/settings`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ display_name: value }),
+    });
+  };
+
+  return [displayName, setDisplayName];
 }

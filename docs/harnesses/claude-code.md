@@ -45,7 +45,7 @@ kb notifications volume 50         # 0-100, persisted
 }
 ```
 
-Replace `/path/to/kb-repo` with this repo's absolute path (e.g. `/home/violet/kb`). Optional env vars: `NTFY_URL` (default `http://localhost:7182/claude-code`), `NTFY_TOKEN_FILE` (default `~/.config/ntfy-token`) — read by the adapter script itself and passed through to `kb notifications send` as `--ntfy-url`/`--ntfy-token-file` so a per-invocation override still works without touching the persisted default.
+Replace `/path/to/kb-repo` with this repo's absolute path (e.g. `/home/user/kb`). Optional env vars: `NTFY_URL` (default `http://localhost:7182/claude-code`), `NTFY_TOKEN_FILE` (default `~/.config/ntfy-token`) — read by the adapter script itself and passed through to `kb notifications send` as `--ntfy-url`/`--ntfy-token-file` so a per-invocation override still works without touching the persisted default.
 
 ## mypy-check (harness-agnostic detector)
 
@@ -69,7 +69,7 @@ See `kb hooks --help` / `kb_cli/hooks.py` for what this detects and what it says
 }
 ```
 
-Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/violet/kb/kb`).
+Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/user/kb/kb`).
 
 ## post-commit-check (harness-agnostic detector)
 
@@ -93,7 +93,7 @@ See `kb hooks --help` / `kb_cli/hooks.py` for what this detects and why (points 
 }
 ```
 
-Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/violet/kb/kb`).
+Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/user/kb/kb`).
 
 ## find-root-check (harness-agnostic detector, blocking)
 
@@ -117,7 +117,7 @@ See `kb hooks --help` / `kb_cli/hooks.py` for what this detects and why (a root-
 }
 ```
 
-Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/violet/kb/kb`).
+Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/user/kb/kb`).
 
 ## memory-md-check (harness-agnostic detector, blocking)
 
@@ -141,7 +141,7 @@ See `kb hooks --help` / `kb_cli/hooks.py` for what this detects and why (points 
 }
 ```
 
-Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/violet/kb/kb`).
+Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/user/kb/kb`).
 
 ## plan-md-check (harness-agnostic detector, advisory)
 
@@ -165,7 +165,7 @@ See `kb hooks --help` / `kb_cli/hooks.py` for what this detects and why (points 
 }
 ```
 
-Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/violet/kb/kb`).
+Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/user/kb/kb`).
 
 ## daily-check (harness-agnostic detector, session-scoped lock)
 
@@ -189,7 +189,7 @@ See [`../daily-check.md`](../daily-check.md) for what this does and why (session
 }
 ```
 
-Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/violet/kb/kb`).
+Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/user/kb/kb`).
 
 ## tree-reminder (harness-agnostic detector, unconditional)
 
@@ -213,7 +213,7 @@ See `kb hooks --help` / `kb_cli/hooks.py` for what this does and why (Instructio
 }
 ```
 
-Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/violet/kb/kb`).
+Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/user/kb/kb`).
 
 ## archive-reminder (harness-agnostic detector, unconditional)
 
@@ -238,7 +238,7 @@ See `kb hooks --help` / `kb_cli/hooks.py` for what this does and why (nudge to s
 }
 ```
 
-Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/violet/kb/kb`). If a `PostToolUse`/`Bash` entry already exists for `mypy-check`, this is a separate matcher (`WebSearch|WebFetch` vs `Bash`) so it needs its own entry in the `PostToolUse` array, not merged into that one.
+Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/user/kb/kb`). If a `PostToolUse`/`Bash` entry already exists for `mypy-check`, this is a separate matcher (`WebSearch|WebFetch` vs `Bash`) so it needs its own entry in the `PostToolUse` array, not merged into that one.
 
 ## Adding a new one
 

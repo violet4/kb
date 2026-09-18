@@ -622,6 +622,7 @@ class Settings(Base):
     notifications_volume: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
     archivebox_host: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     hard_delete_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    display_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     @classmethod
     def get(cls, session: Session) -> Settings:

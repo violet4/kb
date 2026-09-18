@@ -2,6 +2,16 @@ import Popover from '../../shared/Popover';
 import { tokens } from '../../shared/tokens';
 import { rgbTripletToHex, hexToRgbTriplet } from '../colorFormat';
 
+const WEEKDAY_OPTIONS = [
+  { value: 0, label: 'Sunday' },
+  { value: 1, label: 'Monday' },
+  { value: 2, label: 'Tuesday' },
+  { value: 3, label: 'Wednesday' },
+  { value: 4, label: 'Thursday' },
+  { value: 5, label: 'Friday' },
+  { value: 6, label: 'Saturday' },
+];
+
 interface TodayHighlightSettingsProps {
   rgb: string;
   alpha: number;
@@ -11,6 +21,8 @@ interface TodayHighlightSettingsProps {
   oneTimeRgb: string;
   onChangeRecurringRgb: (rgb: string) => void;
   onChangeOneTimeRgb: (rgb: string) => void;
+  firstDayOfWeek: number;
+  onChangeFirstDayOfWeek: (day: number) => void;
 }
 
 export default function TodayHighlightSettings({
@@ -22,6 +34,8 @@ export default function TodayHighlightSettings({
   oneTimeRgb,
   onChangeRecurringRgb,
   onChangeOneTimeRgb,
+  firstDayOfWeek,
+  onChangeFirstDayOfWeek,
 }: TodayHighlightSettingsProps) {
   return (
     <Popover label="Settings">
@@ -40,8 +54,29 @@ export default function TodayHighlightSettings({
           rgb={oneTimeRgb}
           onChange={onChangeOneTimeRgb}
         />
+        <FirstDayOfWeekField value={firstDayOfWeek} onChange={onChangeFirstDayOfWeek} />
       </div>
     </Popover>
+  );
+}
+
+function FirstDayOfWeekField({ value, onChange }: { value: number; onChange: (day: number) => void }) {
+  return (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 8 }} htmlFor="first-day-of-week">
+      First day of week
+      <select
+        id="first-day-of-week"
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        style={{ flex: 1 }}
+      >
+        {WEEKDAY_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 

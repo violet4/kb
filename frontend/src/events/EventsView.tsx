@@ -8,6 +8,7 @@ import type { ViewMode } from './components/ViewModeTabs';
 import { useEventColors } from './hooks/useEventColors';
 import { useEventFormModalState } from './hooks/useEventFormModalState';
 import { useEvents } from './hooks/useEvents';
+import { useFirstDayOfWeek } from './hooks/useFirstDayOfWeek';
 import { useTodayHighlight } from './hooks/useTodayHighlight';
 import { useViewModeKeyNav } from './hooks/useViewModeKeyNav';
 import MonthView from './MonthView';
@@ -17,11 +18,19 @@ export default function EventsView() {
   const [mode, setMode] = useState<ViewMode>('month');
   const todayHighlight = useTodayHighlight();
   const eventColors = useEventColors();
+  const [firstDayOfWeek, setFirstDayOfWeek] = useFirstDayOfWeek();
   useViewModeKeyNav(setMode);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1, minHeight: 0 }}>
-      <EventsHeader mode={mode} onModeChange={setMode} todayHighlight={todayHighlight} eventColors={eventColors} />
+      <EventsHeader
+        mode={mode}
+        onModeChange={setMode}
+        todayHighlight={todayHighlight}
+        eventColors={eventColors}
+        firstDayOfWeek={firstDayOfWeek}
+        onChangeFirstDayOfWeek={setFirstDayOfWeek}
+      />
       {mode === 'list' && <EventsListPane />}
       {mode === 'week' && (
         <WeekView
@@ -46,11 +55,15 @@ function EventsHeader({
   onModeChange,
   todayHighlight,
   eventColors,
+  firstDayOfWeek,
+  onChangeFirstDayOfWeek,
 }: {
   mode: ViewMode;
   onModeChange: (mode: ViewMode) => void;
   todayHighlight: ReturnType<typeof useTodayHighlight>;
   eventColors: ReturnType<typeof useEventColors>;
+  firstDayOfWeek: number;
+  onChangeFirstDayOfWeek: (day: number) => void;
 }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '8px 8px 0' }}>
@@ -64,6 +77,8 @@ function EventsHeader({
         oneTimeRgb={eventColors.oneTimeRgb}
         onChangeRecurringRgb={eventColors.setRecurringRgb}
         onChangeOneTimeRgb={eventColors.setOneTimeRgb}
+        firstDayOfWeek={firstDayOfWeek}
+        onChangeFirstDayOfWeek={onChangeFirstDayOfWeek}
       />
       <ViewModeTabs mode={mode} onChange={onModeChange} />
     </div>

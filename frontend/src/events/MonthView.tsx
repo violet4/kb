@@ -7,8 +7,17 @@ import { useCalendarKeyNav } from './hooks/useCalendarKeyNav';
 import { useCalendarNav } from './hooks/useCalendarNav';
 import { useEventFormModalState } from './hooks/useEventFormModalState';
 import { useEventsInRange } from './hooks/useEventsInRange';
+import { useFirstDayOfWeek } from './hooks/useFirstDayOfWeek';
 
-const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const WEEKDAY_LABELS_BY_FIRST_DAY = [
+  ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+  ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+  ['Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun', 'Mon'],
+  ['Wed', 'Thu', 'Fri', 'Sat', 'Sun', 'Mon', 'Tue'],
+  ['Thu', 'Fri', 'Sat', 'Sun', 'Mon', 'Tue', 'Wed'],
+  ['Fri', 'Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu'],
+  ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
+];
 
 interface MonthViewProps {
   todayHighlightColor: string;
@@ -19,8 +28,9 @@ interface MonthViewProps {
 export default function MonthView({ todayHighlightColor, recurringColor, oneTimeColor }: MonthViewProps) {
   const { anchor, goToPrev, goToNext, goToToday } = useCalendarNav('month');
   useCalendarKeyNav(goToPrev, goToNext, goToToday);
-  const days = monthGridDays(anchor);
-  const rangeStart = monthGridStart(anchor);
+  const [firstDayOfWeek] = useFirstDayOfWeek();
+  const days = monthGridDays(anchor, firstDayOfWeek);
+  const rangeStart = monthGridStart(anchor, firstDayOfWeek);
   const rangeEnd = addDays(rangeStart, 42);
   const { occurrences, loading, error, refetch } = useEventsInRange(rangeStart, rangeEnd);
   const modal = useEventFormModalState();
@@ -32,7 +42,7 @@ export default function MonthView({ todayHighlightColor, recurringColor, oneTime
       {error && <p style={{ color: tokens.color.danger, margin: 0 }}>{error}</p>}
       {!loading && !error && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 1, flex: 1, minHeight: 0, userSelect: 'none' }}>
-          <WeekdayHeaderRow />
+          <WeekdayHeaderRow firstDayOfWeek={firstDayOfWeek} />
           <div
             style={{
               display: 'grid',
@@ -64,11 +74,12 @@ export default function MonthView({ todayHighlightColor, recurringColor, oneTime
   );
 }
 
-function WeekdayHeaderRow() {
+function WeekdayHeaderRow({ firstDayOfWeek }: { firstDayOfWeek: number }) {
+  const labels = WEEKDAY_LABELS_BY_FIRST_DAY[firstDayOfWeek];
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 1 }}>
-      {WEEKDAY_LABELS.map((label) => (
-        <span key={label} style={{ fontSize: 12, color: tokens.color.textMuted, textAlign: 'center', padding: 2 }}>
+      {labels.map((label, i) => (
+        <span key={`${label}-${i}`} style={{ fontSize: 12, color: tokens.color.textMuted, textAlign: 'center', padding: 2 }}>
           {label}
         </span>
       ))}

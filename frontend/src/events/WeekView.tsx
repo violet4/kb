@@ -7,14 +7,16 @@ import { useCalendarKeyNav } from './hooks/useCalendarKeyNav';
 import { useCalendarNav } from './hooks/useCalendarNav';
 import { useEventFormModalState } from './hooks/useEventFormModalState';
 import { useEventsInRange } from './hooks/useEventsInRange';
+import { useFirstDayOfWeek } from './hooks/useFirstDayOfWeek';
 
 const HOUR_HEIGHT = 48; // px per hour -- must match TimeGridDay's own HOUR_HEIGHT
 
 export default function WeekView({ todayHighlightColor, recurringColor, oneTimeColor }: WeekViewProps) {
   const { anchor, goToPrev, goToNext, goToToday } = useCalendarNav(7);
   useCalendarKeyNav(goToPrev, goToNext, goToToday);
-  const days = weekDays(anchor);
-  const rangeStart = startOfWeek(anchor);
+  const [firstDayOfWeek] = useFirstDayOfWeek();
+  const days = weekDays(anchor, firstDayOfWeek);
+  const rangeStart = startOfWeek(anchor, firstDayOfWeek);
   const rangeEnd = addDays(rangeStart, 7);
   const { occurrences, loading, error, refetch } = useEventsInRange(rangeStart, rangeEnd);
   const modal = useEventFormModalState();

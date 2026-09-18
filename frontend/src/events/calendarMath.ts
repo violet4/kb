@@ -7,11 +7,13 @@ export function startOfDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
-/** The Monday on or before `date` (ISO week start), at local midnight. */
-export function startOfWeek(date: Date): Date {
+/** The start of the week containing `date`, at local midnight -- `firstDay` is
+ * 0=Sunday..6=Saturday (matching Date.getDay()'s own numbering, and the stored
+ * setting in useFirstDayOfWeek), defaulting to Sunday. */
+export function startOfWeek(date: Date, firstDay: number = 0): Date {
   const d = startOfDay(date);
-  const dayNum = d.getDay() || 7; // Sunday (0) -> 7, so Mon=1..Sun=7
-  d.setDate(d.getDate() - (dayNum - 1));
+  const diff = (d.getDay() - firstDay + 7) % 7;
+  d.setDate(d.getDate() - diff);
   return d;
 }
 
@@ -21,23 +23,23 @@ export function addDays(date: Date, days: number): Date {
   return d;
 }
 
-/** The 7 local-midnight dates of the Mon-Sun week containing `date`. */
-export function weekDays(date: Date): Date[] {
-  const start = startOfWeek(date);
+/** The 7 local-midnight dates of the week containing `date`, starting on `firstDay`. */
+export function weekDays(date: Date, firstDay: number = 0): Date[] {
+  const start = startOfWeek(date, firstDay);
   return Array.from({ length: 7 }, (_, i) => addDays(start, i));
 }
 
-/** The Monday starting the first full week shown for `date`'s month -- may fall in
- * the previous month, so the grid's first row still shows a complete Mon-Sun week. */
-export function monthGridStart(date: Date): Date {
+/** The start of the first full week shown for `date`'s month -- may fall in the
+ * previous month, so the grid's first row still shows a complete week. */
+export function monthGridStart(date: Date, firstDay: number = 0): Date {
   const firstOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
-  return startOfWeek(firstOfMonth);
+  return startOfWeek(firstOfMonth, firstDay);
 }
 
-/** 6 full Mon-Sun weeks (42 days) starting at monthGridStart -- a fixed 6-row grid so
- * the page layout doesn't reflow height between 4/5/6-week months. */
-export function monthGridDays(date: Date): Date[] {
-  const start = monthGridStart(date);
+/** 6 full weeks (42 days) starting at monthGridStart -- a fixed 6-row grid so the
+ * page layout doesn't reflow height between 4/5/6-week months. */
+export function monthGridDays(date: Date, firstDay: number = 0): Date[] {
+  const start = monthGridStart(date, firstDay);
   return Array.from({ length: 42 }, (_, i) => addDays(start, i));
 }
 

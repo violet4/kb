@@ -77,6 +77,25 @@ def cmd_find_root_check(args: argparse.Namespace) -> None:
         print(_FIND_ROOT_HINT)
 
 
+_GIT_ADD_A_RE = re.compile(r"(?<![\w.-])git\s+add\s+(?:.*\s)?(?:-A|--all|-\.)(?:\s|$)")
+
+_GIT_ADD_A_HINT = (
+    "Blocked: `git add -A` (or `--all`) stages every change in the working tree, including "
+    "untracked files that may be accidental or generated rather than real project sources -- "
+    "review `git status` and stage specific paths instead, e.g. `git add path/to/file.py`."
+)
+
+
+def cmd_git_add_a_check(args: argparse.Namespace) -> None:
+    """Read a Bash command string on stdin; if it's a `git add` invocation using -A/--all
+    (whole-tree staging), print a block reason to stdout. Prints nothing (exit 0) otherwise,
+    so a harness adapter can pipe any Bash command through unconditionally and only block on
+    non-empty output."""
+    command = sys.stdin.read()
+    if _GIT_ADD_A_RE.search(command):
+        print(_GIT_ADD_A_HINT)
+
+
 _MEMORY_MD_RE = re.compile(r"(?:^|/)\.claude/(?:memory|projects/[^/]+/memory)/.*\.md$")
 
 _MEMORY_MD_HINT = (
@@ -429,6 +448,12 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         help="Detect a `find /` (root-scoped) command on stdin; print a block reason if it matches",
     )
     p_find_root.set_defaults(func=cmd_find_root_check)
+
+    p_git_add_a = sub.add_parser(
+        "git-add-a-check",
+        help="Detect `git add -A`/`--all` on stdin; print a block reason if it matches",
+    )
+    p_git_add_a.set_defaults(func=cmd_git_add_a_check)
 
     p_dep_install = sub.add_parser(
         "dependency-install-check",

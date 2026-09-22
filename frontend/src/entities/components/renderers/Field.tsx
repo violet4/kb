@@ -158,6 +158,7 @@ function EditableControl({ editable, value, isEditing, setIsEditing, markdown }:
         initialValue={value === null || value === undefined ? '' : String(value)}
         onSaved={onSaved}
         onCancel={() => setIsEditing(false)}
+        markdown={markdown}
       />
     );
   }

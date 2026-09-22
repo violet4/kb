@@ -98,6 +98,14 @@ interface EditableControlProps {
   markdown?: boolean;
 }
 
+// A double-click landing on an entity-ref link (see Markdown/linkifyEntityRefs) should
+// navigate, not enter edit mode -- editing is triggered only when neither click of the
+// pair hit a link.
+function startEditUnlessRef(e: React.MouseEvent, startEdit: () => void): void {
+  if ((e.target as HTMLElement).closest('a.kb-entity-ref')) return;
+  startEdit();
+}
+
 // Picks the concrete control for this field's kind -- the one place that decision is
 // made, shared by both the plain and nullable-wrapped layouts above.
 function EditableControl({ editable, value, isEditing, setIsEditing, markdown }: EditableControlProps) {
@@ -158,8 +166,8 @@ function EditableControl({ editable, value, isEditing, setIsEditing, markdown }:
     return (
       <span
         style={{ cursor: editable ? 'pointer' : undefined }}
-        onClick={editable ? () => setIsEditing(true) : undefined}
-        title={editable ? 'Click to edit' : undefined}
+        onDoubleClick={editable ? (e) => startEditUnlessRef(e, () => setIsEditing(true)) : undefined}
+        title={editable ? 'Double-click to edit' : undefined}
       >
         <Markdown text={String(value)} />
       </span>

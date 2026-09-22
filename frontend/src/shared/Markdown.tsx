@@ -1,7 +1,9 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
+import { useNavigate } from 'react-router-dom';
 import { tokens } from './tokens';
+import { linkifyEntityRefs } from '../entities/linkifyEntityRefs';
 
 const codeStyle = `
   .kb-markdown :is(h1, h2, h3, h4, h5, h6) { margin: 0.6em 0 0.3em; }
@@ -33,5 +35,31 @@ interface MarkdownProps {
 export default function Markdown({ text }: MarkdownProps) {
   ensureStyleInjected();
   const html = useMemo(() => DOMPurify.sanitize(marked.parse(text, { async: false, breaks: true })), [text]);
-  return <div className="kb-markdown" style={{ fontSize: 14, color: tokens.color.text }} dangerouslySetInnerHTML={{ __html: html }} />;
+  const ref = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
+  // Runs post-sanitize, on the real DOM -- a Type:ID reference (e.g. "Todo:102") is not
+  // markdown syntax, so this is a plain text-node walk/replace rather than a marked
+  // extension; kept as a separate pass (not folded into the html memo above) so it
+  // re-links after every render without re-running marked/DOMPurify.
+  useEffect(() => {
+    if (ref.current) linkifyEntityRefs(ref.current);
+  }, [html]);
+  // linkifyEntityRefs emits plain <a href> (dangerouslySetInnerHTML can't produce a real
+  // <Link>), so a click is intercepted here and routed through the SPA router instead of
+  // letting the browser do a full page navigation/reload.
+  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const anchor = (e.target as HTMLElement).closest('a.kb-entity-ref') as HTMLAnchorElement | null;
+    if (!anchor) return;
+    e.preventDefault();
+    navigate(anchor.getAttribute('href') ?? '/');
+  };
+  return (
+    <div
+      ref={ref}
+      className="kb-markdown"
+      style={{ fontSize: 14, color: tokens.color.text }}
+      onClick={handleClick}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
 }

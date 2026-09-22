@@ -104,6 +104,54 @@ function BlockRow({
   );
 }
 
+// Renders one addressed block as markdown, matching what BlockRow shows on screen (text as
+// its raw markdown, tool_use/tool_result as fenced code blocks) so "copy as markdown" round
+// trips what's actually visible rather than a separate serialization.
+function blockToMarkdown(addressed: AddressedBlock): string {
+  const { block } = addressed;
+  if (block.kind === 'text') return block.text ?? '';
+  if (block.kind === 'tool_use') {
+    return `**tool_use: ${block.tool_name}**\n\`\`\`json\n${JSON.stringify(block.tool_input, null, 2)}\n\`\`\``;
+  }
+  if (block.kind === 'tool_result') {
+    return `**tool_result${block.is_error ? ' (error)' : ''}**\n\`\`\`\n${block.tool_output ?? ''}\n\`\`\``;
+  }
+  return '';
+}
+
+function messageToMarkdown(message: ChatMessage, addressedBlocks: AddressedBlock[]): string {
+  const header = `**${message.role}** — ${message.timestamp}`;
+  const body = addressedBlocks.map(blockToMarkdown).filter(Boolean).join('\n\n');
+  return [header, body].filter(Boolean).join('\n\n');
+}
+
+function CopyMarkdownButton({ getText }: { getText: () => string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        navigator.clipboard.writeText(getText()).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        });
+      }}
+      title="Copy message as markdown"
+      style={{
+        padding: '2px 6px',
+        border: `1px solid ${tokens.color.border}`,
+        borderRadius: 4,
+        background: 'transparent',
+        color: tokens.color.textMuted,
+        fontSize: 11,
+        cursor: 'pointer',
+      }}
+    >
+      {copied ? 'Copied' : 'Copy'}
+    </button>
+  );
+}
+
 function MessageRow({
   message,
   addressedBlocks,
@@ -129,11 +177,14 @@ function MessageRow({
         background: isUser ? tokens.color.surface : 'transparent',
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: tokens.color.textMuted }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, color: tokens.color.textMuted }}>
         <span style={{ fontWeight: 600, color: isUser ? tokens.color.accent : tokens.color.text }}>
           {message.role}
         </span>
-        <span>{message.timestamp}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span>{message.timestamp}</span>
+          <CopyMarkdownButton getText={() => messageToMarkdown(message, addressedBlocks)} />
+        </div>
       </div>
       {addressedBlocks.map((addressed) => (
         <BlockRow

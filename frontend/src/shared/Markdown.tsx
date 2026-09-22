@@ -35,6 +35,14 @@ interface MarkdownProps {
 export default function Markdown({ text }: MarkdownProps) {
   ensureStyleInjected();
   const html = useMemo(() => DOMPurify.sanitize(marked.parse(text, { async: false, breaks: true })), [text]);
+  // dangerouslySetInnerHTML must receive a referentially stable object across renders where
+  // `html` itself hasn't changed -- a fresh `{ __html: html }` literal every render (even
+  // with the same string inside it) makes React re-set innerHTML on every unrelated
+  // re-render (a sibling's state change, a parent re-render), which silently reverts
+  // linkifyEntityRefs's DOM edits below without the below useEffect re-firing to redo them
+  // (its own dependency, `html`, didn't change) -- confirmed live: an entity-ref link would
+  // flash in on mount, then vanish on the next unrelated re-render.
+  const htmlProp = useMemo(() => ({ __html: html }), [html]);
   const ref = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   // Runs post-sanitize, on the real DOM -- a Type:ID reference (e.g. "Todo:102") is not
@@ -59,7 +67,7 @@ export default function Markdown({ text }: MarkdownProps) {
       className="kb-markdown"
       style={{ fontSize: 14, color: tokens.color.text }}
       onClick={handleClick}
-      dangerouslySetInnerHTML={{ __html: html }}
+      dangerouslySetInnerHTML={htmlProp}
     />
   );
 }

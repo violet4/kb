@@ -740,7 +740,37 @@ def _reembed_dirty_has_embedding(
 # ---------------------------------------------------------------------------
 
 _ENTITY_REF_RELATION = "mentions"
-_entity_ref_re = re.compile(r"\b([A-Z][A-Za-z]*):(\d+)\b")
+
+# Every prose spelling of an entity reference actually in use across kb -- not just the
+# TYPE:ID form `kb link add` takes. `kb`'s own CLI output prints bare "#ID" (type implied
+# by the command's own context) and prose (including this assistant's own replies) says
+# "Note #343"/"Goal #14" as often as "Note:343" -- so all three separators (":", " #", "#")
+# are real, existing spellings, not a hypothetical grammar. ArchivedLink is additionally
+# referenced as "ABnnn" (no separator, no space) -- its own display prefix, not its class
+# name -- established well before this mixin existed (see `kb ab add`'s own printed output),
+# so it is special-cased via _ENTITY_REF_ALIASES rather than invented here.
+_entity_ref_re = re.compile(r"\b([A-Z][A-Za-z]*)\s?#(\d+)\b|\b([A-Z][A-Za-z]*):(\d+)\b|\bAB(\d+)\b")
+
+# Short display-prefix -> real model (__name__) aliases, for a type spelled by something
+# other than its own class name. Checked in resolve/sync_auto_links, not baked into the
+# regex groups above, so adding a new alias never means touching the regex again.
+_ENTITY_REF_ALIASES = {"AB": "ArchivedLink"}
+
+
+def _parse_entity_refs(text: str) -> set[tuple[str, int]]:
+    """Every TYPE:ID / TYPE #ID / TYPE#ID / ABnnn reference in free text, as (type, id)
+    pairs with aliases already resolved (e.g. "AB23" -> ("ArchivedLink", 23)). The one
+    place this grammar is parsed -- HasAutoLinks.sync_auto_links is its only caller today,
+    but any future reader (a CLI command resolving refs in stored text, a report) should
+    call this rather than re-deriving the regex."""
+    found: set[tuple[str, int]] = set()
+    for type_a, id_a, type_b, id_b, ab_id in _entity_ref_re.findall(text):
+        if ab_id:
+            found.add(("ArchivedLink", int(ab_id)))
+        else:
+            entity_type, entity_id = (type_a, id_a) if type_a else (type_b, id_b)
+            found.add((_ENTITY_REF_ALIASES.get(entity_type, entity_type), int(entity_id)))
+    return found
 
 
 class HasAutoLinks:
@@ -792,7 +822,7 @@ class HasAutoLinks:
 
     def sync_auto_links(self, session: Session) -> None:
         entity_type = type(self).__name__
-        found = {(t, int(i)) for t, i in _entity_ref_re.findall(self._link_source_text())}
+        found = _parse_entity_refs(self._link_source_text())
         # Drop a self-reference -- "Todo:102" appearing in Todo 102's own text isn't a link.
         found.discard((entity_type, self.id))
 

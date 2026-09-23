@@ -14,6 +14,10 @@ export function rowToEntityDetail(row: EntityRow): EntityDetail {
     context_name: (context_name as string | null) ?? null,
     created_at: created_at as string,
     updated_at: updated_at as string,
-    fields: rest,
+    // status is kept in fields too (not just the top-level header copy above) so
+    // type-specific renderers (e.g. TodoView's "Status" Field) can read+edit it --
+    // see kb Todo #82 debugging session, status silently vanished from the body
+    // because it only existed at EntityDetail.status, never in fields.
+    fields: { ...rest, status },
   };
 }

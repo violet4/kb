@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import { useNavigate } from 'react-router-dom';
 import { tokens } from './tokens';
-import { linkifyEntityRefs } from '../entities/linkifyEntityRefs';
+import { extractEntityRefs, labelKey, linkifyEntityRefs } from '../entities/linkifyEntityRefs';
+import { resolveEntityLabels } from '../entities/api';
 
 const codeStyle = `
   .kb-markdown :is(h1, h2, h3, h4, h5, h6) { margin: 0.6em 0 0.3em; }
@@ -45,13 +46,37 @@ export default function Markdown({ text }: MarkdownProps) {
   const htmlProp = useMemo(() => ({ __html: html }), [html]);
   const ref = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+  // Batch-resolved title text for every ref in this body, keyed by labelKey(type, id) --
+  // fetched once per distinct `text` (not `html`, since the refs themselves don't change
+  // across a re-sanitize) so a body with many refs costs one round trip, not one per ref.
+  const [labels, setLabels] = useState<Map<string, string>>(new Map());
+  useEffect(() => {
+    const refs = extractEntityRefs(text);
+    if (refs.length === 0) {
+      setLabels(new Map());
+      return;
+    }
+    let cancelled = false;
+    resolveEntityLabels(refs)
+      .then((resolved) => {
+        if (cancelled) return;
+        setLabels(new Map(resolved.map((r) => [labelKey(r.type, r.id), r.label])));
+      })
+      .catch(() => {
+        // Title-embedding is a display nicety -- leave labels empty and let
+        // linkifyEntityRefs fall back to raw ref text rather than surfacing this.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [text]);
   // Runs post-sanitize, on the real DOM -- a Type:ID reference (e.g. "Todo:102") is not
   // markdown syntax, so this is a plain text-node walk/replace rather than a marked
   // extension; kept as a separate pass (not folded into the html memo above) so it
   // re-links after every render without re-running marked/DOMPurify.
   useEffect(() => {
-    if (ref.current) linkifyEntityRefs(ref.current);
-  }, [html]);
+    if (ref.current) linkifyEntityRefs(ref.current, labels);
+  }, [html, labels]);
   // linkifyEntityRefs emits plain <a href> (dangerouslySetInnerHTML can't produce a real
   // <Link>), so a click is intercepted here and routed through the SPA router instead of
   // letting the browser do a full page navigation/reload.

@@ -33,6 +33,12 @@ export interface EntityDetail {
   fields: Record<string, unknown>;
 }
 
+export interface EntityLabel {
+  type: string;
+  id: number;
+  label: string;
+}
+
 export interface GraphNeighbor {
   link_id: number;
   relation: string;

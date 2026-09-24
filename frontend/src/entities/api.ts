@@ -1,4 +1,4 @@
-import type { ColumnSchema, EntityRow, EntityType, GraphNeighbor, JournalEntry } from './types';
+import type { ColumnSchema, EntityLabel, EntityRow, EntityType, GraphNeighbor, JournalEntry } from './types';
 
 const API_BASE = '/api';
 
@@ -36,6 +36,19 @@ export function fetchEntity(type: EntityType, id: number): Promise<EntityRow> {
 
 export function fetchEntityGraph(type: EntityType, id: number): Promise<GraphNeighbor[]> {
   return getJson(`/entities/${type}/${id}/graph`);
+}
+
+// Refs that don't resolve (unknown type, deleted row) are simply absent from the
+// response -- callers fall back to raw ref text for those, see linkifyEntityRefs.ts.
+export async function resolveEntityLabels(refs: { type: string; id: number }[]): Promise<EntityLabel[]> {
+  if (refs.length === 0) return [];
+  const response = await fetch(`${API_BASE}/entities/labels`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(refs),
+  });
+  if (!response.ok) throw new Error(`Failed to resolve entity labels -> ${response.status} ${await response.text()}`);
+  return response.json();
 }
 
 export function fetchEntityJournal(type: EntityType, id: number): Promise<JournalEntry[]> {

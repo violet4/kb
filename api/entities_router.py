@@ -364,6 +364,36 @@ async def get_entity_graph(
     return neighbors
 
 
+class EntityRefIn(BaseModel):
+    type: str
+    id: int
+
+
+class EntityLabel(BaseModel):
+    type: str
+    id: int
+    label: str
+
+
+@router.post("/labels", response_model=list[EntityLabel])
+async def resolve_entity_labels(refs: list[EntityRefIn], session: Session = Depends(get_session)) -> list[EntityLabel]:
+    """Batch-resolve (type, id) pairs to display labels -- backs frontend title-embedding
+    for inline TYPE:ID references (see linkifyEntityRefs.ts), so a body full of refs needs
+    one round trip instead of one per ref. Refs that don't resolve (unknown type, deleted
+    row) are omitted rather than erroring, since a body can freely mix live and stale refs."""
+    labels = []
+    seen: set[tuple[str, int]] = set()
+    for ref in refs:
+        key = (ref.type, ref.id)
+        if key in seen:
+            continue
+        seen.add(key)
+        row = EntityLink.resolve(session, ref.type, ref.id)
+        if row is not None:
+            labels.append(EntityLabel(type=ref.type, id=ref.id, label=_label(row)))
+    return labels
+
+
 class JournalEntry(BaseModel):
     id: int
     field: Optional[str]

@@ -39,7 +39,30 @@ function parseMatch(match: RegExpExecArray): { type: EntityType; id: number } | 
   return KNOWN_TYPES.has(type) ? { type, id: Number(rawId) } : null;
 }
 
-export function linkifyEntityRefs(root: HTMLElement): void {
+export function labelKey(type: string, id: number): string {
+  return `${type}:${id}`;
+}
+
+// Every distinct known-type ref in raw text, for callers that need to batch-fetch labels
+// before the DOM exists to walk (see Markdown.tsx) -- shares REF_RE/parseMatch with the
+// DOM-walking pass below so the two can never disagree on what counts as a ref.
+export function extractEntityRefs(text: string): { type: EntityType; id: number }[] {
+  const refs = new Map<string, { type: EntityType; id: number }>();
+  REF_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = REF_RE.exec(text))) {
+    const ref = parseMatch(match);
+    if (ref) refs.set(labelKey(ref.type, ref.id), ref);
+  }
+  return [...refs.values()];
+}
+
+// labels: resolved title text keyed by labelKey(type, id) (see entities/api.ts's
+// resolveEntityLabels) -- when present for a ref, the link displays the resolved title
+// instead of the raw "Note:413" text, with the raw text kept as the `title` attribute
+// (a native hover tooltip, no extra component needed). Absent from the map (not yet
+// fetched, or unresolved) falls back to the raw text, same as before this param existed.
+export function linkifyEntityRefs(root: HTMLElement, labels?: Map<string, string>): void {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
       const parent = node.parentElement;
@@ -70,7 +93,9 @@ export function linkifyEntityRefs(root: HTMLElement): void {
       if (ref) {
         const a = document.createElement('a');
         a.href = entityPath(ref.type, ref.id);
-        a.textContent = full;
+        const label = labels?.get(labelKey(ref.type, ref.id));
+        a.textContent = label ?? full;
+        if (label) a.title = full;
         a.className = 'kb-entity-ref';
         frag.appendChild(a);
       } else {

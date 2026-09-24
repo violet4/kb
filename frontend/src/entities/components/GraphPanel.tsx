@@ -7,13 +7,23 @@ interface GraphPanelProps {
   neighbors: GraphNeighbor[];
 }
 
+function compareNeighbors(a: GraphNeighbor, b: GraphNeighbor): number {
+  return (
+    a.other_type.localeCompare(b.other_type) ||
+    a.other_label.localeCompare(b.other_label) ||
+    a.other_id - b.other_id ||
+    a.relation.localeCompare(b.relation)
+  );
+}
+
 export default function GraphPanel({ neighbors }: GraphPanelProps) {
   if (neighbors.length === 0) return null;
+  const sorted = [...neighbors].sort(compareNeighbors);
   return (
     <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <h2 style={{ margin: 0, fontSize: 15 }}>Links</h2>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {neighbors.map((n) => (
+        {sorted.map((n) => (
           <GraphNeighborRow key={n.link_id} neighbor={n} />
         ))}
       </div>

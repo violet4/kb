@@ -63,6 +63,22 @@ export function extractEntityRefs(text: string): { type: EntityType; id: number 
 // (a native hover tooltip, no extra component needed). Absent from the map (not yet
 // fetched, or unresolved) falls back to the raw text, same as before this param existed.
 export function linkifyEntityRefs(root: HTMLElement, labels?: Map<string, string>): void {
+  // Anchors this function already created on an earlier pass (e.g. before labels had
+  // resolved) -- their text is fixed once created, so when `labels` gains an entry for one
+  // of these after the fact, update its display text/tooltip in place rather than leaving
+  // it stuck at whatever the first pass rendered (the tree walker below deliberately never
+  // revisits text inside an existing <a>, so without this pass a link created before labels
+  // arrived would never pick up the resolved title).
+  for (const a of root.querySelectorAll<HTMLAnchorElement>('a.kb-entity-ref[data-ref]')) {
+    const full = a.dataset.ref ?? '';
+    const key = a.dataset.refKey ?? '';
+    const label = labels?.get(key);
+    const wanted = label ?? full;
+    if (a.textContent !== wanted) a.textContent = wanted;
+    if (label) a.title = full;
+    else a.removeAttribute('title');
+  }
+
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
       const parent = node.parentElement;
@@ -93,10 +109,13 @@ export function linkifyEntityRefs(root: HTMLElement, labels?: Map<string, string
       if (ref) {
         const a = document.createElement('a');
         a.href = entityPath(ref.type, ref.id);
-        const label = labels?.get(labelKey(ref.type, ref.id));
+        const key = labelKey(ref.type, ref.id);
+        const label = labels?.get(key);
         a.textContent = label ?? full;
         if (label) a.title = full;
         a.className = 'kb-entity-ref';
+        a.dataset.ref = full;
+        a.dataset.refKey = key;
         frag.appendChild(a);
       } else {
         frag.appendChild(document.createTextNode(full));

@@ -17,6 +17,7 @@ import os
 import re
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 _MYPY_FAILURE_RE = re.compile(r"Found \d+ error")
@@ -290,7 +291,8 @@ def cmd_tree_reminder(args: argparse.Namespace) -> None:
     heartbeat for cmd_daily_check's sleep-detection, without needing a dedicated hook of its
     own."""
     _LAST_ACTIVITY_FILE.write_text(str(time.time()))
-    print(_TREE_REMINDER)
+    timestamp = datetime.now().astimezone().isoformat(timespec="seconds")
+    print(f"{_TREE_REMINDER} [{timestamp}]")
 
 
 _DAILY_CHECK_LOCK = Path("/dev/shm/kb-daily-check.lock")

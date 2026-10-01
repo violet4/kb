@@ -8,13 +8,18 @@ import { resolveEntityLabels } from '../entities/api';
 
 const codeStyle = `
   .kb-markdown :is(h1, h2, h3, h4, h5, h6) { margin: 0.6em 0 0.3em; }
-  .kb-markdown p, .kb-markdown ul, .kb-markdown ol { margin: 0.4em 0; }
+  .kb-markdown p, .kb-markdown ul, .kb-markdown ol { margin: 0 0 1em; line-height: 1.5; }
+  .kb-markdown :is(p, ul, ol):last-child { margin-bottom: 0; }
   .kb-markdown ul, .kb-markdown ol { padding-left: 1.4em; }
-  .kb-markdown code { font-family: monospace; font-size: 0.9em; background: ${tokens.color.background}; padding: 0.1em 0.3em; border-radius: 3px; }
-  .kb-markdown pre { background: ${tokens.color.background}; border: 1px solid ${tokens.color.border}; border-radius: 6px; padding: 8px 10px; overflow-x: auto; }
+  .kb-markdown code { font-family: monospace; font-size: 0.9em; background: rgba(127, 127, 127, 0.2); padding: 0.1em 0.3em; border-radius: 3px; }
+  .kb-markdown pre { background: rgba(127, 127, 127, 0.2); border: 1px solid ${tokens.color.border}; border-radius: 6px; padding: 8px 10px; overflow-x: auto; }
   .kb-markdown pre code { background: none; padding: 0; }
   .kb-markdown a { color: ${tokens.link.color}; text-decoration: ${tokens.link.textDecoration}; }
   .kb-markdown blockquote { margin: 0.4em 0; padding-left: 0.8em; border-left: 3px solid ${tokens.color.border}; color: ${tokens.color.textMuted}; }
+  .kb-markdown table { border-collapse: collapse; margin: 0 0 0.8em; width: 100%; }
+  .kb-markdown table:last-child { margin-bottom: 0; }
+  .kb-markdown :is(th, td) { border: 1px solid ${tokens.color.border}; padding: 4px 8px; text-align: left; }
+  .kb-markdown th { background: ${tokens.color.background}; font-weight: 600; }
 `;
 
 let styleInjected = false;

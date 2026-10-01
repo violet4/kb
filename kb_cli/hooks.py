@@ -78,6 +78,26 @@ def cmd_find_root_check(args: argparse.Namespace) -> None:
         print(_FIND_ROOT_HINT)
 
 
+_PKILL_RE = re.compile(r"(?<![\w./])pkill(?:\s|$)")
+
+_PKILL_HINT = (
+    "Blocked: `pkill` matches and kills processes by name/pattern across the whole system -- "
+    "easy to hit an unintended process (another user's, another project's) since it isn't scoped "
+    "to a specific PID. Use `kill PID` with a PID confirmed via `pgrep`/`ps` first, or scope more "
+    "narrowly (e.g. `pkill -f` with a precise, tested pattern) only when a PID-based kill genuinely "
+    "isn't workable."
+)
+
+
+def cmd_pkill_check(args: argparse.Namespace) -> None:
+    """Read a Bash command string on stdin; if it invokes `pkill`, print a block reason
+    to stdout. Prints nothing (exit 0) otherwise, so a harness adapter can pipe any Bash
+    command through unconditionally and only block on non-empty output."""
+    command = sys.stdin.read()
+    if _PKILL_RE.search(command):
+        print(_PKILL_HINT)
+
+
 _GIT_ADD_A_RE = re.compile(r"(?<![\w.-])git\s+add\s+(?:.*\s)?(?:-A|--all|-\.)(?:\s|$)")
 
 _GIT_ADD_A_HINT = (
@@ -308,6 +328,12 @@ _DAILY_CHECK_PRIME = (
     "`kb hooks daily-check-release`."
 )
 
+# kb ships to users who don't necessarily have any particular other tool installed, so a
+# site-specific addition to the daily routine (e.g. a local caldav-cli) is never hardcoded
+# here -- it's appended only if KB_DAILY_CHECK_EXTRA is set in the environment, which a given
+# install's own shell profile is responsible for setting, not kb itself. See
+# docs/daily-check.md for details.
+
 
 def cmd_daily_check(args: argparse.Namespace) -> None:
     """Read a session ID on stdin -- this is the harness-agnostic path real hook wiring
@@ -345,7 +371,11 @@ def cmd_daily_check(args: argparse.Namespace) -> None:
         if holder != session_id and idle < _DAILY_CHECK_SLEEP_SECONDS:
             return
     _DAILY_CHECK_LOCK.write_text(session_id)
-    print(_DAILY_CHECK_PRIME)
+    prime = _DAILY_CHECK_PRIME
+    extra = os.environ.get("KB_DAILY_CHECK_EXTRA", "").strip()
+    if extra:
+        prime += " " + extra
+    print(prime)
 
 
 def cmd_session_register(args: argparse.Namespace) -> None:
@@ -456,6 +486,12 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         help="Detect `git add -A`/`--all` on stdin; print a block reason if it matches",
     )
     p_git_add_a.set_defaults(func=cmd_git_add_a_check)
+
+    p_pkill = sub.add_parser(
+        "pkill-check",
+        help="Detect a `pkill` invocation on stdin; print a block reason if it matches",
+    )
+    p_pkill.set_defaults(func=cmd_pkill_check)
 
     p_dep_install = sub.add_parser(
         "dependency-install-check",

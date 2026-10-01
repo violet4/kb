@@ -16,6 +16,16 @@ Reboot clears the lock for free (tmpfs), matching that sessions here always star
 
 A harness that doesn't already have its own equivalent of `tree-reminder` wired to a per-message event needs some other hook wired to `kb hooks tree-reminder` (or a bare touch of `/dev/shm/kb-last-activity`) purely to keep the heartbeat alive — otherwise `daily-check`'s sleep detection can't distinguish "user is idle for a few hours mid-day" from "user went to sleep," since both look like a stale timestamp from a single session's perspective. Do not build a second, harness-specific heartbeat file for this — the whole point of a shared tmpfs file is that any harness's message event, from any session, keeps the one clock alive.
 
+## Site-specific additions to the routine
+
+The priming message itself (`_DAILY_CHECK_PRIME` in `kb_cli/hooks.py`) is fixed, generic kb
+content -- it never names a tool kb doesn't ship with. An install that wants to fold in a check
+from some other locally-installed tool (e.g. a separate CalDAV CLI) sets the
+`KB_DAILY_CHECK_EXTRA` environment variable to the extra instruction text; `cmd_daily_check`
+appends it, space-separated, to the end of the priming message whenever it's non-empty. Set it
+in that install's own shell profile or harness-specific env config, never inside kb's own
+source, so kb stays correct for an install with no such tool present.
+
 ## Wiring a new harness
 
 1. Fire `kb hooks daily-check` once per new session (not per message), piping that harness's session ID on stdin. Print any non-empty stdout as harness-native context/notification.

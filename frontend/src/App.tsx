@@ -40,6 +40,7 @@ export default function App() {
           <Route path="/usage" element={<UsageView />} />
           <Route path="/agents" element={<AgentsView />} />
           <Route path="/agents/history" element={<AgentHistoryView />} />
+          <Route path="/agents/history/recent" element={<AgentHistoryView />} />
           <Route path="/agents/history/:project" element={<AgentHistoryView />} />
           <Route path="/agents/:sessionId" element={<AgentPage />} />
           <Route path="/channels" element={<ChannelsView />} />

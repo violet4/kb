@@ -1,4 +1,5 @@
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useMemo, useState } from 'react';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { tokens } from '../shared/tokens';
 import { useAgentHistoryProjects, useAgentHistorySessions } from './hooks/useAgentHistory';
 import type { HistorySession } from './types';
@@ -10,20 +11,49 @@ const cellStyle: React.CSSProperties = {
   whiteSpace: 'nowrap',
 };
 
-// Past (not currently live) sessions, browsed by project directory -- the read-only
-// counterpart to AgentsView's live table. Selecting a session links into the same
-// /agents/:sessionId route AgentsView does, so AgentPage's existing Session-tab transcript
-// viewer (SessionTranscript, keyed only by session id) is reused as-is; no history-specific
-// viewer needed. The Chat tab there assumes a live agent to DM, so it's meaningless for a
-// past session -- AgentPage already defaults to the Session tab, which is what matters here.
+const PAGE_SIZE_OPTIONS = [10, 20, 25, 50, 100];
+
+// Past (not currently live) sessions. Two alternative views share this one component:
+// by-project (the original, drill into one project directory's sessions) and by-recency (flat,
+// most-recent-first across every project, paginated since the full list can be large).
+// Selecting a session links into the same /agents/:sessionId route AgentsView does, so
+// AgentPage's existing Session-tab transcript viewer (SessionTranscript, keyed only by session
+// id) is reused as-is; no history-specific viewer needed. The Chat tab there assumes a live
+// agent to DM, so it's meaningless for a past session -- AgentPage already defaults to the
+// Session tab, which is what matters here.
 export default function AgentHistoryView() {
   const { project } = useParams<{ project?: string }>();
   const navigate = useNavigate();
+  const loc = useLocation();
 
+  if (loc.pathname === '/agents/history/recent') {
+    return <RecencyView onBack={() => navigate('/agents/history')} />;
+  }
   if (project === undefined) {
     return <ProjectPicker />;
   }
   return <SessionList project={project === 'all' ? null : decodeURIComponent(project)} onBack={() => navigate('/agents/history')} />;
+}
+
+function ViewTabs({ active }: { active: 'project' | 'recency' }) {
+  const tabStyle = (isActive: boolean): React.CSSProperties => ({
+    padding: '4px 10px',
+    borderRadius: 6,
+    fontSize: 13,
+    textDecoration: 'none',
+    color: isActive ? tokens.color.text : tokens.color.textMuted,
+    background: isActive ? tokens.color.border : 'transparent',
+  });
+  return (
+    <div style={{ display: 'flex', gap: 4 }}>
+      <Link to="/agents/history" style={tabStyle(active === 'project')}>
+        By Project
+      </Link>
+      <Link to="/agents/history/recent" style={tabStyle(active === 'recency')}>
+        By Recency
+      </Link>
+    </div>
+  );
 }
 
 function ProjectPicker() {
@@ -32,6 +62,7 @@ function ProjectPicker() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <Header title="Past Sessions" />
+      <ViewTabs active="project" />
       {error && <p style={{ margin: 0, color: tokens.color.danger }}>{error}</p>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         <ProjectLink label="All projects" project="all" />
@@ -76,33 +107,127 @@ function SessionList({ project, onBack }: { project: string | null; onBack: () =
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <Header title={project ?? 'All projects'} onBack={onBack} monospaceTitle={project !== null} />
+      <ViewTabs active="project" />
       {error && <p style={{ margin: 0, color: tokens.color.danger }}>{error}</p>}
-      <div style={{ overflowX: 'auto', border: `1px solid ${tokens.color.border}`, borderRadius: 8 }}>
-        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-          <thead>
-            <tr>
-              {['Session', 'Messages', 'Date', ...(project === null ? ['Project'] : [])].map((header) => (
-                <th
-                  key={header}
-                  style={{ ...cellStyle, textAlign: 'left', color: tokens.color.textMuted, fontWeight: 500 }}
-                >
-                  {header}
-                </th>
+      <SessionTable sessions={sessions} showProject={project === null} isLoading={isLoading} />
+    </div>
+  );
+}
+
+// Flat view across every project, sorted most-recent-first (the API's own sort order, see
+// list_history_sessions), paginated client-side since the full cross-project list can be long
+// and we don't want to render it all at once.
+function RecencyView({ onBack }: { onBack: () => void }) {
+  const { sessions, isLoading, error } = useAgentHistorySessions(null);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0]);
+  const [page, setPage] = useState(0);
+
+  const pageCount = Math.max(1, Math.ceil(sessions.length / pageSize));
+  const clampedPage = Math.min(page, pageCount - 1);
+  const pageSessions = useMemo(
+    () => sessions.slice(clampedPage * pageSize, clampedPage * pageSize + pageSize),
+    [sessions, clampedPage, pageSize],
+  );
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <Header title="All projects (by recency)" onBack={onBack} />
+      <ViewTabs active="recency" />
+      {error && <p style={{ margin: 0, color: tokens.color.danger }}>{error}</p>}
+      <SessionTable sessions={pageSessions} showProject isLoading={isLoading} />
+      {!error && sessions.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, color: tokens.color.textMuted }}>
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            disabled={clampedPage === 0}
+            style={pagerButtonStyle}
+          >
+            ← Prev
+          </button>
+          <span>
+            Page {clampedPage + 1} of {pageCount} ({sessions.length} sessions)
+          </span>
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+            disabled={clampedPage >= pageCount - 1}
+            style={pagerButtonStyle}
+          >
+            Next →
+          </button>
+          <label style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+            Per page
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(0);
+              }}
+              style={{
+                fontSize: 13,
+                padding: '2px 6px',
+                borderRadius: 4,
+                border: `1px solid ${tokens.color.border}`,
+                background: 'transparent',
+                color: tokens.color.text,
+              }}
+            >
+              {PAGE_SIZE_OPTIONS.map((size) => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
               ))}
-            </tr>
-          </thead>
-          <tbody>
-            {sessions.map((session) => (
-              <SessionRow key={session.id} session={session} showProject={project === null} />
+            </select>
+          </label>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const pagerButtonStyle: React.CSSProperties = {
+  background: 'none',
+  border: `1px solid ${tokens.color.border}`,
+  borderRadius: 4,
+  color: tokens.color.text,
+  fontSize: 13,
+  cursor: 'pointer',
+  padding: '2px 8px',
+};
+
+function SessionTable({
+  sessions,
+  showProject,
+  isLoading,
+}: {
+  sessions: HistorySession[];
+  showProject: boolean;
+  isLoading: boolean;
+}) {
+  return (
+    <div style={{ overflowX: 'auto', border: `1px solid ${tokens.color.border}`, borderRadius: 8 }}>
+      <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+        <thead>
+          <tr>
+            {['Session', 'Messages', 'Date', ...(showProject ? ['Project'] : [])].map((header) => (
+              <th key={header} style={{ ...cellStyle, textAlign: 'left', color: tokens.color.textMuted, fontWeight: 500 }}>
+                {header}
+              </th>
             ))}
-          </tbody>
-        </table>
-        {!error && (isLoading || sessions.length === 0) && (
-          <p style={{ margin: 0, padding: 12, color: tokens.color.textMuted, fontSize: 13 }}>
-            {isLoading ? 'Loading sessions…' : 'No sessions found.'}
-          </p>
-        )}
-      </div>
+          </tr>
+        </thead>
+        <tbody>
+          {sessions.map((session) => (
+            <SessionRow key={session.id} session={session} showProject={showProject} />
+          ))}
+        </tbody>
+      </table>
+      {isLoading || sessions.length === 0 ? (
+        <p style={{ margin: 0, padding: 12, color: tokens.color.textMuted, fontSize: 13 }}>
+          {isLoading ? 'Loading sessions…' : 'No sessions found.'}
+        </p>
+      ) : null}
     </div>
   );
 }

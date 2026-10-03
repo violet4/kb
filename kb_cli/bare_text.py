@@ -19,6 +19,8 @@ Routing a plain statement to the right subcommand (the noun -- which table):
     every `kb todo` subcommand with --kind fixed to bug; `kb todo add --kind bug` also works)
   A bigger purpose/end-goal, or multi-step work -> goal
   A decision/change to an existing record -> journal ENTITY_TYPE ID NOTE
+    (this is what `show`'s "N history entries" hint refers to -- Journal entries are
+    hidden by default on `show`, pass --history to expand them inline)
   Durable reference knowledge (not tied to a task) -> notes add TITLE BODY
   Something to buy/acquire, price-bearing -> wishlist
   An idea you like but haven't committed to -> idea

@@ -428,4 +428,4 @@ def print_journal_history(
             else:
                 print(f"  [{when}] {e.note}")
     elif history:
-        print(f"history: {len(history)} entries — {hint_cmd}")
+        print(f"journal history: {len(history)} entries — {hint_cmd}")

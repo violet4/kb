@@ -11,7 +11,7 @@ WorkingDirectory=%h/kb/frontend
 # must be set to the same value too, e.g.:
 #   Environment=PATH=%h/.nvm/versions/node/vX.Y.Z/bin:/usr/bin:/bin
 #   ExecSearchPath=%h/.nvm/versions/node/vX.Y.Z/bin:/usr/bin:/bin
-ExecStart=npm run dev
+ExecStart=/home/violet/infra/frontend-tools/vite-mode-run.sh
 Restart=on-failure
 RestartSec=2
 

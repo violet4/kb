@@ -120,11 +120,12 @@ def list_nodes() -> list[SiNode]:
 
 
 def next_id() -> str:
-    """The next unused NNNN id, one past the highest id currently on disk (0001 if the
-    directory is empty) -- ids are never reused after a delete, the same append-only
-    convention Instruction.id (an autoincrementing DB primary key) already has, so a
-    stale cross-reference to a deleted node fails loudly (file not found) instead of
-    silently resolving to whatever new node happens to reuse that id."""
+    """One past the highest id currently on disk (0001 if the directory is empty) --
+    NOT an append-only high-water mark: deleting the current-max node frees its id for
+    reuse by the very next add, unlike Instruction.id (a DB autoincrement PK, which never
+    reuses a deleted row's id). A stale cross-reference to a deleted node therefore isn't
+    guaranteed to fail loudly -- it can silently resolve to an unrelated node that later
+    reused the same id, if that id happened to be the max at delete time."""
     existing = [int(n.id) for n in list_nodes()]
     next_n = (max(existing) + 1) if existing else 1
     if next_n > 10**_ID_WIDTH - 1:
@@ -193,13 +194,24 @@ def resolve(ref: str) -> Optional[SiNode]:
 def resolve_ref(ref: str) -> Optional[SiNode]:
     """The file-backed counterpart to kb_cli.instruction._resolve_ref -- "root" means the
     tree's one entry point (the node with no incoming parent-of edge), not a literal title
-    lookup. Falls through to None if there are zero or more than one such node, same as
-    the DB version's handling of a malformed/incomplete tree."""
+    lookup. Unlike the DB-backed tree, nothing here enforces a single root at write time
+    (a new node with no --parent silently becomes a second root), so an ambiguous/missing
+    root raises SiFilesError naming the offending node(s) -- a real data problem to surface
+    and fix (e.g. `kb si set-parent ORPHAN --parent root` once the resulting single root is
+    unambiguous), not a plain miss to collapse into resolve()'s ordinary "not found"."""
     if ref == "root":
         roots = [
             n for n in list_nodes() if not any(e.to_id == n.id for e in load_graph() if e.relation == _PARENT_RELATION)
         ]
-        return roots[0] if len(roots) == 1 else None
+        if len(roots) == 1:
+            return roots[0]
+        if not roots:
+            raise SiFilesError("no root node found -- every node has an incoming parent-of edge, which is impossible")
+        titles = ", ".join(f"{n.title} #{n.id}" for n in roots)
+        raise SiFilesError(
+            f"ambiguous root -- {len(roots)} nodes have no parent ({titles}); "
+            "set-parent all but one of them under the intended root to fix"
+        )
     return resolve(ref)
 
 

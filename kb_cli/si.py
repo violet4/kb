@@ -149,11 +149,26 @@ def cmd_add(args: argparse.Namespace) -> None:
     if sf.resolve(args.title) is not None:
         print(f"kb si: title {args.title!r}: already exists -- titles must be unique", file=sys.stderr)
         sys.exit(1)
-    parent = _resolve_or_exit(args.parent) if args.parent is not None else None
+    # Omitting --parent means "attach under root", never "no parent" -- the tree must
+    # have exactly one root (resolve_ref("root") depends on this), so a silently
+    # unparented new node is always a bug, not a legitimate second root. #0012
+    # (documentation) was created this way, undetected until it made "root" ambiguous.
+    #
+    # A --parent that fails to resolve (typo'd title/id) must not discard the body
+    # someone just typed -- the node is still written and attached under root, with a
+    # loud warning to fix the parent, rather than erroring out before anything is saved
+    # and forcing the title/trigger/body to be retyped from scratch.
+    parent = sf.resolve_ref(args.parent) if args.parent is not None else sf.resolve_ref("root")
+    if parent is None:
+        print(
+            f"kb si: --parent {args.parent!r}: not found -- creating the node under root anyway so its "
+            f"content isn't lost. Fix the parent: `kb si set-parent {args.title!r} --parent TITLE|#ID`.",
+            file=sys.stderr,
+        )
+        parent = _resolve_or_exit("root")
     node_id = sf.next_id()
     sf.save_node(node_id, args.title, args.trigger, resolve_text_arg(args.body))
-    if parent is not None:
-        sf.set_parent(node_id, parent.id)
+    sf.set_parent(node_id, parent.id)
     _print_write_warning()
     written = sf.resolve(node_id)
     assert written is not None, f"just wrote node {node_id!r}, resolve must find it"
@@ -282,7 +297,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_add = sub.add_parser("add", help="Add a node to the system instruction tree (writes instructions_system/)")
     p_add.add_argument("title")
     p_add.add_argument("body")
-    p_add.add_argument("--parent", metavar="TITLE|#ID", help="Parent node (omit for a root node)")
+    p_add.add_argument("--parent", metavar="TITLE|#ID", help="Parent node (omit to attach under root)")
     p_add.add_argument(
         "--trigger", required=True, help='"If/when ..." condition -- required, even a couple words beats none'
     )

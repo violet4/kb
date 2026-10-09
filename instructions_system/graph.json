@@ -6,6 +6,11 @@
   },
   {
     "from": "0001",
+    "to": "0012",
+    "relation": "parent-of"
+  },
+  {
+    "from": "0001",
     "to": "0017",
     "relation": "parent-of"
   },
@@ -17,6 +22,11 @@
   {
     "from": "0001",
     "to": "0019",
+    "relation": "parent-of"
+  },
+  {
+    "from": "0001",
+    "to": "0020",
     "relation": "parent-of"
   },
   {

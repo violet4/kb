@@ -7,9 +7,12 @@ citation trail: ~/agents/docs/model-behavior/rule-generalization-from-instances/
 project exists to hold durable AI-agent-behavior research backing rules like this one, distinct
 from the rule text itself -- see that project's own AGENTS.md).
 
-1. Repeat -- has this actually recurred, or is this the first instance? If first instance and the
-cost of being wrong once is low, don't write a standing rule yet; let it recur or note it
-ephemerally instead.
+1. Repeat -- ask the human whether this has actually recurred before, rather than deciding from
+memory: a model has no reliable record of its own past sessions and cannot judge recurrence
+unaided. If the human confirms this is the first instance and the cost of being wrong once is
+low, don't write a standing rule yet -- let it recur or note it ephemerally instead. Even when
+unconfirmed, asking is itself useful: it can stop a rule from being written that didn't need to
+exist, or surface other instances the human remembers that should shape the rule's actual scope.
 
 2. Rung -- ask why this happened (direct cause), why it wasn't already prevented (system gap),
 and where else this same cause could occur (scope); stop the rule at the answer to the third

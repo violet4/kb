@@ -88,5 +88,10 @@
     "from": "0011",
     "to": "0014",
     "relation": "parent-of"
+  },
+  {
+    "from": "0012",
+    "to": "0020",
+    "relation": "parent-of"
   }
 ]

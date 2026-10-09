@@ -233,6 +233,41 @@ def cmd_dependency_install_check(args: argparse.Namespace) -> None:
     args.session.commit()
 
 
+_UV_SYNC_RE = re.compile(r"(?<![\w.-])uv\s+sync\b")
+
+_UV_SYNC_HINT = (
+    "Blocked: `uv sync` rebuilds the venv strictly from pyproject.toml/uv.lock -- any locally "
+    "installed package not declared there is silently removed. In ~/kb specifically, "
+    "`cli_instrumentation` is an optional, not-yet-public dependency installed this way "
+    "(see pyproject.toml's mypy override and kb_cli/stats.py's import-guard comment) and is NOT "
+    "listed as a project dependency -- a bare `uv sync` here destructively uninstalls it, which "
+    "already happened once and cost 5 weeks of cli_instrumentation data. Before running `uv sync` "
+    "in ~/kb: confirm cli_instrumentation is reinstalled afterward (reinstall it from wherever its "
+    "source lives), or run `uv sync --inexact` or `uv sync --no-sources`-style scoping to avoid "
+    "clobbering locally-installed-but-undeclared packages, if that fits the actual need. Re-run "
+    "with `UV_SYNC_CONFIRMED=1` prefixed once this has been accounted for."
+)
+
+
+def cmd_uv_sync_check(args: argparse.Namespace) -> None:
+    """Read a Bash command string on stdin; if it invokes `uv sync` inside ~/kb (cwd piped as
+    the second stdin line, "<command>\\n<cwd>") without a UV_SYNC_CONFIRMED=1 env-var prefix,
+    print a block reason to stdout -- `uv sync` reconciles the venv strictly against
+    pyproject.toml/uv.lock, silently removing any locally installed package not declared there.
+    ~/kb installs the optional `cli_instrumentation` package exactly this way (not a declared
+    dependency), and a bare `uv sync` there once destroyed 5 weeks of its recorded data. Prints
+    nothing (exit 0) otherwise, so a harness adapter can pipe any Bash command through
+    unconditionally and only block on non-empty output."""
+    command, _, cwd = sys.stdin.read().partition("\n")
+    if not _UV_SYNC_RE.search(command):
+        return
+    if "UV_SYNC_CONFIRMED=1" in command:
+        return
+    if "/kb" not in cwd and "/kb" not in command:
+        return
+    print(_UV_SYNC_HINT)
+
+
 _HEREDOC_BODY_RE = re.compile(r"<<-?\s*'?(\w+)'?.*?\n.*?\n\1\b", re.DOTALL)
 _QUOTED_STRING_RE = re.compile(r"'[^']*'|\"[^\"]*\"")
 
@@ -498,6 +533,12 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         help="Detect a new-dependency install command on stdin; require AUDITED=noteN or print a block reason",
     )
     p_dep_install.set_defaults(func=cmd_dependency_install_check)
+
+    p_uv_sync = sub.add_parser(
+        "uv-sync-check",
+        help='Detect a naive `uv sync` in ~/kb on stdin ("<command>\\n<cwd>"); print a block reason if it matches',
+    )
+    p_uv_sync.set_defaults(func=cmd_uv_sync_check)
 
     p_sessions_listen = sub.add_parser(
         "sessions-listen-check",

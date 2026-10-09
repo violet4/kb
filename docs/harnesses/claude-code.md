@@ -191,6 +191,30 @@ See `kb hooks --help` / `kb_cli/hooks.py` for what this detects and why (points 
 
 Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/user/kb/kb`).
 
+## uv-sync-check (harness-agnostic detector, blocking)
+
+See `kb hooks --help` / `kb_cli/hooks.py` for what this detects and why: `uv sync` rebuilds the venv strictly from `pyproject.toml`/`uv.lock`, silently removing any locally installed package not declared there — `cli_instrumentation` (an optional, not-yet-public dependency, see `CLAUDE.md`'s harness paragraph) is installed exactly this way in `~/kb`, and a bare `uv sync` there once destroyed 5 weeks of its recorded data. This section is only the Claude Code wiring: pipes a `Bash` command's `.tool_input.command` and `.cwd` through on `PreToolUse` (`"<command>\n<cwd>"`, same two-line stdin shape as `post-commit-check`). Same blocking shape as `find-root-check`.
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "reason=$(jq -r '.tool_input.command + \"\\n\" + .cwd' | /path/to/kb hooks uv-sync-check 2>/dev/null); if [ -n \"$reason\" ]; then jq -n --arg r \"$reason\" '{hookSpecificOutput: {hookEventName: \"PreToolUse\", permissionDecision: \"deny\", permissionDecisionReason: $r}}'; else printf '{}'; fi"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/user/kb/kb`).
+
 ## daily-check (harness-agnostic detector, session-scoped lock)
 
 See [`../daily-check.md`](../daily-check.md) for what this does and why (session-priming lock, sleep detection via the shared heartbeat in `tree-reminder` below) — this section is only the Claude Code wiring. Fires once per new session on `SessionStart`/`source: "startup"` (not `resume` or `compact` — those aren't a new session starting), piping `.session_id` in.

@@ -10,6 +10,9 @@ export default function NavBar() {
       <Link to="/contexts" style={{ color: tokens.color.text, textDecoration: 'none', fontSize: 13 }}>
         Contexts
       </Link>
+      <Link to="/log" style={{ color: tokens.color.text, textDecoration: 'none', fontSize: 13 }}>
+        Log
+      </Link>
       <Link to="/events" style={{ color: tokens.color.text, textDecoration: 'none', fontSize: 13 }}>
         Events
       </Link>

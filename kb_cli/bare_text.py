@@ -9,6 +9,9 @@ its token cost) without either one shelling out to the other -- see kb Note #148
 BARE_INSTRUCTIONS = """\
 ## Routing
 
+Information a project owns goes in that project (its own docs, organized by its own domain);
+kb is for what has no other home.
+
 Routing a plain statement to the right subcommand (the noun -- which table):
   A stated fact/observation about the world -> log
   A piece of completed work not tied to an existing Todo/Goal (nothing was ever "pending") -> win add TITLE [BODY]

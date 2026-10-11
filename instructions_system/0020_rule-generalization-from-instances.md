@@ -2,10 +2,7 @@ title: rule-generalization-from-instances
 trigger: when writing or editing any persistent rule/instruction text (AGENTS.md/CLAUDE.md, kb si node, style guide) generalized from one or a few concrete examples
 
 Before a rule generalized from a concrete instance persists, run it through five checks, in
-order -- an earlier failing check makes the later ones moot. Full checklist, worked example, and
-citation trail: ~/agents/docs/model-behavior/rule-generalization-from-instances/README.md (this
-project exists to hold durable AI-agent-behavior research backing rules like this one, distinct
-from the rule text itself -- see that project's own AGENTS.md).
+order -- an earlier failing check makes the later ones moot.
 
 1. Repeat -- ask the human whether this has recurred before; a model can't judge that from
 memory alone. Surface the tradeoff -- a rule written from one instance risks being
@@ -30,9 +27,4 @@ persisted rule states only the "what," never the "why" or a defense of it.
 a mistake, not just "is the underlying practice bad in the abstract") and that it's verifiable (a
 reader with no other context can mechanically check compliance).
 
-No existing named framework covers this end-to-end (verified 2026-10-09, three research
-rounds). This checklist is assembled from pieces that do exist: root-cause-ladder technique,
-Google style-guide "rules must pull their weight," Gricean Quality/Quantity, policy/standard/
-procedure layering, and -- strongest -- classical ML/ILP results (Gold's theorem, Mitchell's
-candidate-elimination version spaces) that formally ground the Bound and Repeat steps, not just
-heuristic. See the project doc's citation map for which result backs which step.
+No existing named framework covers this end-to-end (verified 2026-10-09). The checklist combines root-cause laddering, the "rules must pull their weight" test from Google's style guides, Grice's maxims of Quality and Quantity, and the learnability results named under Bound (see SOURCES.md).

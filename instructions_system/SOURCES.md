@@ -19,3 +19,5 @@ Citation rollup for research grounding the instructions_system/ tree. Each entry
 - AB624 — git, SubmittingPatches — https://git-scm.com/docs/SubmittingPatches — grounds commit-messages: body content, rejected alternatives, present tense.
 - AB631 — Linux kernel, "Submitting patches" — https://www.kernel.org/doc/html/latest/process/submitting-patches.html — grounds commit-messages: problem, impact, tradeoffs; one problem per patch.
 - AB632 — Simon Tatham, "Commit messages" (2024) — https://www.chiark.greenend.org.uk/~sgtatham/quasiblog/commit-messages/ — grounds commit-messages: the commit describes the change, code and docs describe the current state.
+- Gold, E. M., "Language identification in the limit," Information and Control 10(5), 1967 — grounds rule-generalization-from-instances' Bound step: a concept learned from positive examples alone is underdetermined.
+- Angluin, D., "Inductive inference of formal languages from positive data," Information and Control 45(2), 1980 — grounds rule-generalization-from-instances' Bound step: a named excluded case (tell-tale) makes the scope well-posed.

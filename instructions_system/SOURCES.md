@@ -12,3 +12,10 @@ Citation rollup for research grounding the instructions_system/ tree. Each entry
 - AB416 — Donald Knuth, quote on premature optimization, via Wikiquote — https://en.wikiquote.org/wiki/Donald_Knuth — grounds system-level-performance's full (often-misquoted) framing of when optimization is and is not warranted.
 - AB417 — web.dev, "Performance budgets 101" — https://web.dev/articles/performance-budgets-101 — grounds system-level-performance's "state the expectation before building" claim.
 - AB418 — "Don't repeat yourself," Wikipedia, summarizing Hunt & Thomas, *The Pragmatic Programmer* (1999) — https://en.wikipedia.org/wiki/Don%27t_repeat_yourself — grounds code-level-implementation's reuse-before-reimplementation rule.
+- AB629 — Shi et al., "Large Language Models Can Be Easily Distracted by Irrelevant Context," ICML 2023 — https://arxiv.org/abs/2302.00093 — grounds root's Snapshots and Records: irrelevant loaded context degrades accuracy.
+- AB630 — Liu et al., "Lost in the Middle," TACL 2024 — https://arxiv.org/abs/2307.03172 — grounds root's Snapshots and Records: accuracy drops as relevant content is buried in long context.
+- AB626 — Chroma, "Context Rot" (2025) — https://www.trychroma.com/research/context-rot — grounds root's Snapshots and Records: a single distractor measurably degrades performance.
+- AB625 — NARA, archival appraisal conclusions (Schellenberg, primary vs. secondary value) — https://www.archives.gov/research/alic/reference/archives-resources/appraisal-conclusions.html — grounds root's Snapshots and Records: what history is worth a record.
+- AB624 — git, SubmittingPatches — https://git-scm.com/docs/SubmittingPatches — grounds commit-messages: body content, rejected alternatives, present tense.
+- AB631 — Linux kernel, "Submitting patches" — https://www.kernel.org/doc/html/latest/process/submitting-patches.html — grounds commit-messages: problem, impact, tradeoffs; one problem per patch.
+- AB632 — Simon Tatham, "Commit messages" (2024) — https://www.chiark.greenend.org.uk/~sgtatham/quasiblog/commit-messages/ — grounds commit-messages: the commit describes the change, code and docs describe the current state.

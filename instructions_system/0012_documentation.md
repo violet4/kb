@@ -13,3 +13,6 @@ report, research write-up, or reference doc is held to the same test -- state th
 and the reasoning that supports it, not a restated inventory of what was searched/read/tried.
 When a session produces documentation as its main output rather than as an accompaniment to
 code, that doc is still subject to this node, not exempt from it just because no code changed.
+
+
+A doc describes the current state only. When the thing it documents changes (a rename, a move, a removed command), rewrite the doc to the new state rather than annotating the old one alongside it; root's Timelessness rule sends the history to version control. A dated log or incident record is no exception: its text names things by their current names, and it is linked from a current-state doc only for a finding still in force.

@@ -3,6 +3,7 @@ import AgentHistoryView from './agents/AgentHistoryView';
 import AgentPage from './agents/AgentPage';
 import AgentsView from './agents/AgentsView';
 import ChannelsView from './channels/ChannelsView';
+import ContextsView from './contexts/ContextsView';
 import DailiesView from './dailies/DailiesView';
 import BrowseView from './entities/BrowseView';
 import EntityView from './entities/EntityView';
@@ -36,6 +37,8 @@ export default function App() {
       >
         <Routes>
           <Route path="/" element={<DailiesView />} />
+          <Route path="/contexts" element={<ContextsView />} />
+          <Route path="/contexts/:id" element={<ContextsView />} />
           <Route path="/events" element={<EventsView />} />
           <Route path="/usage" element={<UsageView />} />
           <Route path="/agents" element={<AgentsView />} />

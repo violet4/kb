@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from api.deps import get_session
 from embed import _local_embed as embed, model_name
-from models import Collection, Note
+from models import Collection, Context, Note
 
 router = APIRouter()
 
@@ -68,6 +68,7 @@ class NoteCreateIn(BaseModel):
     body: str
     collection: str
     tags: Optional[str] = None
+    context_id: Optional[int] = None
 
 
 @router.post("/notes", response_model=str)
@@ -76,7 +77,12 @@ async def create_note(body: NoteCreateIn, session: Session = Depends(get_session
         collection = Collection(body.collection)
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Unknown collection: {body.collection!r}")
-    note = Note.create(session, title=body.title, body=body.body, collection=collection, tags=body.tags)
+    context = session.get(Context, body.context_id) if body.context_id is not None else None
+    if body.context_id is not None and context is None:
+        raise HTTPException(status_code=400, detail=f"Unknown context id: {body.context_id}")
+    note = Note.create(
+        session, title=body.title, body=body.body, collection=collection, tags=body.tags, context=context
+    )
     session.commit()
     return repr(note)
 

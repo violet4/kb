@@ -56,9 +56,13 @@ class KBClient:
             raise RuntimeError(f"kb.service returned a non-list-of-objects result: {result!r}")
         return result
 
-    def note_create(self, title: str, body: str, collection: str, tags: str | None = None) -> str:
+    def note_create(
+        self, title: str, body: str, collection: str, tags: str | None = None, context_id: int | None = None
+    ) -> str:
         result = self._request(
-            "POST", "/notes", json={"title": title, "body": body, "collection": collection, "tags": tags}
+            "POST",
+            "/notes",
+            json={"title": title, "body": body, "collection": collection, "tags": tags, "context_id": context_id},
         )
         if not isinstance(result, str):
             raise RuntimeError(f"kb.service returned a non-string result: {result!r}")

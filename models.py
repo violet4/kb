@@ -2172,6 +2172,10 @@ class Note(Base, HasEmbedding, HasAutoLinks):
         Enum(Collection, create_constraint=True, validate_strings=True), nullable=False
     )
     tags: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # comma-separated
+    # Where the note belongs (a project, a pet, a place), on the same Context tree as
+    # Todo/Goal -- orthogonal to `collection`, which says what kind of note it is.
+    context_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("context.id"), nullable=True)
+    context: Mapped[Optional[Context]] = relationship("Context")
 
     @staticmethod
     def _embed_fields() -> set[str]:
@@ -2188,10 +2192,11 @@ class Note(Base, HasEmbedding, HasAutoLinks):
         body: str,
         collection: Collection = Collection.INBOX,
         tags: Optional[str] = None,
+        context: Optional[Context] = None,
     ) -> Note:
         if collection == Collection.ALL:
             raise ValueError("Collection.ALL is a search sentinel and cannot be used for storage.")
-        note = cls(title=title, body=body, collection=collection, tags=tags)
+        note = cls(title=title, body=body, collection=collection, tags=tags, context=context)
         note.reembed()
         session.add(note)
         session.flush()
@@ -2225,7 +2230,8 @@ class Note(Base, HasEmbedding, HasAutoLinks):
 
     def __repr__(self) -> str:
         tags_str = f" #{self.tags}" if self.tags else ""
-        return f"<Note #{self.id} {self.collection.value}/{self.title!r}{tags_str}{self.age_marker()}>"
+        ctx_str = f" [{self.context.name}]" if self.context else ""
+        return f"<Note #{self.id} {self.collection.value}/{self.title!r}{tags_str}{ctx_str}{self.age_marker()}>"
 
 
 # ---------------------------------------------------------------------------

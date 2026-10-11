@@ -7,6 +7,7 @@ from typing import Optional
 from sqlalchemy import select
 
 from client import KBClient
+from context import creation_context, resolve_context
 from kb_cli._util import (
     apply_purge,
     apply_restore,
@@ -29,6 +30,7 @@ def cmd_show(args: argparse.Namespace) -> None:
     print(f"id: {note.id}")
     print(f"title: {note.title}")
     print(f"collection: {note.collection.value}")
+    print(f"context: {note.context.name if note.context else 'none'}")
     if note.tags:
         print(f"tags: {note.tags}")
     print_timestamps(note)
@@ -59,6 +61,7 @@ def cmd_add(args: argparse.Namespace) -> None:
         body=resolve_body_args(args.body, args.body_file),
         collection=collection.value,
         tags=args.tags,
+        context_id=creation_context(args).id,
     )
     print(f"Added: {result}")
 
@@ -77,6 +80,8 @@ def cmd_update(args: argparse.Namespace) -> None:
         body = apply_text_edit(note.body, f"body of {note.title!r}", args.append, replace)
     collection = _resolve_collection(args.collection)
     note.update(title=args.title, body=body, tags=args.tags, collection=collection)
+    if args.new_context is not None:
+        note.context = resolve_context(args.session, args.new_context)
     args.session.commit()
     print(f"Updated: {note}")
 
@@ -161,6 +166,9 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         "--collection",
         default=None,
         help="Move the note to this collection. Unknown names fall back to inbox with a warning.",
+    )
+    p_update.add_argument(
+        "--context", dest="new_context", metavar="NAME", help="Move the note to this context (where it belongs)"
     )
     p_update.set_defaults(func=cmd_update)
 

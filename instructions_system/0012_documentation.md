@@ -15,4 +15,4 @@ When a session produces documentation as its main output rather than as an accom
 code, that doc is still subject to this node, not exempt from it just because no code changed.
 
 
-A doc describes the current state only. When the thing it documents changes (a rename, a move, a removed command), rewrite the doc to the new state rather than annotating the old one alongside it; root's Timelessness rule sends the history to version control. A dated log or incident record is no exception: its text names things by their current names, and it is linked from a current-state doc only for a finding still in force.
+A doc describes the current state only. When the thing it documents changes (a rename, a move, a removed command), rewrite the doc to the new state rather than annotating the old one alongside it; root's Timelessness rule sends the history to version control. A dated record (incident, log, journal) is the exception: it keeps its original wording and is never updated for later renames; git history connects old names to current ones. A current-state doc links to a record only for a finding still in force.

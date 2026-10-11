@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Optional, Sequence
+from typing import Any, ClassVar, Optional, Sequence
 
 import psutil
 import sqlite_vec  # type: ignore[import-untyped]  # no type stubs published for this package
@@ -22,6 +22,7 @@ from sqlalchemy import (
     Integer,
     Numeric,
     String,
+    CheckConstraint,
     Text,
     UniqueConstraint,
     and_,
@@ -37,6 +38,7 @@ from sqlalchemy.orm import (
     MappedColumn,
     Session,
     UOWTransaction,
+    declared_attr,
     mapped_column,
     object_session,
     relationship,
@@ -260,34 +262,12 @@ class Context(Base, HasUniqueName):
     @classmethod
     def get_existing(cls, session: Session, name: str) -> Context:
         """Look up a context by name, raising if it's missing -- used only where the name is
-        known-good already (e.g. self_and_descendants walking a Context that was just resolved
-        via get_or_create_reporting), never on raw user-typed --context input. See
-        get_or_create_reporting for the user-facing path, which creates rather than raises."""
+        known-good already (e.g. self_and_descendants walking an already-resolved Context), never
+        on raw user-typed input -- context.py resolves that, with suggestions on a miss."""
         obj = session.scalars(select(cls).filter_by(name=name)).one_or_none()
         if obj is None:
             raise ValueError(f"no such context: {name!r} (create it with: kb context add {name!r})")
         return obj
-
-    @classmethod
-    def get_or_create_reporting(cls, session: Session, name: str) -> tuple[Context, bool]:
-        """Look up a context by name, creating a new top-level one if it doesn't exist yet.
-        Returns (context, was_created) -- callers print a short "created new context" notice
-        when was_created is True (see kb_cli._util.scope_to_context), rather than raising.
-        A misspelled --context is meant to be caught by noticing that notice and fixing it
-        with `kb context rm`/`context set-parent`, not by a hard error -- a full argparse
-        error for a bare typo was expensive to recover from (had to retype a long --body
-        verbatim) for a mistake that's actually a 1-2 command fix after the fact."""
-        obj = session.scalars(select(cls).filter_by(name=name)).one_or_none()
-        if obj is not None:
-            return obj, False
-        obj = cls(name=name)
-        session.add(obj)
-        # Commit immediately, independent of whatever the enclosing command later commits
-        # (or doesn't) -- a read-only command like `todo list` never calls session.commit(),
-        # but the auto-created context must still persist, or the "created" notice would
-        # print again on every subsequent call for a context that never actually exists.
-        session.commit()
-        return obj, True
 
     def ancestors(self) -> list[Context]:
         """This context plus every parent up the chain, broadest last."""
@@ -476,6 +456,16 @@ class HasContextOrTag:
     context: Mapped[Optional[Context]]
     tag: Mapped[Optional["Tag"]]
 
+    # Every row says where it belongs: exactly one of context_id/tag_id, enforced in the
+    # database. A subclass whose placement is genuinely optional sets this to False.
+    _context_or_tag_required: ClassVar[bool] = True
+
+    @declared_attr.directive
+    def __table_args__(cls) -> tuple[Any, ...]:
+        if not cls._context_or_tag_required:
+            return ()
+        return (CheckConstraint("(context_id IS NULL) != (tag_id IS NULL)", name="context_xor_tag"),)
+
     @validates("tag_id")
     def _validate_tag_id(self, key: str, value: Optional[int]) -> Optional[int]:
         if value is not None and getattr(self, "context_id", None) is not None:
@@ -537,6 +527,8 @@ class Instruction(Base, HasContextOrTag, HasEmbedding):
     operational reference documentation, genuinely useful to someone else running this system."""
 
     __tablename__ = "instruction"
+    # Guidance is often universal; a context/tag is an optional narrowing, not a home.
+    _context_or_tag_required = False
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     title: Mapped[str] = mapped_column(String, nullable=False, unique=True)
@@ -914,24 +906,17 @@ class Goal(Base, HasContextOrTag, HasEmbedding, HasAutoLinks):
         session: Session,
         context: Optional[Context] = None,
         contexts: Optional[Sequence[Context]] = None,
-        include_no_context: bool = False,
     ) -> Sequence[Goal]:
         """`context` matches that single context exactly; `contexts` (e.g. from
         Context.self_and_descendants) matches any context in the given set, plus any
         Goal whose tag_id is carried by a Context in that set (see HasContextOrTag) --
-        use the latter for a context-plus-sub-contexts filter. include_no_context also
-        surfaces Goals with no context/tag at all (e.g. for a summary view that treats
-        untagged items as always-relevant, regardless of which context is active)."""
+        use the latter for a context-plus-sub-contexts filter."""
         q = select(cls).where(cls.status == GoalStatus.ACTIVE, cls.deleted_at.is_(None))
         if context is not None:
             q = q.where(cls.context_id == context.id)
         if contexts is not None:
             matches = cls.matches_contexts(contexts)
-            q = (
-                q.where(matches | (cls.context_id.is_(None) & cls.tag_id.is_(None)))
-                if include_no_context
-                else q.where(matches)
-            )
+            q = q.where(matches)
         return session.scalars(q).all()
 
     @classmethod
@@ -942,8 +927,9 @@ class Goal(Base, HasContextOrTag, HasEmbedding, HasAutoLinks):
         description: Optional[str] = None,
         context: Optional[Context] = None,
         notes: Optional[str] = None,
+        tag: Optional[Tag] = None,
     ) -> Goal:
-        goal = cls(title=title, description=description, context_id=context.id if context else None, notes=notes)
+        goal = cls(title=title, description=description, context=context, tag=tag, notes=notes)
         goal.reembed()
         session.add(goal)
         session.flush()
@@ -1004,7 +990,6 @@ class Todo(Base, HasContextOrTag, HasEmbedding, HasAutoLinks):
         session: Session,
         context: Optional[Context] = None,
         contexts: Optional[Sequence[Context]] = None,
-        include_no_context: bool = False,
         effort: Optional[WishlistEffort] = None,
         kind: Optional[TodoKind] = None,
         include_deferred: bool = False,
@@ -1016,9 +1001,7 @@ class Todo(Base, HasContextOrTag, HasEmbedding, HasAutoLinks):
         """`context` matches that single context exactly; `contexts` (e.g. from
         Context.self_and_descendants) matches any context in the given set, plus any
         Todo whose tag_id is carried by a Context in that set (see HasContextOrTag) --
-        use the latter for a context-plus-sub-contexts filter. include_no_context also
-        surfaces Todos with no context/tag at all (e.g. for a summary view that treats
-        untagged items as always-relevant, regardless of which context is active).
+        use the latter for a context-plus-sub-contexts filter.
         Named to match Goal/Daily/Idea's own .active() -- every context/tag-addressable
         entity exposes the same shape so a generic renderer can call it uniformly.
         `untriaged` (severity IS NULL) and `severity` (a specific assessed value) are
@@ -1031,11 +1014,7 @@ class Todo(Base, HasContextOrTag, HasEmbedding, HasAutoLinks):
             q = q.where(cls.context_id == context.id)
         if contexts is not None:
             matches = cls.matches_contexts(contexts)
-            q = (
-                q.where(matches | (cls.context_id.is_(None) & cls.tag_id.is_(None)))
-                if include_no_context
-                else q.where(matches)
-            )
+            q = q.where(matches)
         if effort is not None:
             q = q.where(cls.effort == effort)
         if kind is not None:
@@ -1219,7 +1198,6 @@ class Daily(Base, HasContextOrTag, HasEmbedding):
         session: Session,
         context: Optional[Context] = None,
         contexts: Optional[Sequence[Context]] = None,
-        include_no_context: bool = False,
     ) -> Sequence[Daily]:
         """`context` matches that single context exactly; `contexts` (e.g. from
         Context.self_and_descendants) matches any context in the given set, plus any
@@ -1229,11 +1207,7 @@ class Daily(Base, HasContextOrTag, HasEmbedding):
             q = q.where(cls.context_id == context.id)
         if contexts is not None:
             matches = cls.matches_contexts(contexts)
-            q = (
-                q.where(matches | (cls.context_id.is_(None) & cls.tag_id.is_(None)))
-                if include_no_context
-                else q.where(matches)
-            )
+            q = q.where(matches)
         return session.scalars(q).all()
 
     def is_overdue(self, session: Session) -> bool:
@@ -1442,7 +1416,6 @@ class Event(Base, HasContextOrTag, HasEmbedding):
         session: Session,
         context: Optional[Context] = None,
         contexts: Optional[Sequence[Context]] = None,
-        include_no_context: bool = False,
     ) -> Sequence[Event]:
         """`context` matches that single context exactly; `contexts` (e.g. from
         Context.self_and_descendants) matches any context in the given set, plus any Event
@@ -1452,11 +1425,7 @@ class Event(Base, HasContextOrTag, HasEmbedding):
             q = q.where(cls.context_id == context.id)
         if contexts is not None:
             matches = cls.matches_contexts(contexts)
-            q = (
-                q.where(matches | (cls.context_id.is_(None) & cls.tag_id.is_(None)))
-                if include_no_context
-                else q.where(matches)
-            )
+            q = q.where(matches)
         return session.scalars(q).all()
 
     @classmethod
@@ -1906,13 +1875,13 @@ class LogEntry(Base, HasEmbedding):
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     domain: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    context_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("context.id"), nullable=True)
+    context_id: Mapped[int] = mapped_column(Integer, ForeignKey("context.id"), nullable=False)
     source_ref: Mapped[Optional[str]] = mapped_column(
         String, nullable=True
     )  # free-form origin pointer, e.g. a Claude Code session ID -- most entries (a cat note, a
     # health fact) have none; only set when the entry came from a traceable external context
 
-    context: Mapped[Optional[Context]] = relationship("Context")
+    context: Mapped[Context] = relationship("Context")
 
     @staticmethod
     def _embed_fields() -> set[str]:
@@ -1926,15 +1895,15 @@ class LogEntry(Base, HasEmbedding):
         cls,
         session: Session,
         body: str,
+        context: Context,
         domain: Optional[str] = None,
-        context: Optional[Context] = None,
         occurred_at: Optional[datetime] = None,
         source_ref: Optional[str] = None,
     ) -> LogEntry:
         entry = cls(
             body=body,
             domain=domain,
-            context_id=context.id if context else None,
+            context=context,
             occurred_at=occurred_at or _now(),
             source_ref=source_ref,
         )
@@ -1952,7 +1921,7 @@ class LogEntry(Base, HasEmbedding):
         limit: int = 20,
         since: Optional[datetime] = None,
     ) -> Sequence[LogEntry]:
-        q = select(cls).order_by(cls.occurred_at.desc()).limit(limit)
+        q = select(cls).where(cls.deleted_at.is_(None)).order_by(cls.occurred_at.desc(), cls.id.desc()).limit(limit)
         if domain is not None:
             q = q.where(cls.domain == domain)
         if context is not None:
@@ -2174,8 +2143,8 @@ class Note(Base, HasEmbedding, HasAutoLinks):
     tags: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # comma-separated
     # Where the note belongs (a project, a pet, a place), on the same Context tree as
     # Todo/Goal -- orthogonal to `collection`, which says what kind of note it is.
-    context_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("context.id"), nullable=True)
-    context: Mapped[Optional[Context]] = relationship("Context")
+    context_id: Mapped[int] = mapped_column(Integer, ForeignKey("context.id"), nullable=False)
+    context: Mapped[Context] = relationship("Context")
 
     @staticmethod
     def _embed_fields() -> set[str]:
@@ -2190,9 +2159,9 @@ class Note(Base, HasEmbedding, HasAutoLinks):
         session: Session,
         title: str,
         body: str,
+        context: Context,
         collection: Collection = Collection.INBOX,
         tags: Optional[str] = None,
-        context: Optional[Context] = None,
     ) -> Note:
         if collection == Collection.ALL:
             raise ValueError("Collection.ALL is a search sentinel and cannot be used for storage.")
@@ -2230,8 +2199,7 @@ class Note(Base, HasEmbedding, HasAutoLinks):
 
     def __repr__(self) -> str:
         tags_str = f" #{self.tags}" if self.tags else ""
-        ctx_str = f" [{self.context.name}]" if self.context else ""
-        return f"<Note #{self.id} {self.collection.value}/{self.title!r}{tags_str}{ctx_str}{self.age_marker()}>"
+        return f"<Note #{self.id} {self.collection.value}/{self.title!r}{tags_str} [{self.context.name}]{self.age_marker()}>"
 
 
 # ---------------------------------------------------------------------------
@@ -2259,29 +2227,42 @@ class Wishlist(Base):
         nullable=False,
         default=WishlistStatus.ACTIVE,
     )
-    context_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("context.id"), nullable=True)
+    context_id: Mapped[int] = mapped_column(Integer, ForeignKey("context.id"), nullable=False)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     pinned: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )  # manually marked visible in kb summary
 
-    context: Mapped[Optional[Context]] = relationship("Context")
+    context: Mapped[Context] = relationship("Context")
 
     @property
     def score(self) -> int:
         return self.importance * self.urgency * self.clarity // 10000
 
     @classmethod
-    def active(cls, session: Session, effort: Optional[WishlistEffort] = None) -> Sequence[Wishlist]:
+    def active(
+        cls,
+        session: Session,
+        effort: Optional[WishlistEffort] = None,
+        contexts: Optional[Sequence[Context]] = None,
+    ) -> Sequence[Wishlist]:
         q = select(cls).where(cls.status == WishlistStatus.ACTIVE, cls.deleted_at.is_(None))
+        if contexts is not None:
+            q = q.where(cls.context_id.in_([c.id for c in contexts]))
         if effort is not None:
             q = q.where(cls.effort == effort)
         return session.scalars(q).all()
 
     @classmethod
-    def top(cls, session: Session, n: int = 10, pinned_only: bool = False) -> list[Wishlist]:
+    def top(
+        cls,
+        session: Session,
+        n: int = 10,
+        pinned_only: bool = False,
+        contexts: Optional[Sequence[Context]] = None,
+    ) -> list[Wishlist]:
         """Active items: explicit priority first (nulls last), then score as tiebreaker."""
-        items = cls.active(session)
+        items = cls.active(session, contexts=contexts)
         if pinned_only:
             items = [w for w in items if w.pinned]
         return sorted(items, key=lambda w: (w.priority is None, -(w.priority or 0), -w.score))[:n]
@@ -2294,7 +2275,7 @@ class Wishlist(Base):
             price = f" {lo}–{hi}" if lo and hi else f" {lo or hi}"
         priority_str = f" priority={self.priority}" if self.priority is not None else f" score={self.score}"
         pin = " pinned" if self.pinned else ""
-        return f"<Wishlist #{self.id} {self.title!r}{price} effort={self.effort.value}{priority_str}{pin}{self.age_marker()}>"
+        return f"<Wishlist #{self.id} {self.title!r}{price} [{self.context.name}] effort={self.effort.value}{priority_str}{pin}{self.age_marker()}>"
 
 
 class Idea(Base, HasContextOrTag, HasEmbedding):
@@ -2335,7 +2316,6 @@ class Idea(Base, HasContextOrTag, HasEmbedding):
         session: Session,
         context: Optional[Context] = None,
         contexts: Optional[Sequence[Context]] = None,
-        include_no_context: bool = False,
     ) -> Sequence[Idea]:
         """`context` matches that single context exactly; `contexts` (e.g. from
         Context.self_and_descendants) matches any context in the given set, plus any
@@ -2345,11 +2325,7 @@ class Idea(Base, HasContextOrTag, HasEmbedding):
             q = q.where(cls.context_id == context.id)
         if contexts is not None:
             matches = cls.matches_contexts(contexts)
-            q = (
-                q.where(matches | (cls.context_id.is_(None) & cls.tag_id.is_(None)))
-                if include_no_context
-                else q.where(matches)
-            )
+            q = q.where(matches)
         return session.scalars(q).all()
 
     @classmethod
@@ -2420,7 +2396,6 @@ class Timer(Base, HasContextOrTag):
         session: Session,
         context: Optional[Context] = None,
         contexts: Optional[Sequence[Context]] = None,
-        include_no_context: bool = False,
     ) -> Sequence[Timer]:
         """Same shape as Goal/Todo/Daily/Idea's .active() -- see Todo.active's docstring
         for why every context/tag-addressable entity matches this signature."""
@@ -2429,11 +2404,7 @@ class Timer(Base, HasContextOrTag):
             q = q.where(cls.context_id == context.id)
         if contexts is not None:
             matches = cls.matches_contexts(contexts)
-            q = (
-                q.where(matches | (cls.context_id.is_(None) & cls.tag_id.is_(None)))
-                if include_no_context
-                else q.where(matches)
-            )
+            q = q.where(matches)
         return session.scalars(q).all()
 
     @classmethod

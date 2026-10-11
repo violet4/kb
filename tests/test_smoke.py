@@ -3,12 +3,13 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from conftest import make_daily
 from models import Daily
 
 
 def test_fixture_gives_isolated_empty_db(db_session: Session) -> None:
     assert db_session.scalars(select(Daily)).all() == []
-    daily = Daily.create(db_session, "test daily")
+    daily = make_daily(db_session, "test daily")
     db_session.commit()
     assert daily.id is not None
 

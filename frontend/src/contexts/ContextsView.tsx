@@ -5,7 +5,7 @@ import { tokens } from '../shared/tokens';
 import { usePolling } from '../shared/usePolling';
 import { fetchContextPage, fetchContextTree } from './api';
 import ContextTreeNav from './components/ContextTreeNav';
-import type { ContextPage, ContextRef, NoteItem, TodoItem } from './types';
+import type { ContextPage, ContextRef, NoteItem, TodoItem, WishlistItem } from './types';
 
 const POLL_SECONDS = 15;
 
@@ -136,6 +136,12 @@ function ContextPageBody({
           <NoteRow key={n.id} note={n} here={here} />
         ))}
       </Section>
+
+      <Section title="Wishlist" count={page.wishlist.length}>
+        {page.wishlist.map((w) => (
+          <WishlistRow key={w.id} item={w} here={here} />
+        ))}
+      </Section>
     </div>
   );
 }
@@ -199,7 +205,7 @@ function Row({ children }: { children: ReactNode }) {
   );
 }
 
-function IdCell({ type, id }: { type: 'Goal' | 'Todo' | 'Note'; id: number }) {
+function IdCell({ type, id }: { type: 'Goal' | 'Todo' | 'Note' | 'Wishlist'; id: number }) {
   return (
     <span style={{ color: tokens.color.textMuted, width: 44, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
       {type[0]}
@@ -208,7 +214,7 @@ function IdCell({ type, id }: { type: 'Goal' | 'Todo' | 'Note'; id: number }) {
   );
 }
 
-function TitleLink({ type, id, title }: { type: 'Goal' | 'Todo' | 'Note'; id: number; title: string }) {
+function TitleLink({ type, id, title }: { type: 'Goal' | 'Todo' | 'Note' | 'Wishlist'; id: number; title: string }) {
   return (
     <Link to={entityPath(type, id)} style={{ ...tokens.link, minWidth: 0 }}>
       {title}
@@ -280,6 +286,27 @@ function NoteRow({ note, here }: { note: NoteItem; here: number }) {
       <span style={{ color: tokens.color.textMuted, fontSize: 11, whiteSpace: 'nowrap' }}>
         {isoDate(note.updated_at_utc)}
       </span>
+    </Row>
+  );
+}
+
+function priceRange(item: WishlistItem): string | null {
+  const { price_min: lo, price_max: hi } = item;
+  if (lo === null && hi === null) return null;
+  if (lo !== null && hi !== null && lo !== hi) return `$${lo}–$${hi}`;
+  return `$${lo ?? hi}`;
+}
+
+function WishlistRow({ item, here }: { item: WishlistItem; here: number }) {
+  const price = priceRange(item);
+  return (
+    <Row>
+      <IdCell type="Wishlist" id={item.id} />
+      {item.pinned && <Chip color={tokens.color.accent}>pinned</Chip>}
+      <TitleLink type="Wishlist" id={item.id} title={item.title} />
+      {price && <Chip>{price}</Chip>}
+      {item.priority !== null && <Chip>priority {item.priority}</Chip>}
+      <Where context={item.context} viaTag={null} here={here} />
     </Row>
   );
 }

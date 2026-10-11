@@ -10,6 +10,7 @@ from datetime import date, datetime, timedelta, timezone
 import time_machine
 from sqlalchemy.orm import Session
 
+from conftest import make_daily
 from models import Daily, DailyTier, Settings
 
 
@@ -25,7 +26,7 @@ def _set_utc_boundary(session: Session, hour: int = 4) -> None:
 def test_default_recurrence_due_immediately_after_creation(db_session: Session) -> None:
     _set_utc_boundary(db_session)
     with time_machine.travel(datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)):
-        daily = Daily.create(db_session, "water plants")
+        daily = make_daily(db_session, "water plants")
         db_session.commit()
         assert daily in Daily.due(db_session)
 
@@ -33,7 +34,7 @@ def test_default_recurrence_due_immediately_after_creation(db_session: Session) 
 def test_default_recurrence_not_due_same_day_after_completion(db_session: Session) -> None:
     _set_utc_boundary(db_session)
     with time_machine.travel(datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)) as traveller:
-        daily = Daily.create(db_session, "water plants")
+        daily = make_daily(db_session, "water plants")
         daily.complete(db_session)
         db_session.commit()
         assert daily not in Daily.due(db_session)
@@ -45,7 +46,7 @@ def test_default_recurrence_not_due_same_day_after_completion(db_session: Sessio
 def test_default_recurrence_due_again_after_day_boundary(db_session: Session) -> None:
     _set_utc_boundary(db_session, hour=4)
     with time_machine.travel(datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)) as traveller:
-        daily = Daily.create(db_session, "water plants")
+        daily = make_daily(db_session, "water plants")
         daily.complete(db_session)
         db_session.commit()
 
@@ -61,7 +62,7 @@ def test_default_recurrence_due_again_after_day_boundary(db_session: Session) ->
 def test_recurrence_daily_explicit_matches_default(db_session: Session) -> None:
     _set_utc_boundary(db_session, hour=4)
     with time_machine.travel(datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)) as traveller:
-        daily = Daily.create(db_session, "stretch", recurrence="daily")
+        daily = make_daily(db_session, "stretch", recurrence="daily")
         daily.complete(db_session)
         db_session.commit()
         assert daily.next_due_date == date(2026, 1, 2)
@@ -74,7 +75,7 @@ def test_recurrence_daily_explicit_matches_default(db_session: Session) -> None:
 def test_recurrence_every_n_days(db_session: Session) -> None:
     _set_utc_boundary(db_session, hour=4)
     with time_machine.travel(datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)) as traveller:
-        daily = Daily.create(db_session, "alternate-day chore", recurrence="every:2")
+        daily = make_daily(db_session, "alternate-day chore", recurrence="every:2")
         daily.complete(db_session)
         db_session.commit()
         assert daily.next_due_date == date(2026, 1, 3)
@@ -90,7 +91,7 @@ def test_recurrence_weekly_lands_on_target_weekday(db_session: Session) -> None:
     _set_utc_boundary(db_session, hour=4)
     # 2026-01-01 is a Thursday.
     with time_machine.travel(datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)) as traveller:
-        daily = Daily.create(db_session, "take out recycling", recurrence="weekly:WED")
+        daily = make_daily(db_session, "take out recycling", recurrence="weekly:WED")
         daily.complete(db_session)
         db_session.commit()
         # Next Wednesday after Thursday 2026-01-01 is 2026-01-07.
@@ -108,7 +109,7 @@ def test_recurrence_weekly_on_completion_weekday_waits_a_full_week(db_session: S
     # 2026-01-01 is a Thursday; completing on Thursday with recurrence weekly:THU
     # should land a week later, not the same day.
     with time_machine.travel(datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)):
-        daily = Daily.create(db_session, "weekly on same day", recurrence="weekly:THU")
+        daily = make_daily(db_session, "weekly on same day", recurrence="weekly:THU")
         daily.complete(db_session)
         db_session.commit()
         assert daily.next_due_date == date(2026, 1, 8)
@@ -117,7 +118,7 @@ def test_recurrence_weekly_on_completion_weekday_waits_a_full_week(db_session: S
 def test_recurrence_monthly_lands_on_target_day_next_month(db_session: Session) -> None:
     _set_utc_boundary(db_session, hour=4)
     with time_machine.travel(datetime(2026, 1, 15, 12, 0, tzinfo=timezone.utc)) as traveller:
-        daily = Daily.create(db_session, "pay rent", recurrence="monthly:1")
+        daily = make_daily(db_session, "pay rent", recurrence="monthly:1")
         daily.complete(db_session)
         db_session.commit()
         assert daily.next_due_date == date(2026, 2, 1)
@@ -132,7 +133,7 @@ def test_recurrence_monthly_lands_on_target_day_next_month(db_session: Session) 
 def test_recurrence_monthly_rolls_over_year_boundary(db_session: Session) -> None:
     _set_utc_boundary(db_session, hour=4)
     with time_machine.travel(datetime(2026, 12, 10, 12, 0, tzinfo=timezone.utc)):
-        daily = Daily.create(db_session, "december chore", recurrence="monthly:15")
+        daily = make_daily(db_session, "december chore", recurrence="monthly:15")
         daily.complete(db_session)
         db_session.commit()
         assert daily.next_due_date == date(2027, 1, 15)
@@ -141,7 +142,7 @@ def test_recurrence_monthly_rolls_over_year_boundary(db_session: Session) -> Non
 def test_recurrence_yearly_lands_on_target_date_next_year(db_session: Session) -> None:
     _set_utc_boundary(db_session, hour=4)
     with time_machine.travel(datetime(2026, 7, 23, 12, 0, tzinfo=timezone.utc)):
-        daily = Daily.create(db_session, "gf's HRT anniversary", recurrence="yearly:07-23")
+        daily = make_daily(db_session, "gf's HRT anniversary", recurrence="yearly:07-23")
         daily.complete(db_session)
         db_session.commit()
         assert daily.next_due_date == date(2027, 7, 23)
@@ -150,7 +151,7 @@ def test_recurrence_yearly_lands_on_target_date_next_year(db_session: Session) -
 def test_recurrence_yearly_before_target_date_lands_this_year(db_session: Session) -> None:
     _set_utc_boundary(db_session, hour=4)
     with time_machine.travel(datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)):
-        daily = Daily.create(db_session, "gf's HRT anniversary", recurrence="yearly:07-23")
+        daily = make_daily(db_session, "gf's HRT anniversary", recurrence="yearly:07-23")
         daily.complete(db_session)
         db_session.commit()
         assert daily.next_due_date == date(2026, 7, 23)
@@ -159,9 +160,9 @@ def test_recurrence_yearly_before_target_date_lands_this_year(db_session: Sessio
 def test_due_filters_by_domain_and_tier(db_session: Session) -> None:
     _set_utc_boundary(db_session)
     with time_machine.travel(datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)):
-        irl_critical = Daily.create(db_session, "irl critical", domain="irl", tier=DailyTier.CRITICAL)
-        irl_optional = Daily.create(db_session, "irl optional", domain="irl", tier=DailyTier.OPTIONAL)
-        pg_daily = Daily.create(db_session, "pg daily", domain="pg")
+        irl_critical = make_daily(db_session, "irl critical", domain="irl", tier=DailyTier.CRITICAL)
+        irl_optional = make_daily(db_session, "irl optional", domain="irl", tier=DailyTier.OPTIONAL)
+        pg_daily = make_daily(db_session, "pg daily", domain="pg")
         db_session.commit()
 
         assert Daily.due(db_session, domain="irl") == [irl_critical, irl_optional]
@@ -177,7 +178,7 @@ def test_is_overdue_flips_a_full_day_after_becoming_due(db_session: Session) -> 
     Tuesday, then overdue from Wednesday's day-boundary onward until completed."""
     _set_utc_boundary(db_session, hour=4)
     with time_machine.travel(datetime(2026, 1, 5, 12, 26, tzinfo=timezone.utc)) as traveller:
-        daily = Daily.create(db_session, "litter")
+        daily = make_daily(db_session, "litter")
         daily.complete(db_session)
         db_session.commit()
         assert daily.next_due_date == date(2026, 1, 6)
@@ -206,7 +207,7 @@ def test_is_overdue_flips_a_full_day_after_becoming_due(db_session: Session) -> 
 def test_is_overdue_false_immediately_after_completion(db_session: Session) -> None:
     _set_utc_boundary(db_session, hour=4)
     with time_machine.travel(datetime(2026, 1, 5, 12, 0, tzinfo=timezone.utc)):
-        daily = Daily.create(db_session, "litter")
+        daily = make_daily(db_session, "litter")
         daily.complete(db_session)
         db_session.commit()
         assert not daily.is_overdue(db_session)
@@ -219,7 +220,7 @@ def test_show_after_hour_hides_until_hour_on_due_day_but_not_once_overdue(db_ses
     up in the morning, not stay hidden until yet another evening arrives."""
     _set_utc_boundary(db_session, hour=4)
     with time_machine.travel(datetime(2026, 1, 5, 12, 0, tzinfo=timezone.utc)) as traveller:
-        daily = Daily.create(db_session, "shower before bed", show_after_hour=19)
+        daily = make_daily(db_session, "shower before bed", show_after_hour=19)
         daily.complete(db_session)
         db_session.commit()
         assert daily.next_due_date == date(2026, 1, 6)
@@ -244,7 +245,7 @@ def test_show_after_hour_hides_until_hour_on_due_day_but_not_once_overdue(db_ses
 def test_inactive_daily_never_due(db_session: Session) -> None:
     _set_utc_boundary(db_session)
     with time_machine.travel(datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)):
-        daily = Daily.create(db_session, "retired chore")
+        daily = make_daily(db_session, "retired chore")
         daily.is_active = False
         db_session.commit()
         assert daily not in Daily.due(db_session)
@@ -256,7 +257,7 @@ def test_every_n_days_due_immediately_after_creation(db_session: Session) -> Non
     creation instead of right away, unlike the default "daily" case."""
     _set_utc_boundary(db_session, hour=4)
     with time_machine.travel(datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)):
-        daily = Daily.create(db_session, "alternate-day chore", recurrence="every:2")
+        daily = make_daily(db_session, "alternate-day chore", recurrence="every:2")
         db_session.commit()
         assert daily in Daily.due(db_session)
 
@@ -264,7 +265,7 @@ def test_every_n_days_due_immediately_after_creation(db_session: Session) -> Non
 def test_weekly_due_immediately_after_creation(db_session: Session) -> None:
     _set_utc_boundary(db_session, hour=4)
     with time_machine.travel(datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)):
-        daily = Daily.create(db_session, "take out recycling", recurrence="weekly:WED")
+        daily = make_daily(db_session, "take out recycling", recurrence="weekly:WED")
         db_session.commit()
         assert daily in Daily.due(db_session)
 
@@ -272,7 +273,7 @@ def test_weekly_due_immediately_after_creation(db_session: Session) -> None:
 def test_monthly_due_immediately_after_creation(db_session: Session) -> None:
     _set_utc_boundary(db_session, hour=4)
     with time_machine.travel(datetime(2026, 1, 15, 12, 0, tzinfo=timezone.utc)):
-        daily = Daily.create(db_session, "pay rent", recurrence="monthly:1")
+        daily = make_daily(db_session, "pay rent", recurrence="monthly:1")
         db_session.commit()
         assert daily in Daily.due(db_session)
 
@@ -284,7 +285,7 @@ def test_complete_late_advances_only_one_window(db_session: Session) -> None:
     complete() is called."""
     _set_utc_boundary(db_session, hour=4)
     with time_machine.travel(datetime(2026, 1, 5, 12, 0, tzinfo=timezone.utc)):
-        daily = Daily.create(db_session, "litter")
+        daily = make_daily(db_session, "litter")
         db_session.commit()
         assert daily.next_due_date == date(2026, 1, 5)
 
@@ -305,7 +306,7 @@ def test_catch_up_advances_through_multiple_missed_windows(db_session: Session) 
     _set_utc_boundary(db_session, hour=4)
     with time_machine.travel(datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)):
         # 2026-01-01 is a Thursday.
-        daily = Daily.create(db_session, "take out recycling", recurrence="weekly:WED")
+        daily = make_daily(db_session, "take out recycling", recurrence="weekly:WED")
         db_session.commit()
 
     with time_machine.travel(datetime(2026, 1, 22, 12, 0, tzinfo=timezone.utc)):
@@ -319,7 +320,7 @@ def test_catch_up_advances_through_multiple_missed_windows(db_session: Session) 
 def test_catch_up_no_op_when_not_overdue(db_session: Session) -> None:
     _set_utc_boundary(db_session, hour=4)
     with time_machine.travel(datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)):
-        daily = Daily.create(db_session, "litter")
+        daily = make_daily(db_session, "litter")
         db_session.commit()
         before = daily.next_due_date
         daily.catch_up(db_session)
@@ -334,7 +335,7 @@ def test_remind_days_before_surfaces_ahead_of_next_due_date(db_session: Session)
     with time_machine.travel(datetime(2026, 9, 16, 12, 0, tzinfo=timezone.utc)) as traveller:
         # Created on the anniversary date itself, matching how create() seeds
         # next_due_date as today (see test_recurrence_yearly_* for the same pattern).
-        daily = Daily.create(db_session, "Deb's birthday", recurrence="yearly:09-16", remind_days_before=7)
+        daily = make_daily(db_session, "Deb's birthday", recurrence="yearly:09-16", remind_days_before=7)
         db_session.commit()
         assert daily.next_due_date == date(2026, 9, 16)
 
@@ -357,7 +358,7 @@ def test_remind_days_before_default_matches_exact_day_only_behavior(db_session: 
     onward, not a day earlier."""
     _set_utc_boundary(db_session, hour=4)
     with time_machine.travel(datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)) as traveller:
-        daily = Daily.create(db_session, "water plants")
+        daily = make_daily(db_session, "water plants")
         db_session.commit()
         assert daily.remind_days_before == 0
 
@@ -374,7 +375,7 @@ def test_remind_days_before_does_not_affect_is_overdue(db_session: Session) -> N
     exactly as before."""
     _set_utc_boundary(db_session, hour=4)
     with time_machine.travel(datetime(2025, 9, 16, 12, 0, tzinfo=timezone.utc)) as traveller:
-        daily = Daily.create(db_session, "Deb's birthday", recurrence="yearly:09-16", remind_days_before=7)
+        daily = make_daily(db_session, "Deb's birthday", recurrence="yearly:09-16", remind_days_before=7)
         daily.complete(db_session)
         db_session.commit()
         assert daily.next_due_date == date(2026, 9, 16)
@@ -400,7 +401,7 @@ def test_remind_days_before_ignores_show_after_hour(db_session: Session) -> None
     an hour-of-day gate doesn't compose meaningfully across multiple days."""
     _set_utc_boundary(db_session, hour=4)
     with time_machine.travel(datetime(2026, 9, 16, 12, 0, tzinfo=timezone.utc)) as traveller:
-        daily = Daily.create(
+        daily = make_daily(
             db_session,
             "Deb's birthday",
             recurrence="yearly:09-16",

@@ -5,13 +5,15 @@ import sys
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from context import creation_context
+from context import resolve_placement
 from kb_cli.context_cmd import render_tree
 from models import Journal, Tag, Todo, TodoKind, TodoResolutionDistance, TodoSeverity, TodoStatus, WishlistEffort
 
 from kb_cli._util import (
     add_history_arg,
     apply_context_or_tag_update,
+    add_context_filter_argument,
+    add_placement_argument,
     apply_purge,
     apply_restore,
     apply_soft_delete,
@@ -89,15 +91,12 @@ def cmd_show(args: argparse.Namespace) -> None:
 
 
 def cmd_add(args: argparse.Namespace) -> None:
-    if args.tag and args.context_explicit:
-        print("--tag and --context are mutually exclusive", file=sys.stderr)
-        sys.exit(2)
+    place = resolve_placement(args.session, args.place)
     effort = WishlistEffort(args.effort) if args.effort else None
     kind = TodoKind(args.kind) if args.kind else TodoKind.TASK
     severity = TodoSeverity(args.severity) if args.severity else None
     resolution_distance = TodoResolutionDistance(args.resolution_distance) if args.resolution_distance else None
     defer_until = _parse_defer_until(args.defer_until) if args.defer_until else None
-    tag = get_by_name(args.session, Tag, args.tag) if args.tag else None
     todo = Todo.create(
         args.session,
         resolve_text_arg(args.title),
@@ -105,8 +104,8 @@ def cmd_add(args: argparse.Namespace) -> None:
         effort=effort,
         kind=kind,
         defer_until=defer_until,
-        context=None if tag else creation_context(args),
-        tag=tag,
+        context=place.context,
+        tag=place.tag,
         urgent=args.urgent,
         severity=severity,
         resolution_distance=resolution_distance,
@@ -209,31 +208,17 @@ def cmd_list(args: argparse.Namespace) -> None:
     kind = TodoKind(args.kind) if args.kind else None
     severity = TodoSeverity(args.severity) if args.severity else None
     resolution_distance = TodoResolutionDistance(args.resolution_distance) if args.resolution_distance else None
-    if args.all:
-        todos = Todo.active(
-            args.session,
-            effort=effort,
-            kind=kind,
-            severity=severity,
-            untriaged=args.untriaged,
-            resolution_distance=resolution_distance,
-            unscoped_distance=args.unscoped_distance,
-            include_deferred=args.include_deferred,
-        )
-    else:
-        in_scope = scope_to_context(args.session, args.context)
-        todos = Todo.active(
-            args.session,
-            contexts=in_scope,
-            include_no_context=True,
-            effort=effort,
-            kind=kind,
-            severity=severity,
-            untriaged=args.untriaged,
-            resolution_distance=resolution_distance,
-            unscoped_distance=args.unscoped_distance,
-            include_deferred=args.include_deferred,
-        )
+    todos = Todo.active(
+        args.session,
+        contexts=scope_to_context(args.session, args.context_name),
+        effort=effort,
+        kind=kind,
+        severity=severity,
+        untriaged=args.untriaged,
+        resolution_distance=resolution_distance,
+        unscoped_distance=args.unscoped_distance,
+        include_deferred=args.include_deferred,
+    )
     if not todos:
         print("No todos.")
         return
@@ -248,14 +233,13 @@ def cmd_tree(args: argparse.Namespace) -> None:
     tree that carries that tag, not just once, so it's visible wherever it's
     actually actionable without having to check another location's list.
 
-    Shows everything by default, or scoped to --context; `--all` shows the full tree
-    even under an active --context. `--include-deferred` additionally shows not-yet-due
-    deferred Todos (independent of --all/--context)."""
+    Shows everything by default, or one subtree with --context. `--include-deferred`
+    additionally shows not-yet-due deferred Todos."""
     render_tree(
         args.session,
         entity_models=(Todo,),
         active_kwargs={Todo: {"include_deferred": args.include_deferred}},
-        context=None if args.all else args.context,
+        root_name=args.context_name,
     )
 
 
@@ -282,6 +266,7 @@ def add_subparser(
     p_show.set_defaults(func=cmd_show)
 
     p_add = sub.add_parser("add", help=f"Add a {help_prefix}")
+    add_placement_argument(p_add)
     p_add.add_argument("title")
     p_add.add_argument(
         "--effort",
@@ -311,7 +296,6 @@ def add_subparser(
         help="How many open decisions stand between now and done -- mechanical/diagnose/clear_shot/open",
     )
     p_add.add_argument("--notes")
-    p_add.add_argument("--tag", help="Address by Tag instead of context (mutually exclusive with the global --context)")
     p_add.add_argument(
         "--urgent",
         action="store_true",
@@ -393,7 +377,7 @@ def add_subparser(
 
     p_list = sub.add_parser(
         "list",
-        help=f"List pending {help_prefix}s, everywhere by default (or scoped to --context, plus descendants/no-context)",
+        help=f"List pending {help_prefix}s, everywhere by default (or one context and its sub-contexts)",
     )
     p_list.add_argument("--effort", choices=[e.value for e in WishlistEffort])
     if locked_kind is None:
@@ -406,9 +390,7 @@ def add_subparser(
     p_list_distance.add_argument(
         "--unscoped-distance", action="store_true", help="Only Todos with no resolution_distance assessed yet"
     )
-    p_list.add_argument(
-        "--all", action="store_true", help="Ignore an active --context and show Todos from every context"
-    )
+    add_context_filter_argument(p_list)
     p_list.add_argument("--include-deferred", action="store_true", help="Also include deferred Todos not yet due")
     if locked_kind is not None:
         p_list.set_defaults(func=cmd_list, kind=locked_kind.value)
@@ -419,7 +401,7 @@ def add_subparser(
         "tree",
         help=f"Render pending {help_prefix}s nested under the Context tree (tag-addressed Todos repeat per match)",
     )
-    p_tree.add_argument("--all", action="store_true", help="Show the full tree, ignoring an active --context")
+    add_context_filter_argument(p_tree)
     p_tree.add_argument("--include-deferred", action="store_true", help="Also include deferred Todos not yet due")
     p_tree.set_defaults(func=cmd_tree)
 

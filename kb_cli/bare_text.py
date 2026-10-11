@@ -3,7 +3,7 @@ entry point (which prints it) and by kb_cli/stats.py (which needs the exact text
 its token cost) without either one shelling out to the other -- see kb Note #148."""
 
 # Bare `kb` (no args): short, instructional orientation -- "how do I use this right now."
-# `kb -h`: full technical reference -- every flag, every subcommand, what --context/--as-of
+# `kb -h`: full technical reference -- every flag, every subcommand, what CONTEXT/--as-of
 # actually mean under the hood. Two tiers, not duplicated content -- bare kb points at -h for
 # depth rather than repeating it, same DRY-pointer discipline as the Instruction tree itself.
 BARE_INSTRUCTIONS = """\
@@ -14,8 +14,8 @@ kb is for what has no other home.
 
 Routing a plain statement to the right subcommand (the noun -- which table):
   A stated fact/observation about the world -> log
-  A piece of completed work not tied to an existing Todo/Goal (nothing was ever "pending") -> win add TITLE [BODY]
-  Claude used a phrase or showed a habit worth flagging for later analysis -> flag NOTE (see kb Goal #41)
+  A piece of completed work not tied to an existing Todo/Goal (nothing was ever "pending") -> win add CONTEXT TITLE [BODY]
+  Claude used a phrase or showed a habit worth flagging for later analysis -> flag CONTEXT NOTE (see kb Goal #41)
   A stated need/intent, not yet done -> todo
   Existing behavior that's wrong (a defect/regression, not just unfinished work) -> bug
     (same table/lifecycle as todo, just kind=bug -- `kb bug add/list/pending/...` mirrors
@@ -24,8 +24,8 @@ Routing a plain statement to the right subcommand (the noun -- which table):
   A decision/change to an existing record -> journal ENTITY_TYPE ID NOTE
     (this is what `show`'s "N history entries" hint refers to -- Journal entries are
     hidden by default on `show`, pass --history to expand them inline)
-  Durable reference knowledge (not tied to a task) -> notes add TITLE BODY
-  Something to buy/acquire, price-bearing -> wishlist
+  Durable reference knowledge (not tied to a task) -> notes add CONTEXT TITLE BODY
+  Something to buy/acquire, price-bearing -> wishlist add CONTEXT TITLE
   An idea you like but haven't committed to -> idea
   A URL worth keeping a snapshot of -> ab add URL TITLE REASON (title+reason required, see below)
   A relationship between two existing records (any tables) -> link add TYPE:ID TYPE:ID --relation "..."
@@ -40,41 +40,36 @@ on an EXISTING record, not a fresh `add` -- check `kb <noun> pending`/`list`/`se
 existing record first rather than creating a duplicate. Run `kb <noun> --help` to see the real
 verb set for that noun; it isn't identical everywhere.
 
-## Global Flags
+## Context: Every Record Has a Home
 
-Global flags (--context, --as-of) are parsed by `kb` itself, before it even looks at the
-subcommand -- they must come immediately after `kb`, never after the subcommand or its own
-args. `kb --context "serbule keep" todo add "buy salt"` works; `kb todo add "buy salt"
---context "serbule keep"` fails with "unrecognized arguments: --context must come before
-subcommand", because by that point argparse is inside todo's own parser, which has no
---context of its own. (`todo update ID --context NAME` is the one unrelated exception -- a
-per-command flag for reassigning an existing row, not this global one.) `search` also has its
-own `--since DATE` (a subcommand-local flag, not global -- goes after `search`, e.g.
-`kb search --since 2026-07-28 "query"`) -- not yet available on other subcommands.
+Every `add` takes where the record belongs as its first argument, CONTEXT: a context name, or
+#TAG for a record that floats to every context carrying that tag. Example: "I need salt next time
+I'm in Serbule Keep" is `kb todo add "serbule keep" "buy salt"`, not a title that mentions the
+place in passing; "buy salt at any tavern" is `kb todo add "#tavern" "buy salt"`. When the right
+home is genuinely unclear, `inbox` is a real context for "file it later" -- type it explicitly.
+Notes, log entries, and wishlist items take a context only, not a tag.
 
-## Context Scoping
+An unknown name is an error that lists close matches and the `kb context add NAME --parent P`
+command; nothing creates a context implicitly. Check `kb context tree` before creating one, so a
+new context lands under the right parent instead of at the top level. Move an existing record
+with `kb <noun> update ID --context NAME`.
 
-If the need/fact is tied to a place ("next time I'm in X"), always pin it with --context --
-never just mention the place in the title. Example: "I need salt next time I'm in Serbule
-Keep" is `kb --context "serbule keep" todo add "buy salt"`, not a title that mentions the
-place in passing.
+A question about a place ("what do we need at X", "what's pending at X") is the read-side mirror:
+`kb search --context X QUERY` (substring plus semantic, scoped to X's subtree) or
+`kb todo list --context X` (everything pending under X, no query needed), not
+`context tree`/`todo pending --all` plus manual grepping. On read commands, --context NAME goes
+after the command, like any other flag, and narrows to that context and its sub-contexts. Every
+scoped command prints which context it resolved to (`context: grocery`).
 
-A question about a place ("what do we need at X", "what's pending at X") is the read-side
-mirror of the rule above -- go straight to `kb --context X search QUERY` (substring plus
-semantic, scoped to X's subtree) or `kb --context X todo list` (everything pending under X,
-no query needed), not `context tree`/`todo pending --all` plus manual grepping. Example:
-"what do we need at the grocery store" is `kb --context grocery search buy` or
-`kb --context grocery todo list`, not a walk through `context tree --todos`. Every read-scoped
-list/tree command prints which context it resolved to (`context: grocery`), so the scope is
-never silently wrong -- trust the one-shot scoped command first, fall back to unscoped
-`context tree`/`search` only if the scoped result comes back empty and the context itself
-might be wrong.
+The one global flag is `--as-of WHEN`, which comes right after `kb`: `kb --as-of 19:00 daily
+list` runs the command as if it were that time.
+
 
 ## Writing Long Text
 
 Write any body/description/note longer than a short sentence through stdin, not as an inline
 shell argument: pass `-` as that argument's value and pipe or heredoc the real content in, e.g.
-`kb notes add "title" - <<'EOF'` ... `EOF`, or `some_command | kb notes add "title" -`. This is
+`kb notes add CONTEXT "title" - <<'EOF'` ... `EOF`, or `some_command | kb notes add CONTEXT "title" -`. This is
 the default for real content, not a fallback reserved for text with backticks/`$`/quotes in it --
 inline arguments force every write to first predict whether the shell will reinterpret something
 inside the text, and a multi-paragraph body is exactly where that prediction is easiest to get
@@ -121,7 +116,7 @@ plan, why title and reason are split).
 
 ## Tracking Completed Work
 
-`kb win add TITLE [BODY]` records a piece of completed work that was never tracked as a
+`kb win add CONTEXT TITLE [BODY]` records a piece of completed work that was never tracked as a
 pending Todo -- it was conceived, done, and finished in one sitting. A win IS a Todo (same
 title/notes/context/effort/embedding shape as `kb todo add`, so it's reachable via `kb search`,
 `context tree`, `journal`, `link` like any other Todo); the only difference is that it's
@@ -147,7 +142,7 @@ the same pipeline: `kb text extract URL | kb text semsearch rank "query"`. Run
 ## More
 
 Run `kb <command> --help` before typing a command from memory -- flags and shapes above are
-illustrative, not exhaustive. Run `kb -h` for full technical reference (what --context/--as-of
+illustrative, not exhaustive. Run `kb -h` for full technical reference (what CONTEXT/--as-of
 really do, the complete subcommand list). See also: kb instructions root and `kb i show
 engineering` for the general CLI-ergonomics principle (applies across all projects, not just
 kb) that governs how this file should read.

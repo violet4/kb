@@ -10,18 +10,20 @@ PENDING/IN_PROGRESS, exactly like any other already-done Todo."""
 import argparse
 from datetime import datetime, timedelta, timezone
 
-from context import creation_context
-from models import Context, Todo, TodoStatus
+from context import resolve_context, resolve_placement
+from models import Todo, TodoStatus
 
-from kb_cli._util import get_by_name, resolve_text_arg
+from kb_cli._util import add_placement_argument, resolve_text_arg
 
 
 def cmd_win_add(args: argparse.Namespace) -> None:
+    place = resolve_placement(args.session, args.place)
     todo = Todo.create(
         args.session,
         resolve_text_arg(args.title),
         notes=resolve_text_arg(args.body) if args.body else None,
-        context=creation_context(args),
+        context=place.context,
+        tag=place.tag,
     )
     todo.status = TodoStatus.DONE
     if args.date:
@@ -33,9 +35,7 @@ def cmd_win_add(args: argparse.Namespace) -> None:
 def cmd_win_recent(args: argparse.Namespace) -> None:
     """What got done recently -- --days N (default 7) resolves to a since-cutoff at UTC
     midnight N-1 days ago, matching the old log-backed win recent's semantics."""
-    context = None
-    if args.context_name:
-        context = get_by_name(args.session, Context, args.context_name)
+    context = resolve_context(args.session, args.context_name)
     since = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(
         days=args.days - 1
     )
@@ -57,6 +57,7 @@ def add_win_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentP
     sub = p_win.add_subparsers(dest="cmd", required=True)
 
     p_add = sub.add_parser("add", help="Record a completed piece of work")
+    add_placement_argument(p_add)
     p_add.add_argument("title", help="What got done, e.g. 'Diagnosed THUM USB sensor as hardware-faulty'")
     p_add.add_argument("body", nargs="?", default=None, help="Longer explanation, e.g. how/why (optional)")
     p_add.add_argument("--date", metavar="YYYY-MM-DD", help="Backdate the entry (default: now)")

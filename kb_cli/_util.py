@@ -38,11 +38,32 @@ def get_by_name(sess: Session, cls: Type[T], name: str) -> T:
     return obj
 
 
-def scope_to_context(session: Session, context: Optional[Context]) -> Optional[Sequence[Context]]:
-    """Print the "context: X"/"context: none" banner a read-scoped list/tree command is
-    filtering by, then return the self_and_descendants scope for that context (or None for
-    everywhere) -- so an explicit --context scoping never happens silently. See
-    creation_context in context.py for the equivalent, stricter rule for `add` commands."""
+def add_placement_argument(parser: argparse.ArgumentParser, tag_ok: bool = True) -> None:
+    """The positional CONTEXT every `add` command takes first -- where the new record belongs.
+    Resolve it with context.resolve_placement (tag_ok) or context.resolve_context_only."""
+    tag_help = ", or #TAG to float it to every context carrying that tag" if tag_ok else ""
+    parser.add_argument(
+        "place",
+        metavar="CONTEXT",
+        help=f"Context the record belongs to (`inbox` to file it later){tag_help}. See `kb context tree`.",
+    )
+
+
+def add_context_filter_argument(parser: argparse.ArgumentParser) -> None:
+    """The --context NAME a read command takes to narrow to one context and its sub-contexts."""
+    parser.add_argument(
+        "--context",
+        dest="context_name",
+        metavar="NAME",
+        help="Only this context and its sub-contexts",
+    )
+
+
+def scope_to_context(session: Session, context_name: Optional[str]) -> Optional[Sequence[Context]]:
+    """Resolve a read command's --context NAME, print the "context: X"/"context: none" banner
+    so the scope is never silent, and return that context plus its descendants (None for
+    everywhere)."""
+    context = resolve_context(session, context_name)
     print(f"context: {context.name}" if context else "context: none", file=sys.stderr)
     return Context.self_and_descendants(session, context.name) if context else None
 

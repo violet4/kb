@@ -8,10 +8,12 @@ from typing import Optional, Sequence
 from dateutil.parser import parse as parse_datetime
 from sqlalchemy import select
 
-from context import creation_context, resolve_context
+from context import resolve_placement
 from models import Event
 
 from kb_cli._util import (
+    add_context_filter_argument,
+    add_placement_argument,
     apply_context_or_tag_update,
     apply_purge,
     apply_restore,
@@ -74,11 +76,7 @@ def cmd_show(args: argparse.Namespace) -> None:
 
 
 def cmd_list(args: argparse.Namespace) -> None:
-    context = resolve_context(args.session, args.context) if args.context else None
-    contexts = scope_to_context(args.session, context) if not args.all else None
-    events: Sequence[Event] = Event.active(
-        args.session, contexts=contexts, include_no_context=True if contexts is not None else False
-    )
+    events: Sequence[Event] = Event.active(args.session, contexts=scope_to_context(args.session, args.context_name))
     upcoming = [(e, e.next_occurrence()) for e in events]
     upcoming = [(e, occ) for e, occ in upcoming if occ is not None or args.all]
     upcoming.sort(key=lambda pair: pair[1] or datetime.max.replace(tzinfo=timezone.utc))
@@ -93,6 +91,7 @@ def cmd_list(args: argparse.Namespace) -> None:
 
 
 def cmd_add(args: argparse.Namespace) -> None:
+    place = resolve_placement(args.session, args.place)
     title = resolve_text_arg(args.title)
 
     nearest = Event.search(args.session, title, limit=1)
@@ -104,7 +103,8 @@ def cmd_add(args: argparse.Namespace) -> None:
         args.session,
         title,
         _parse_starts_at(args.starts_at, is_all_day=args.all_day),
-        context=creation_context(args),
+        context=place.context,
+        tag=place.tag,
         is_all_day=args.all_day,
         recurrence=args.recurrence,
         notes=resolve_text_arg(args.notes) if args.notes else args.notes,
@@ -189,11 +189,12 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_show.set_defaults(func=cmd_show)
 
     p_list = sub.add_parser("list", help="List upcoming events, soonest first")
-    p_list.add_argument("--context", help="Scope to this context's subtree")
-    p_list.add_argument("--all", action="store_true", help="Show every event, including past/unscoped")
+    add_context_filter_argument(p_list)
+    p_list.add_argument("--all", action="store_true", help="Also show past events")
     p_list.set_defaults(func=cmd_list)
 
     p_add = sub.add_parser("add", help="Add an Event")
+    add_placement_argument(p_add)
     p_add.add_argument("title")
     p_add.add_argument(
         "starts_at",

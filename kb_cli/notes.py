@@ -7,8 +7,9 @@ from typing import Optional
 from sqlalchemy import select
 
 from client import KBClient
-from context import creation_context, resolve_context
+from context import find_context, resolve_context_only
 from kb_cli._util import (
+    add_placement_argument,
     apply_purge,
     apply_restore,
     apply_soft_delete,
@@ -30,7 +31,7 @@ def cmd_show(args: argparse.Namespace) -> None:
     print(f"id: {note.id}")
     print(f"title: {note.title}")
     print(f"collection: {note.collection.value}")
-    print(f"context: {note.context.name if note.context else 'none'}")
+    print(f"context: {note.context.name}")
     if note.tags:
         print(f"tags: {note.tags}")
     print_timestamps(note)
@@ -54,6 +55,7 @@ def _resolve_collection(name: Optional[str]) -> Optional[Collection]:
 
 
 def cmd_add(args: argparse.Namespace) -> None:
+    context = resolve_context_only(args.session, args.place)
     collection = _resolve_collection(args.collection) or Collection.INBOX
     client = KBClient()
     result = client.note_create(
@@ -61,7 +63,7 @@ def cmd_add(args: argparse.Namespace) -> None:
         body=resolve_body_args(args.body, args.body_file),
         collection=collection.value,
         tags=args.tags,
-        context_id=creation_context(args).id,
+        context_id=context.id,
     )
     print(f"Added: {result}")
 
@@ -81,7 +83,7 @@ def cmd_update(args: argparse.Namespace) -> None:
     collection = _resolve_collection(args.collection)
     note.update(title=args.title, body=body, tags=args.tags, collection=collection)
     if args.new_context is not None:
-        note.context = resolve_context(args.session, args.new_context)
+        note.context = find_context(args.session, args.new_context)
     args.session.commit()
     print(f"Updated: {note}")
 
@@ -128,6 +130,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_show.set_defaults(func=cmd_show)
 
     p_add = sub.add_parser("add", help="Add a note")
+    add_placement_argument(p_add, tag_ok=False)
     p_add.add_argument("title")
     p_add.add_argument(
         "body",

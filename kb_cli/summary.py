@@ -7,6 +7,8 @@ from typing import Callable, Optional
 
 from sqlalchemy.orm import Session
 
+from context import resolve_context
+from kb_cli._util import add_context_filter_argument
 from models import Context, Daily, DailyTier, Goal, Idea, InboxItem, Person, Todo, Wishlist
 
 
@@ -86,7 +88,7 @@ def urgent_section(session: Session) -> str | None:
 
 def goals_section(session: Session, context: Optional[Context]) -> str | None:
     in_scope = Context.self_and_descendants(session, context.name) if context else None
-    goals = Goal.active(session, contexts=in_scope, include_no_context=True)
+    goals = Goal.active(session, contexts=in_scope)
     if not goals:
         return None
     lines = ["=== GOALS ==="]
@@ -103,7 +105,7 @@ def goals_section(session: Session, context: Optional[Context]) -> str | None:
 
 def todos_section(session: Session, context: Optional[Context]) -> str | None:
     in_scope = Context.self_and_descendants(session, context.name) if context else None
-    todos = Todo.active(session, contexts=in_scope, include_no_context=True)
+    todos = Todo.active(session, contexts=in_scope)
     if not todos:
         return None
     by_context: dict[str, int] = {}
@@ -206,7 +208,8 @@ SECTION_ALIASES: dict[str, str] = {
 
 
 def cmd_summary(args: argparse.Namespace) -> None:
-    sections_map = _sections(args.context)
+    context = resolve_context(args.session, args.context_name)
+    sections_map = _sections(context)
     requested = [SECTION_ALIASES.get(s, s) for s in args.section]
     unknown = [s for s in requested if s not in sections_map]
     if unknown:
@@ -218,7 +221,7 @@ def cmd_summary(args: argparse.Namespace) -> None:
     sections = [s for s in rendered if s is not None]
 
     now = datetime.now()
-    ctx_label = f"context: {args.context.name}" if args.context else "context: none"
+    ctx_label = f"context: {context.name}" if context else "context: none"
     print(f"{now.strftime('%Y-%m-%d %H:%M')} (week {now.isocalendar().week})")
     print(f"{ctx_label}\n")
 
@@ -238,4 +241,5 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         metavar="SECTION",
         help=f"Only show these sections ({'/'.join(SECTION_NAMES)}; single-letter aliases: d/g/t/w/i); default: all",
     )
+    add_context_filter_argument(parser)
     parser.set_defaults(func=cmd_summary)

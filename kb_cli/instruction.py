@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from models import EntityLink, Instruction
 
+from context import resolve_context
 from kb_cli._util import (
     apply_replace_range,
     apply_text_edit,
@@ -239,7 +240,7 @@ def cmd_add(args: argparse.Namespace) -> None:
         title=args.title,
         body=resolve_text_arg(args.body),
         trigger=args.trigger,
-        context=args.context,
+        context=resolve_context(args.session, args.context_name),
     )
     node.reembed()
     args.session.add(node)
@@ -400,6 +401,9 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_add.add_argument("title")
     p_add.add_argument("body")
     p_add.add_argument("--parent", metavar="TITLE|#ID", help="Parent node (omit for a root node)")
+    p_add.add_argument(
+        "--context", dest="context_name", metavar="NAME", help="Link the node into this context (optional)"
+    )
     p_add.add_argument(
         "--trigger", required=True, help='"If/when ..." condition -- required, even a couple words beats none'
     )

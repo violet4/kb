@@ -4,8 +4,16 @@ import argparse
 import sys
 from typing import Iterable
 
+from context import find_context, resolve_context_only
 from models import Wishlist, WishlistEffort, WishlistStatus
-from kb_cli._util import apply_purge, apply_restore, apply_soft_delete, apply_updates, resolve_text_arg
+from kb_cli._util import (
+    add_placement_argument,
+    apply_purge,
+    apply_restore,
+    apply_soft_delete,
+    apply_updates,
+    resolve_text_arg,
+)
 from kb_cli.search import cmd_search_deprecated
 
 
@@ -19,8 +27,10 @@ def _validate_0_100(args: argparse.Namespace, names: Iterable[str]) -> None:
 
 def cmd_add(args: argparse.Namespace) -> None:
     _validate_0_100(args, ("importance", "urgency", "clarity"))
+    context = resolve_context_only(args.session, args.place)
     item = Wishlist(
         title=args.title,
+        context=context,
         description=resolve_text_arg(args.description) if args.description else args.description,
         price_min=args.price_min,
         price_max=args.price_max,
@@ -59,6 +69,8 @@ def cmd_update(args: argparse.Namespace) -> None:
             "pinned": args.pinned,
         },
     )
+    if args.new_context is not None:
+        item.context = find_context(args.session, args.new_context)
     args.session.commit()
     print(f"Updated: {item} score={item.score}")
 
@@ -86,6 +98,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_add = sub.add_parser("add", help="Add a wishlist item")
+    add_placement_argument(p_add, tag_ok=False)
     p_add.add_argument("title")
     p_add.add_argument("--description")
     p_add.add_argument("--price-min", type=float)
@@ -112,6 +125,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_update.add_argument("--priority", type=int, help="Explicit priority override (beats computed score)")
     p_update.add_argument("--status", choices=[s.value for s in WishlistStatus])
     p_update.add_argument("--notes")
+    p_update.add_argument("--context", dest="new_context", metavar="NAME", help="Move the item to this context")
     pin_group = p_update.add_mutually_exclusive_group()
     pin_group.add_argument("--pinned", dest="pinned", action="store_true", default=None, help="Show in kb summary")
     pin_group.add_argument("--unpinned", dest="pinned", action="store_false", help="Hide from kb summary")

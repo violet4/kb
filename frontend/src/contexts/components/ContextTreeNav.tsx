@@ -19,7 +19,7 @@ function buildIndex(nodes: ContextNode[]): TreeIndex {
   }
   const subtreeTotal = new Map<number, number>();
   const total = (n: ContextNode): number => {
-    const own = n.counts.todos + n.counts.goals + n.counts.notes;
+    const own = n.counts.todos + n.counts.goals + n.counts.notes + n.counts.wishlist;
     const sum = own + (childrenOf.get(n.id) ?? []).reduce((acc, c) => acc + total(c), 0);
     subtreeTotal.set(n.id, sum);
     return sum;

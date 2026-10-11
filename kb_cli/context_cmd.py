@@ -22,7 +22,8 @@ from models import (
     Wishlist,
 )
 
-from kb_cli._util import get_by_name
+from context import find_context, resolve_context
+from kb_cli._util import get_by_name, resolve_text_arg
 from kb_cli.link import parse_ref
 
 # Every model that can be pinned to a context, in the order counts should print.
@@ -45,23 +46,32 @@ def cmd_add(args: argparse.Namespace) -> None:
     if existing is not None:
         print(f"Context {args.name!r} already exists (#{existing.id})", file=sys.stderr)
         sys.exit(1)
-    parent = get_by_name(args.session, Context, args.parent) if args.parent else None
-    context = Context(name=args.name, description=args.description, parent=parent)
+    parent = find_context(args.session, args.parent) if args.parent else None
+    description = resolve_text_arg(args.description) if args.description is not None else None
+    context = Context(name=args.name, description=description, parent=parent)
     args.session.add(context)
     args.session.commit()
     print(context)
 
 
 def cmd_set_parent(args: argparse.Namespace) -> None:
-    context = get_by_name(args.session, Context, args.name)
-    parent = get_by_name(args.session, Context, args.parent) if args.parent else None
+    context = find_context(args.session, args.name)
+    parent = find_context(args.session, args.parent) if args.parent else None
     context.parent = parent
     args.session.commit()
     print(context)
 
 
+def cmd_update(args: argparse.Namespace) -> None:
+    context = find_context(args.session, args.name)
+    description = resolve_text_arg(args.description)
+    context.description = description or None
+    args.session.commit()
+    print(f"{context}: description {'set' if context.description else 'cleared'}")
+
+
 def cmd_rename(args: argparse.Namespace) -> None:
-    context = get_by_name(args.session, Context, args.name)
+    context = find_context(args.session, args.name)
     existing = args.session.scalars(select(Context).where(Context.name == args.new_name)).one_or_none()
     if existing is not None:
         print(f"Context {args.new_name!r} already exists (#{existing.id})", file=sys.stderr)
@@ -146,7 +156,6 @@ def render_tree(
     show_ideas: bool = False,
     root_name: Optional[str] = None,
     active_kwargs: Optional[dict[Any, dict[str, Any]]] = None,
-    context: Optional[Context] = None,
 ) -> None:
     """Render the real parent_id Context tree, tree(1)-style, with each entry an entity linked
     to that Context (directly or via a shared Tag -- see _content_items).
@@ -156,8 +165,7 @@ def render_tree(
     different `entity_models`, so "what counts as active/visible here" is defined once (in each
     model's own .active(), via _content_items) rather than redefined per command.
 
-    `context` is the resolved scope (args.context -- an explicit `--context` override, or None
-    for "show everything" -- there is no ambient persisted default to fall back to).
+    `root_name` scopes the render to that context's subtree; None renders every root.
     """
     contexts = session.scalars(select(Context)).all()
     if not contexts:
@@ -189,11 +197,7 @@ def render_tree(
         for i, kid in enumerate(kids):
             render(kid, child_prefix, i == len(kids) - 1)
 
-    if root_name:
-        node = get_by_name(session, Context, root_name)
-        render(node, "", True)
-        return
-
+    context = resolve_context(session, root_name)
     print(f"context: {context.name}" if context else "context: none", file=sys.stderr)
     if context:
         render(context, "", True)
@@ -223,12 +227,11 @@ def cmd_tree(args: argparse.Namespace) -> None:
         entity_models=entity_models,
         show_ideas=args.ideas,
         root_name=args.name,
-        context=None if args.all else args.context,
     )
 
 
 def cmd_tag(args: argparse.Namespace) -> None:
-    context = get_by_name(args.session, Context, args.name)
+    context = find_context(args.session, args.name)
     for tag_name in args.tags:
         tag = args.session.scalars(select(Tag).where(Tag.name == tag_name)).one_or_none()
         if tag is None:
@@ -242,7 +245,7 @@ def cmd_tag(args: argparse.Namespace) -> None:
 
 
 def cmd_untag(args: argparse.Namespace) -> None:
-    context = get_by_name(args.session, Context, args.name)
+    context = find_context(args.session, args.name)
     for tag_name in args.tags:
         tag = get_by_name(args.session, Tag, tag_name)
         if tag in context.tags:
@@ -264,9 +267,11 @@ def _linked_entities(session: Any, node: Context) -> list[tuple[str, int, Any]]:
 
 
 def cmd_show(args: argparse.Namespace) -> None:
-    context = get_by_name(args.session, Context, args.name)
+    context = find_context(args.session, args.name)
     entities = _linked_entities(args.session, context)
     print(context)
+    if context.description:
+        print(f"description: {context.description}")
     if not entities:
         print("No connected entities.")
         return
@@ -280,7 +285,7 @@ def cmd_reassign(args: argparse.Namespace) -> None:
     `kb link add`, so `kb link show Context:ID` output can be fed straight back in. The one
     mechanism `context rm` (on a nonempty context) and `context merge` both point callers at,
     instead of each entity type needing its own one-off reassignment command."""
-    target = get_by_name(args.session, Context, args.to)
+    target = find_context(args.session, args.to)
     moved = 0
     for ref in args.refs:
         type_name, entity_id = parse_ref(ref)
@@ -299,7 +304,7 @@ def cmd_reassign(args: argparse.Namespace) -> None:
 
 
 def cmd_rm(args: argparse.Namespace) -> None:
-    context = get_by_name(args.session, Context, args.name)
+    context = find_context(args.session, args.name)
     entities = _linked_entities(args.session, context)
     if entities:
         print(
@@ -327,8 +332,8 @@ def cmd_merge(args: argparse.Namespace) -> None:
     """Fold one context's connected entities into another, then delete the emptied source --
     the single-step version of `reassign` (every entity) + `rm`, for the common "these two
     are actually the same place" case (see kb-instructions context-creation-check #65)."""
-    source = get_by_name(args.session, Context, args.name)
-    target = get_by_name(args.session, Context, args.into)
+    source = find_context(args.session, args.name)
+    target = find_context(args.session, args.into)
     if source.id == target.id:
         print("Cannot merge a context into itself.", file=sys.stderr)
         sys.exit(1)
@@ -352,8 +357,15 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_add = sub.add_parser("add", help="Create a new context, optionally under a parent context")
     p_add.add_argument("name")
     p_add.add_argument("--parent", help="Parent context name (must already exist)")
-    p_add.add_argument("--description")
+    p_add.add_argument("--description", help="What belongs here ('-' reads stdin)")
     p_add.set_defaults(func=cmd_add)
+
+    p_update = sub.add_parser(
+        "update", help="Edit a context's description (rename/set-parent change name and position)"
+    )
+    p_update.add_argument("name")
+    p_update.add_argument("--description", required=True, help="New description ('-' reads stdin; '' clears it)")
+    p_update.set_defaults(func=cmd_update)
 
     p_set_parent = sub.add_parser("set-parent", help="Change (or clear) a context's parent")
     p_set_parent.add_argument("name")
@@ -388,17 +400,11 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_list = sub.add_parser("list", help="List all known contexts (flat)")
     p_list.set_defaults(func=cmd_list)
 
-    p_tree = sub.add_parser("tree", help="Render the context tree (everywhere by default, or scoped with --context)")
+    p_tree = sub.add_parser("tree", help="Render the context tree (everywhere by default, or one subtree)")
     p_tree.add_argument(
         "name",
         nargs="?",
         help="Show the subtree rooted at this named context instead",
-    )
-    p_tree.add_argument(
-        "--all",
-        "-a",
-        action="store_true",
-        help="Show the full context tree, ignoring an ambient --context override",
     )
     p_tree.add_argument(
         "--counts",

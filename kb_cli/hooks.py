@@ -227,7 +227,9 @@ def cmd_dependency_install_check(args: argparse.Namespace) -> None:
         print(f"Blocked: AUDITED={token} -- no Note #{note_id} exists. Write the audit to a real Note first.")
         return
 
-    entry = LogEntry.create(args.session, f"Dependency install (audited via Note #{note_id}): {command.strip()}")
+    entry = LogEntry.create(
+        args.session, f"Dependency install (audited via Note #{note_id}): {command.strip()}", context=note.context
+    )
     args.session.flush()
     EntityLink.create(args.session, "LogEntry", entry.id, "Note", note_id, "audited-by")
     args.session.commit()

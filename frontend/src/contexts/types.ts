@@ -9,6 +9,7 @@ export interface Counts {
   todos: number;
   goals: number;
   notes: number;
+  wishlist: number;
 }
 
 export interface ContextNode {
@@ -47,8 +48,18 @@ export interface NoteItem {
   title: string;
   collection: string;
   tags: string | null;
-  context: ContextRef | null;
+  context: ContextRef;
   updated_at_utc: string | null;
+}
+
+export interface WishlistItem {
+  id: number;
+  title: string;
+  price_min: number | null;
+  price_max: number | null;
+  priority: number | null;
+  pinned: boolean;
+  context: ContextRef;
 }
 
 export interface ContextPage {
@@ -61,4 +72,5 @@ export interface ContextPage {
   goals: GoalItem[];
   todos: TodoItem[];
   notes: NoteItem[];
+  wishlist: WishlistItem[];
 }

@@ -15,19 +15,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from api.deps import get_session
-from models import Context, Goal, Note, Todo
+from api.serialize import utc_iso
+from models import Context, Goal, Note, Todo, Wishlist
 
 router = APIRouter(prefix="/contexts")
-
-
-def _utc_iso(value: Optional[datetime]) -> Optional[str]:
-    """SQLite hands back naive datetimes; every kb timestamp is written as UTC (base.py's
-    _now()), so stamp the zone before serializing."""
-    if value is None:
-        return None
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
-    return value.isoformat()
 
 
 class ContextRef(BaseModel):
@@ -39,6 +30,7 @@ class Counts(BaseModel):
     todos: int = 0
     goals: int = 0
     notes: int = 0
+    wishlist: int = 0
 
 
 class ContextNode(BaseModel):
@@ -77,8 +69,10 @@ def context_tree(session: Session = Depends(get_session)) -> list[ContextNode]:
     for goal in Goal.active(session):
         for cid in _homes(goal, contexts_by_tag):
             counts[cid].goals += 1
-    for note in session.scalars(select(Note).where(Note.deleted_at.is_(None), Note.context_id.is_not(None))):
-        counts[note.context_id].notes += 1  # type: ignore[index]
+    for note in session.scalars(select(Note).where(Note.deleted_at.is_(None))):
+        counts[note.context_id].notes += 1
+    for item in Wishlist.active(session):
+        counts[item.context_id].wishlist += 1
 
     return [
         ContextNode(id=c.id, name=c.name, parent_id=c.parent_id, tags=[t.name for t in c.tags], counts=counts[c.id])
@@ -119,8 +113,18 @@ class NoteItem(BaseModel):
     title: str
     collection: str
     tags: Optional[str]
-    context: Optional[ContextRef]
+    context: ContextRef
     updated_at_utc: Optional[str]
+
+
+class WishlistItem(BaseModel):
+    id: int
+    title: str
+    price_min: Optional[float]
+    price_max: Optional[float]
+    priority: Optional[int]
+    pinned: bool
+    context: ContextRef
 
 
 class ContextPage(BaseModel):
@@ -133,6 +137,7 @@ class ContextPage(BaseModel):
     goals: list[GoalItem]
     todos: list[TodoItem]
     notes: list[NoteItem]
+    wishlist: list[WishlistItem]
 
 
 def _ref(context: Optional[Context]) -> Optional[ContextRef]:
@@ -154,6 +159,7 @@ def context_page(
     notes = session.scalars(
         select(Note).where(Note.deleted_at.is_(None), Note.context_id.in_(scope_ids)).order_by(Note.updated_at.desc())
     ).all()
+    wishlist = Wishlist.top(session, n=1000, contexts=scope)
     children = session.scalars(
         select(Context).where(Context.parent_id == context.id, Context.deleted_at.is_(None)).order_by(Context.name)
     ).all()
@@ -184,11 +190,11 @@ def context_page(
                 effort=t.effort.value if t.effort else None,
                 severity=t.severity.value if t.severity else None,
                 urgent=t.urgent,
-                defer_until_utc=_utc_iso(t.defer_until),
+                defer_until_utc=utc_iso(t.defer_until),
                 goal=GoalRef(id=t.goal.id, title=t.goal.title) if t.goal else None,
                 context=_ref(t.context),
                 via_tag=t.tag.name if t.tag else None,
-                updated_at_utc=_utc_iso(t.updated_at),
+                updated_at_utc=utc_iso(t.updated_at),
             )
             for t in todos
         ],
@@ -198,9 +204,21 @@ def context_page(
                 title=n.title,
                 collection=n.collection.value,
                 tags=n.tags,
-                context=_ref(n.context),
-                updated_at_utc=_utc_iso(n.updated_at),
+                context=ContextRef(id=n.context.id, name=n.context.name),
+                updated_at_utc=utc_iso(n.updated_at),
             )
             for n in notes
+        ],
+        wishlist=[
+            WishlistItem(
+                id=w.id,
+                title=w.title,
+                price_min=float(w.price_min) if w.price_min is not None else None,
+                price_max=float(w.price_max) if w.price_max is not None else None,
+                priority=w.priority,
+                pinned=w.pinned,
+                context=ContextRef(id=w.context.id, name=w.context.name),
+            )
+            for w in wishlist
         ],
     )

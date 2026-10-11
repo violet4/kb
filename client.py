@@ -56,9 +56,7 @@ class KBClient:
             raise RuntimeError(f"kb.service returned a non-list-of-objects result: {result!r}")
         return result
 
-    def note_create(
-        self, title: str, body: str, collection: str, tags: str | None = None, context_id: int | None = None
-    ) -> str:
+    def note_create(self, title: str, body: str, collection: str, context_id: int, tags: str | None = None) -> str:
         result = self._request(
             "POST",
             "/notes",

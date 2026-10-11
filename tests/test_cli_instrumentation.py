@@ -107,7 +107,7 @@ def test_subcommand_resolves_todo_add_against_real_kb_subparser_tree() -> None:
     records: list[dict[str, Any]] = []
     attach_recording(parser, record=records.append)
 
-    args = parser.parse_args(["todo", "add", "buy salt"])
+    args = parser.parse_args(["todo", "add", "grocery", "buy salt"])
     args.func = lambda a: None  # kb_cli.todo's real cmd_add needs args.session/context; not exercised here
     with instrumented_run(parser, args, record=records.append):
         args.func(args)

@@ -6,11 +6,11 @@ import argparse
 import sys
 from datetime import datetime, timezone
 
-from context import creation_context
+from context import resolve_placement
 from context_tree import render_context_tree
-from models import Tag, Timer, TimerStatus
+from models import Timer, TimerStatus
 
-from kb_cli._util import apply_purge, apply_restore, apply_soft_delete, get_by_name
+from kb_cli._util import add_placement_argument, apply_purge, apply_restore, apply_soft_delete
 
 
 def _parse_duration(raw: str) -> int:
@@ -36,17 +36,14 @@ def _parse_duration(raw: str) -> int:
 
 
 def cmd_add(args: argparse.Namespace) -> None:
-    if args.tag and args.context_explicit:
-        print("--tag and --context are mutually exclusive", file=sys.stderr)
-        sys.exit(2)
+    place = resolve_placement(args.session, args.place)
     duration = _parse_duration(args.duration)
-    tag = get_by_name(args.session, Tag, args.tag) if args.tag else None
     timer = Timer.create(
         args.session,
         duration,
         label=args.label,
-        context=None if tag else creation_context(args),
-        tag=tag,
+        context=place.context,
+        tag=place.tag,
         repeat_count=args.repeat,
     )
     args.session.commit()
@@ -114,12 +111,12 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_add = sub.add_parser("add", help="Add a Timer")
+    add_placement_argument(p_add)
     p_add.add_argument("duration", help="M:SS, H:MM:SS, or seconds")
     p_add.add_argument("--label")
     p_add.add_argument(
         "--repeat", type=int, metavar="N", help="Total number of runs (omit = once, 0 = infinite, N = N times)"
     )
-    p_add.add_argument("--tag", help="Address by Tag instead of context (mutually exclusive with the global --context)")
     p_add.set_defaults(func=cmd_add)
 
     p_list = sub.add_parser("list", help="List active Timers")

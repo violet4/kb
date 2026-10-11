@@ -38,7 +38,8 @@ from models import (
     WishlistStatus,
 )
 
-from kb_cli._util import scope_to_context
+from context import resolve_context
+from kb_cli._util import add_context_filter_argument
 
 # Models searchable from the top-level `kb search`, in display order.
 ALL_SEARCHABLE: tuple[Any, ...] = (
@@ -111,9 +112,10 @@ def search_entities(
     Excludes terminal-status rows (done/abandoned/dropped/acquired) by default;
     pass include_done=True to opt back in. Unscoped by default (search's whole point is
     finding things regardless of location) -- pass context to additionally restrict
-    HasContextOrTag models (Goal/Todo/Idea/Instruction/...) to that context's subtree
-    (plus no-context rows), matching `list`/`tree`'s scoping. Models without a context/tag
-    (Wishlist, Context itself) are unaffected by this filter.
+    every model with a context (Goal/Todo/Idea/Note/LogEntry/...) to that context's subtree,
+    matching `list`/`tree`'s scoping; Instruction rows with no context/tag stay in scope, since
+    their placement is optional. Models without a context (Wishlist, Context itself) are
+    unaffected by this filter.
 
     `since`, when given, additionally restricts to rows at or after that timestamp,
     compared against `occurred_at` for LogEntry (a fact about the world, not row-insert
@@ -123,14 +125,18 @@ def search_entities(
     applied only to models that actually have the named column -- mirrors HasEmbedding.search's
     own `**filters` so both search passes accept the same filter shape."""
     pattern = f"%{query}%"
-    in_scope = scope_to_context(session, context) if context is not None else None
+    in_scope = Context.self_and_descendants(session, context.name) if context is not None else None
     results: list[Any] = []
     for model in models:
         columns = [getattr(model, col) for col in _TEXT_COLUMNS if hasattr(model, col)]
         q = select(model).where(or_(*(c.ilike(pattern) for c in columns)), model.deleted_at.is_(None))
         if in_scope is not None and issubclass(model, HasContextOrTag):
             match = model.matches_contexts(in_scope)
-            q = q.where(match | (model.context_id.is_(None) & model.tag_id.is_(None)))
+            if not model._context_or_tag_required:
+                match = match | (model.context_id.is_(None) & model.tag_id.is_(None))
+            q = q.where(match)
+        elif in_scope is not None and hasattr(model, "context_id"):
+            q = q.where(model.context_id.in_([c.id for c in in_scope]))
         if since is not None:
             q = q.where(_date_column(model) >= since)
         for col, value in filters.items():
@@ -155,9 +161,17 @@ def _print_results(items: list[Any]) -> None:
         print(repr(item))
 
 
+def _scope(args: argparse.Namespace) -> Optional[Context]:
+    """Resolve a search command's --context NAME and print the scope banner when one is set."""
+    context = resolve_context(args.session, getattr(args, "context_name", None))
+    if context is not None:
+        print(f"context: {context.name}", file=sys.stderr)
+    return context
+
+
 def cmd_search(args: argparse.Namespace) -> None:
     """Generic handler for a single-model `search` subcommand; set args.model beforehand."""
-    context = args.context if args.context_explicit else None
+    context = _scope(args)
     _print_results(search_entities(args.session, (args.model,), args.query, include_done=args.all, context=context))
 
 
@@ -298,7 +312,7 @@ def cmd_search_one(args: argparse.Namespace) -> None:
     top-level `kb search` aggregates across models."""
     model = args.model
     include_done = getattr(args, "all", False)
-    context = args.context if args.context_explicit else None
+    context = _scope(args)
     since = parse_since(args.since) if getattr(args, "since", None) else None
     filters: dict[str, Any] = {"domain": "claude-behavior"} if getattr(args, "flags_only", False) else {}
 
@@ -325,7 +339,7 @@ def cmd_search_one(args: argparse.Namespace) -> None:
 
 def _run_one_search(args: argparse.Namespace, query: str) -> None:
     include_done = args.all
-    context = args.context if args.context_explicit else None
+    context = _scope(args)
     limit = args.limit
     since = parse_since(args.since) if getattr(args, "since", None) else None
 
@@ -364,8 +378,8 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         "search",
         help="Search Goals, Todos, Wishlist items, Instructions, Ideas, Contexts, and Dailies by substring, plus "
         "Notes, Todos, Goals, Instructions, Ideas, and LogEntries by semantic similarity -- all ranked "
-        "together by score (unscoped by default; pass the global `kb --context NAME search ...` to "
-        "restrict context/tag-addressable results to that context's subtree)",
+        "together by score (unscoped by default; --context NAME restricts results with a context to that "
+        "context's subtree)",
     )
     parser.add_argument(
         "query",
@@ -389,4 +403,5 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         "`2026-07-28T18:00:00`; a bare date means midnight UTC). Compared against `occurred_at` "
         "for LogEntry, `created_at` for everything else.",
     )
+    add_context_filter_argument(parser)
     parser.set_defaults(func=cmd_search_all)

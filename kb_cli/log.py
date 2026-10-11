@@ -3,11 +3,11 @@
 import argparse
 from datetime import datetime, timezone
 
-from context import creation_context
+from context import resolve_context, resolve_context_only
 from harness import current_session_id
-from models import Context, LogEntry
+from models import LogEntry
 
-from kb_cli._util import resolve_text_arg
+from kb_cli._util import add_placement_argument, resolve_text_arg
 from kb_cli.search import cmd_search_deprecated
 
 
@@ -15,11 +15,12 @@ def cmd_add(args: argparse.Namespace) -> None:
     occurred_at = None
     if args.date:
         occurred_at = datetime.strptime(args.date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    context = resolve_context_only(args.session, args.place)
     entry = LogEntry.create(
         args.session,
         body=resolve_text_arg(args.body),
         domain=args.domain,
-        context=creation_context(args),
+        context=context,
         occurred_at=occurred_at,
     )
     args.session.commit()
@@ -35,7 +36,7 @@ def cmd_flag(args: argparse.Namespace) -> None:
         args.session,
         body=args.note,
         domain="claude-behavior",
-        context=creation_context(args),
+        context=resolve_context_only(args.session, args.place),
         source_ref=current_session_id(),
     )
     args.session.commit()
@@ -43,11 +44,7 @@ def cmd_flag(args: argparse.Namespace) -> None:
 
 
 def cmd_recent(args: argparse.Namespace) -> None:
-    context = None
-    if args.context_name:
-        context, created = Context.get_or_create_reporting(args.session, args.context_name)
-        if created:
-            print(f"Created new top-level context {context.name!r} (see `kb context -h` to move/manage it).")
+    context = resolve_context(args.session, args.context_name)
     entries = LogEntry.recent(args.session, domain=args.domain, context=context, limit=args.limit)
     if not entries:
         print("No entries.")
@@ -64,6 +61,7 @@ def add_flag_subparser(subparsers: "argparse._SubParsersAction[argparse.Argument
     p_flag = subparsers.add_parser(
         "flag", help="Flag an observed Claude phrase or behavior for later analysis (see kb Goal #41)"
     )
+    add_placement_argument(p_flag, tag_ok=False)
     p_flag.add_argument("note", help="What was observed, e.g. 'found it' or 'skipped checking tests first'")
     p_flag.set_defaults(func=cmd_flag)
 
@@ -73,6 +71,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_add = sub.add_parser("add", help="Add a log entry")
+    add_placement_argument(p_add, tag_ok=False)
     p_add.add_argument("body")
     p_add.add_argument("--domain", help="Loose category label, e.g. 'health', 'cat', 'work'")
     p_add.add_argument("--date", metavar="YYYY-MM-DD", help="Backdate the entry (default: now)")

@@ -5,11 +5,13 @@ import sys
 
 from sqlalchemy import select
 
-from context import creation_context
+from context import resolve_placement
 from models import Idea, IdeaStatus, Journal
 
 from kb_cli._util import (
+    add_context_filter_argument,
     add_history_arg,
+    add_placement_argument,
     apply_context_or_tag_update,
     apply_purge,
     apply_restore,
@@ -25,11 +27,13 @@ from kb_cli.search import cmd_search_deprecated
 
 
 def cmd_add(args: argparse.Namespace) -> None:
+    place = resolve_placement(args.session, args.place)
     idea = Idea.create(
         args.session,
         args.title,
         description=resolve_text_arg(args.description) if args.description else args.description,
-        context=creation_context(args),
+        context=place.context,
+        tag=place.tag,
         notes=resolve_text_arg(args.notes) if args.notes else args.notes,
     )
     args.session.commit()
@@ -84,13 +88,7 @@ def cmd_show(args: argparse.Namespace) -> None:
 
 
 def cmd_list(args: argparse.Namespace) -> None:
-    if args.all:
-        ideas = args.session.scalars(
-            select(Idea).where(Idea.status == IdeaStatus.ACTIVE, Idea.deleted_at.is_(None))
-        ).all()
-    else:
-        in_scope = scope_to_context(args.session, args.context)
-        ideas = Idea.active(args.session, contexts=in_scope, include_no_context=True)
+    ideas = Idea.active(args.session, contexts=scope_to_context(args.session, args.context_name))
     if not ideas:
         print("No ideas.")
         return
@@ -145,6 +143,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_add = sub.add_parser("add", help="Add an idea")
+    add_placement_argument(p_add)
     p_add.add_argument("title")
     p_add.add_argument("--description")
     p_add.add_argument("--notes")
@@ -165,10 +164,10 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     add_history_arg(p_show)
     p_show.set_defaults(func=cmd_show)
 
-    p_list = sub.add_parser("list", help="List active ideas, everywhere by default (or scoped to --context)")
-    p_list.add_argument(
-        "--all", action="store_true", help="Ignore an active --context and show ideas from every context"
+    p_list = sub.add_parser(
+        "list", help="List active ideas, everywhere by default (or one context and its sub-contexts)"
     )
+    add_context_filter_argument(p_list)
     p_list.set_defaults(func=cmd_list)
 
     p_search = sub.add_parser("search", help="Removed -- use top-level `kb search` instead")

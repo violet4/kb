@@ -7,10 +7,11 @@ from typing import Sequence
 
 from sqlalchemy import select
 
-from context import creation_context
+from context import resolve_placement
 from models import Daily, DailyTier
 
 from kb_cli._util import (
+    add_placement_argument,
     apply_context_or_tag_update,
     apply_purge,
     apply_restore,
@@ -109,6 +110,7 @@ def cmd_catch_up(args: argparse.Namespace) -> None:
 
 
 def cmd_add(args: argparse.Namespace) -> None:
+    place = resolve_placement(args.session, args.place)
     description = resolve_text_arg(args.description)
 
     # Always show the nearest existing active Daily plus its distance -- a purely
@@ -126,7 +128,8 @@ def cmd_add(args: argparse.Namespace) -> None:
     daily = Daily.create(
         args.session,
         description,
-        context=creation_context(args),
+        context=place.context,
+        tag=place.tag,
         domain=args.domain,
         tier=DailyTier(args.tier),
         recurrence=args.recurrence,
@@ -247,6 +250,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_list.set_defaults(func=cmd_list)
 
     p_add = sub.add_parser("add", help="Add a Daily")
+    add_placement_argument(p_add)
     p_add.add_argument("description")
     p_add.add_argument("--domain", default="irl", help="'irl' (default) or 'pg'")
     p_add.add_argument("--tier", default="critical", choices=[t.value for t in DailyTier])

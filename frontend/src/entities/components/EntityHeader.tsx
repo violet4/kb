@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import PlacementControl from '../../contexts/components/PlacementControl';
 import { tokens } from '../../shared/tokens';
 import { rowToEntityDetail } from '../rowToEntityDetail';
 import type { ColumnSchema, EntityDetail } from '../types';
@@ -7,16 +8,28 @@ import EditableFieldControl from './renderers/EditableFieldControl';
 interface EntityHeaderProps {
   entity: EntityDetail;
   titleSchema?: ColumnSchema;
+  placementSchema?: ColumnSchema;
   onFieldSaved: (entity: EntityDetail) => void;
 }
 
-export default function EntityHeader({ entity, titleSchema, onFieldSaved }: EntityHeaderProps) {
+export default function EntityHeader({ entity, titleSchema, placementSchema, onFieldSaved }: EntityHeaderProps) {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
       <p style={{ margin: 0, fontSize: 13, color: tokens.color.textMuted }}>
         {entity.type}:{entity.id}
-        {entity.context_name ? ` · ${entity.context_name}` : ''}
+        {entity.placement && (
+          <>
+            {' · '}
+            <PlacementControl
+              type={entity.type}
+              id={entity.id}
+              placement={entity.placement}
+              nullable={placementSchema?.nullable ?? false}
+              onSaved={(placement) => onFieldSaved({ ...entity, placement })}
+            />
+          </>
+        )}
       </p>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         {titleSchema && isEditingTitle ? (

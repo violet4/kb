@@ -74,3 +74,14 @@ export interface ContextPage {
   notes: NoteItem[];
   wishlist: WishlistItem[];
 }
+
+// Mirrors api/entities_router.py's PlacementOut: where a record lives -- a context, or
+// (for types that allow it) a tag it floats on.
+export interface Placement {
+  context: ContextRef | null;
+  tag: ContextRef | null;
+  tag_allowed: boolean;
+}
+
+// What a placement picker chooses: a context, a tag, or neither (clears an optional placement).
+export type PlacementChoice = { context_id: number } | { tag_id: number } | Record<string, never>;

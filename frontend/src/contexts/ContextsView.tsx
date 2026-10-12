@@ -1,60 +1,182 @@
-import { useCallback, type ReactNode } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Link, Navigate, useLocation, useParams } from 'react-router-dom';
 import { entityPath } from '../entities/navigation';
+import SearchResults from '../search/components/SearchResults';
+import { useSearch } from '../search/hooks/useSearch';
+import type { SearchHit } from '../search/types';
+import { recordDragProps, type DraggedRecord } from '../shared/recordDrag';
 import { tokens } from '../shared/tokens';
 import { usePolling } from '../shared/usePolling';
-import { fetchContextPage, fetchContextTree } from './api';
+import { fetchContextPage, fetchContextTree, fetchInbox } from './api';
 import ContextTreeNav from './components/ContextTreeNav';
-import type { ContextPage, ContextRef, NoteItem, TodoItem, WishlistItem } from './types';
+import type { ContextNode, ContextPage, ContextRef, NoteItem, TodoItem, WishlistItem } from './types';
+import { InboxIdContext, useContextLink, useIncludeDescendants } from './useContextLink';
 
 const POLL_SECONDS = 15;
 
+// Types the context page lists in its own sections; any other search hit in scope goes
+// under "Other matches".
+const PAGE_TYPES = new Set(['Goal', 'Todo', 'Note', 'Wishlist']);
+
+const hitKey = (type: string, id: number) => `${type}:${id}`;
+
 export default function ContextsView() {
   const { id } = useParams();
-  const selectedId = id !== undefined ? Number(id) : null;
-  const [searchParams, setSearchParams] = useSearchParams();
-  // Sub-context items are included unless ?sub=0 -- Redmine's default for subprojects too.
-  const includeDescendants = searchParams.get('sub') !== '0';
+  const location = useLocation();
+  const [inboxId, setInboxId] = useState<number | null>(null);
+  useEffect(() => {
+    fetchInbox().then((inbox) => setInboxId(inbox.id));
+  }, []);
+  // Bare /contexts is the inbox.
+  const selectedId = id !== undefined ? Number(id) : inboxId;
+  const [includeDescendants, setIncludeDescendants] = useIncludeDescendants();
 
-  const { data: tree, error: treeError } = usePolling(fetchContextTree, POLL_SECONDS);
+  // Typing filters context names; Enter submits the text as a kb search. Editing the text
+  // again drops the search, back to name filtering.
+  const [filterText, setFilterText] = useState('');
+  const [submittedQuery, setSubmittedQuery] = useState('');
+  const { hits, loading: searching, error: searchError, refresh: refreshSearch } = useSearch(submittedQuery);
+  const search = submittedQuery ? { query: submittedQuery, hits, searching, error: searchError } : null;
+  const changeFilter = (text: string) => {
+    setFilterText(text);
+    setSubmittedQuery('');
+  };
+  // During a search the page shows the selected context's matches, or every match on request.
+  const [showAllHits, setShowAllHits] = useState(false);
+  useEffect(() => setShowAllHits(false), [selectedId, submittedQuery]);
+
+  const { data: tree, error: treeError, refresh: refreshTree } = usePolling(fetchContextTree, POLL_SECONDS);
   const fetchPage = useCallback(
     () => (selectedId === null ? Promise.resolve(null) : fetchContextPage(selectedId, includeDescendants)),
     [selectedId, includeDescendants],
   );
-  const { data: page, error: pageError } = usePolling(fetchPage, POLL_SECONDS);
-
-  const setIncludeDescendants = (value: boolean) => {
-    const next = new URLSearchParams(searchParams);
-    if (value) next.delete('sub');
-    else next.set('sub', '0');
-    setSearchParams(next, { replace: true });
+  const { data: page, error: pageError, refresh: refreshPage } = usePolling(fetchPage, POLL_SECONDS);
+  // After a context or record moved: everything showing placements is stale.
+  const refreshAll = () => {
+    refreshTree();
+    refreshPage();
+    if (submittedQuery) refreshSearch();
   };
 
+  // The page's scope (this context, plus descendants when included), to place search hits in it.
+  const scopeIds = useMemo(
+    () => (selectedId === null || !tree ? new Set<number>() : scopeOf(tree, selectedId, includeDescendants)),
+    [tree, selectedId, includeDescendants],
+  );
+  const hitsHere = search ? search.hits.filter((h) => inScope(h, scopeIds)) : [];
+
+  if (id !== undefined && inboxId !== null && Number(id) === inboxId) {
+    return <Navigate to={`/contexts${location.search}`} replace />;
+  }
+
   return (
-    <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-      <aside
-        style={{
-          width: 260,
-          flexShrink: 0,
-          overflowY: 'auto',
-          padding: 16,
-          borderRight: `1px solid ${tokens.color.border}`,
-        }}
-      >
-        {treeError && <p style={{ color: tokens.color.danger, fontSize: 12 }}>{treeError}</p>}
-        {tree && <ContextTreeNav nodes={tree} selectedId={selectedId} />}
-      </aside>
-      <main style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '16px 24px' }}>
-        {selectedId === null && <p style={{ color: tokens.color.textMuted }}>Pick a context.</p>}
-        {pageError && <p style={{ color: tokens.color.danger }}>{pageError}</p>}
-        {page && page.context.id === selectedId && (
-          <ContextPageBody
-            page={page}
-            includeDescendants={includeDescendants}
-            onIncludeDescendants={setIncludeDescendants}
-          />
-        )}
-      </main>
+    <InboxIdContext.Provider value={inboxId}>
+      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+        <aside
+          style={{
+            width: 260,
+            flexShrink: 0,
+            overflowY: 'auto',
+            padding: 16,
+            borderRight: `1px solid ${tokens.color.border}`,
+          }}
+        >
+          {treeError && <p style={{ color: tokens.color.danger, fontSize: 12 }}>{treeError}</p>}
+          {tree && (
+            <ContextTreeNav
+              nodes={tree}
+              selectedId={selectedId}
+              includeDescendants={includeDescendants}
+              onChanged={refreshAll}
+              filterText={filterText}
+              onFilterChange={changeFilter}
+              onSearch={() => setSubmittedQuery(filterText.trim())}
+              searchHits={search && !search.error ? search.hits : null}
+            />
+          )}
+        </aside>
+        <main style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '16px 24px' }}>
+          {search && (
+            <SearchBanner
+              search={search}
+              shown={showAllHits ? search.hits.length : hitsHere.length}
+              showAll={showAllHits}
+              onShowAll={setShowAllHits}
+              onClear={() => changeFilter('')}
+            />
+          )}
+          {pageError && <p style={{ color: tokens.color.danger }}>{pageError}</p>}
+          {search && showAllHits ? (
+            <SearchResults hits={search.hits} />
+          ) : (
+            page &&
+            page.context.id === selectedId && (
+              <ContextPageBody
+                page={page}
+                includeDescendants={includeDescendants}
+                onIncludeDescendants={setIncludeDescendants}
+                hits={search ? hitsHere : null}
+              />
+            )
+          )}
+        </main>
+      </div>
+    </InboxIdContext.Provider>
+  );
+}
+
+function scopeOf(tree: ContextNode[], rootId: number, includeDescendants: boolean): Set<number> {
+  const scope = new Set([rootId]);
+  if (!includeDescendants) return scope;
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const n of tree) {
+      if (n.parent_id !== null && scope.has(n.parent_id) && !scope.has(n.id)) {
+        scope.add(n.id);
+        grew = true;
+      }
+    }
+  }
+  return scope;
+}
+
+function inScope(hit: SearchHit, scopeIds: Set<number>): boolean {
+  return hit.context_ids.some((c) => scopeIds.has(c));
+}
+
+function SearchBanner({
+  search,
+  shown,
+  showAll,
+  onShowAll,
+  onClear,
+}: {
+  search: { query: string; hits: SearchHit[]; searching: boolean; error: string | null };
+  shown: number;
+  showAll: boolean;
+  onShowAll: (value: boolean) => void;
+  onClear: () => void;
+}) {
+  const linkButton = { ...tokens.link, background: 'none', border: 'none', padding: 0, cursor: 'pointer' };
+  return (
+    <div style={{ display: 'flex', gap: 10, alignItems: 'baseline', fontSize: 13, marginBottom: 16, minHeight: 20 }}>
+      {search.error ? (
+        <span style={{ color: tokens.color.danger }}>{search.error}</span>
+      ) : search.searching && search.hits.length === 0 ? (
+        <span style={{ color: tokens.color.textMuted }}>Searching kb for “{search.query}”…</span>
+      ) : (
+        <span>
+          {showAll ? `${search.hits.length} matches` : `${shown} of ${search.hits.length} matches here`} for “
+          {search.query}”
+        </span>
+      )}
+      <button onClick={() => onShowAll(!showAll)} style={linkButton}>
+        {showAll ? 'only this context' : 'show all'}
+      </button>
+      <button onClick={onClear} style={linkButton}>
+        clear search
+      </button>
     </div>
   );
 }
@@ -63,15 +185,26 @@ function ContextPageBody({
   page,
   includeDescendants,
   onIncludeDescendants,
+  hits,
 }: {
   page: ContextPage;
   includeDescendants: boolean;
   onIncludeDescendants: (v: boolean) => void;
+  hits: SearchHit[] | null; // search hits in this page's scope; null when no search is active
 }) {
+  const contextLink = useContextLink();
+  const hitKeys = hits && new Set(hits.map((h) => hitKey(h.type, h.id)));
+  const matches = (type: string) => (row: { id: number }) => !hitKeys || hitKeys.has(hitKey(type, row.id));
+  const goals = page.goals.filter(matches('Goal'));
+  const todos = page.todos.filter(matches('Todo'));
+  const notes = page.notes.filter(matches('Note'));
+  const wishlist = page.wishlist.filter(matches('Wishlist'));
+  const otherHits = (hits ?? []).filter((h) => !PAGE_TYPES.has(h.type));
+
   const now = Date.now();
   const isScheduled = (t: TodoItem) => t.defer_until_utc !== null && Date.parse(t.defer_until_utc) > now;
-  const open = page.todos.filter((t) => !isScheduled(t)).sort(compareOpenTodos);
-  const scheduled = page.todos
+  const open = todos.filter((t) => !isScheduled(t)).sort(compareOpenTodos);
+  const scheduled = todos
     .filter(isScheduled)
     .sort((a, b) => Date.parse(a.defer_until_utc!) - Date.parse(b.defer_until_utc!));
   const here = page.context.id;
@@ -101,7 +234,7 @@ function ContextPageBody({
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 13 }}>
             <span style={{ color: tokens.color.textMuted }}>sub-contexts:</span>
             {page.children.map((c) => (
-              <Link key={c.id} to={`/contexts/${c.id}`} style={tokens.link}>
+              <Link key={c.id} to={contextLink(c.id)} style={tokens.link}>
                 {c.name}
               </Link>
             ))}
@@ -109,9 +242,9 @@ function ContextPageBody({
         )}
       </header>
 
-      <Section title="Goals" count={page.goals.length}>
-        {page.goals.map((g) => (
-          <Row key={g.id}>
+      <Section title="Goals" count={goals.length}>
+        {goals.map((g) => (
+          <Row key={g.id} record={{ type: 'Goal', id: g.id, label: g.title }}>
             <IdCell type="Goal" id={g.id} />
             <TitleLink type="Goal" id={g.id} title={g.title} />
             <Where context={g.context} viaTag={g.via_tag} here={here} />
@@ -131,17 +264,23 @@ function ContextPageBody({
         ))}
       </Section>
 
-      <Section title="Notes" count={page.notes.length}>
-        {page.notes.map((n) => (
+      <Section title="Notes" count={notes.length}>
+        {notes.map((n) => (
           <NoteRow key={n.id} note={n} here={here} />
         ))}
       </Section>
 
-      <Section title="Wishlist" count={page.wishlist.length}>
-        {page.wishlist.map((w) => (
+      <Section title="Wishlist" count={wishlist.length}>
+        {wishlist.map((w) => (
           <WishlistRow key={w.id} item={w} here={here} />
         ))}
       </Section>
+
+      {hits && (
+        <Section title="Other matches" count={otherHits.length}>
+          <SearchResults hits={otherHits} />
+        </Section>
+      )}
     </div>
   );
 }
@@ -162,12 +301,13 @@ function isoDate(utc: string | null): string {
 }
 
 function Breadcrumb({ ancestors }: { ancestors: ContextRef[] }) {
+  const contextLink = useContextLink();
   if (ancestors.length === 0) return null;
   return (
     <div style={{ fontSize: 12, color: tokens.color.textMuted, display: 'flex', gap: 6 }}>
       {ancestors.map((a) => (
         <span key={a.id} style={{ display: 'flex', gap: 6 }}>
-          <Link to={`/contexts/${a.id}`} style={tokens.link}>
+          <Link to={contextLink(a.id)} style={tokens.link}>
             {a.name}
           </Link>
           <span>›</span>
@@ -188,10 +328,13 @@ function Section({ title, count, children }: { title: string; count: number; chi
   );
 }
 
-function Row({ children }: { children: ReactNode }) {
+// Every row is a record that can be dragged onto a context in the sidebar to move it there.
+function Row({ record, children }: { record: DraggedRecord; children: ReactNode }) {
   return (
     <div
+      {...recordDragProps(record)}
       style={{
+        cursor: 'grab',
         display: 'flex',
         alignItems: 'baseline',
         gap: 8,
@@ -216,7 +359,7 @@ function IdCell({ type, id }: { type: 'Goal' | 'Todo' | 'Note' | 'Wishlist'; id:
 
 function TitleLink({ type, id, title }: { type: 'Goal' | 'Todo' | 'Note' | 'Wishlist'; id: number; title: string }) {
   return (
-    <Link to={entityPath(type, id)} style={{ ...tokens.link, minWidth: 0 }}>
+    <Link to={entityPath(type, id)} draggable={false} style={{ ...tokens.link, minWidth: 0 }}>
       {title}
     </Link>
   );
@@ -242,10 +385,11 @@ function Chip({ children, color }: { children: ReactNode; color?: string }) {
 // Shown only when the row lives somewhere other than the page's own context: a
 // sub-context it was filed under, or the tag it floats in on.
 function Where({ context, viaTag, here }: { context: ContextRef | null; viaTag: string | null; here: number }) {
+  const contextLink = useContextLink();
   if (viaTag) return <Chip>#{viaTag}</Chip>;
   if (!context || context.id === here) return null;
   return (
-    <Link to={`/contexts/${context.id}`} style={{ ...tokens.link, fontSize: 11, whiteSpace: 'nowrap' }}>
+    <Link to={contextLink(context.id)} style={{ ...tokens.link, fontSize: 11, whiteSpace: 'nowrap' }}>
       @{context.name}
     </Link>
   );
@@ -253,7 +397,7 @@ function Where({ context, viaTag, here }: { context: ContextRef | null; viaTag: 
 
 function TodoRow({ todo, here, showDeferDate }: { todo: TodoItem; here: number; showDeferDate?: boolean }) {
   return (
-    <Row>
+    <Row record={{ type: 'Todo', id: todo.id, label: todo.title }}>
       <IdCell type="Todo" id={todo.id} />
       {showDeferDate && (
         <span style={{ color: tokens.color.due, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
@@ -278,7 +422,7 @@ function TodoRow({ todo, here, showDeferDate }: { todo: TodoItem; here: number; 
 
 function NoteRow({ note, here }: { note: NoteItem; here: number }) {
   return (
-    <Row>
+    <Row record={{ type: 'Note', id: note.id, label: note.title }}>
       <IdCell type="Note" id={note.id} />
       <TitleLink type="Note" id={note.id} title={note.title} />
       <Chip>{note.collection}</Chip>
@@ -300,7 +444,7 @@ function priceRange(item: WishlistItem): string | null {
 function WishlistRow({ item, here }: { item: WishlistItem; here: number }) {
   const price = priceRange(item);
   return (
-    <Row>
+    <Row record={{ type: 'Wishlist', id: item.id, label: item.title }}>
       <IdCell type="Wishlist" id={item.id} />
       {item.pinned && <Chip color={tokens.color.accent}>pinned</Chip>}
       <TitleLink type="Wishlist" id={item.id} title={item.title} />

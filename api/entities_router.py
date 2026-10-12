@@ -20,10 +20,12 @@ from sqlalchemy import inspect, select
 from sqlalchemy.orm import Session
 
 from api.deps import get_session
+from context import PlacementError, place, placement_kind, placement_required
 from archivebox_compat.config import ArchiveBoxConfigError
 from kb_cli.archivebox import archivebox_url
 from models import (
     ArchivedLink,
+    Context,
     Daily,
     EntityLink,
     Event,
@@ -33,6 +35,7 @@ from models import (
     Journal,
     LogEntry,
     Note,
+    Tag,
     Todo,
     Wishlist,
 )
@@ -55,6 +58,9 @@ ENTITY_TYPES: dict[str, type[Any]] = {
 # Columns hidden from every introspected view (internal bookkeeping, never a useful
 # browse/filter/edit target) -- everything else on a model's mapper is generic.
 _HIDDEN_COLUMNS = {"embedding", "embedding_model"}
+
+# Relationships folded into the single placement column (named "context") for any placeable type.
+_PLACEMENT_RELATIONSHIPS = {"context", "tag"}
 
 # Column names carrying record-lifecycle metadata rather than user-editable content --
 # structural (every model writes these via base.py's _now(), see CLAUDE.md), not a
@@ -159,8 +165,18 @@ def _introspect_columns(entity_type: str, model: type[Any]) -> list[ColumnSchema
                 nullable=editable and col.nullable,
             )
         )
-    for rel_name in set(fk_relationships.values()):
+    # Where the row lives is one "context" column of kind "placement" (a context, or a tag where the type allows
+    # it), first so it sits right after the title -- not two raw reference columns.
+    placeable = placement_kind(model) is not None
+    for rel_name in sorted(set(fk_relationships.values())):
+        if placeable and rel_name in _PLACEMENT_RELATIONSHIPS:
+            continue
         schemas.append(ColumnSchema(name=rel_name, kind="reference", shown=True, editable=False, nullable=False))
+    if placeable:
+        placement = ColumnSchema(
+            name="context", kind="placement", shown=True, editable=True, nullable=not placement_required(model)
+        )
+        schemas.insert(0, placement)
     return schemas
 
 
@@ -189,7 +205,29 @@ async def list_editable_fields(entity_type: str) -> list[ColumnSchema]:
     return [c for c in _introspect_columns(entity_type, model) if c.editable]
 
 
+class Ref(BaseModel):
+    id: int
+    name: str
+
+
+class PlacementOut(BaseModel):
+    context: Optional[Ref]
+    tag: Optional[Ref]
+    tag_allowed: bool
+
+
+def _placement(row: Any) -> PlacementOut:
+    context, tag = getattr(row, "context", None), getattr(row, "tag", None)
+    return PlacementOut(
+        context=Ref(id=context.id, name=context.name) if context is not None else None,
+        tag=Ref(id=tag.id, name=tag.name) if tag is not None else None,
+        tag_allowed=placement_kind(type(row)) == "context_or_tag",
+    )
+
+
 def _row_value(row: Any, column: ColumnSchema) -> Any:
+    if column.kind == "placement":
+        return _placement(row).model_dump()
     if column.kind == "reference":
         other = getattr(row, column.name, None)
         return _label(other) if other is not None else None
@@ -251,7 +289,7 @@ async def list_entities(
         if not value:
             continue
         column = by_name.get(param)
-        if column is None or column.kind == "reference":
+        if column is None or column.kind in ("reference", "placement"):
             continue
         q = _apply_column_filter(q, model, entity_type, column, value)
     rows = session.scalars(q.order_by(model.updated_at.desc())).all()
@@ -289,7 +327,7 @@ async def update_entity_field(
     columns = _introspect_columns(entity_type, model)
     by_name = {c.name: c for c in columns}
     column = by_name.get(body.field)
-    if column is None or not column.editable:
+    if column is None or not column.editable or column.kind == "placement":
         raise HTTPException(status_code=400, detail=f"{entity_type}.{body.field} is not editable")
     if body.is_null and not column.nullable:
         raise HTTPException(status_code=400, detail=f"{entity_type}.{body.field} is not nullable")
@@ -325,6 +363,39 @@ async def update_entity_field(
     session.commit()
     session.refresh(row)
     return _to_row(entity_type, row, columns)
+
+
+class PlacementIn(BaseModel):
+    context_id: Optional[int] = None
+    tag_id: Optional[int] = None  # at most one of the two; neither clears an optional placement
+
+
+def _placement_label(p: PlacementOut) -> Optional[str]:
+    return f"#{p.tag.name}" if p.tag else p.context.name if p.context else None
+
+
+@router.put("/{entity_type}/{entity_id}/placement", response_model=PlacementOut)
+def set_placement(
+    entity_type: str, entity_id: int, body: PlacementIn, session: Session = Depends(get_session)
+) -> PlacementOut:
+    """Move any placeable row (not only ENTITY_TYPES -- search hits include Items, Vendors,
+    ...) to a context or tag, via context.place, journaling the old and new location."""
+    row = EntityLink.resolve(session, entity_type, entity_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"{entity_type}:{entity_id} not found")
+    context = session.get(Context, body.context_id) if body.context_id is not None else None
+    tag = session.get(Tag, body.tag_id) if body.tag_id is not None else None
+    if (body.context_id is not None and context is None) or (body.tag_id is not None and tag is None):
+        raise HTTPException(status_code=400, detail="no such context/tag")
+    old = _placement_label(_placement(row))
+    try:
+        place(row, context=context, tag=tag)
+    except (PlacementError, ValueError) as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    result = _placement(row)
+    Journal.record(session, entity_type, entity_id, field="context", old_value=old, new_value=_placement_label(result))
+    session.commit()
+    return result
 
 
 class GraphNeighbor(BaseModel):

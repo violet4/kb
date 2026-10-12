@@ -1,29 +1,33 @@
 """Search endpoint mirroring `kb search`: substring + semantic, ranked and de-duped
-together, over the same ALL_SEARCHABLE/SEMANTIC_SEARCHABLE model sets kb_cli/search.py
-already defines -- reuses that module's search_entities/_semantic_hits directly rather
-than reimplementing the ranking/dedup logic."""
+together by kb_cli/search.py's own search_all -- one implementation for the CLI and the
+web UI. /info reports that implementation's parameters so the UI's explainer is
+generated from them rather than restated."""
 
-import struct
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from api.context_homes import contexts_by_tag, home_context_ids
 from api.deps import get_session
 from archivebox_compat.config import ArchiveBoxConfigError
-from embed import embed
 from kb_cli.archivebox import archivebox_url
+from context import placement_kind
 from kb_cli.search import (
-    ALL_SEARCHABLE,
-    SEMANTIC_SEARCHABLE,
     _SUBSTRING_DIST,
-    _semantic_hits,
-    search_entities,
+    _TEXT_COLUMNS,
+    ALL_SEARCHABLE,
+    MAX_SEMANTIC_DIST,
+    SEMANTIC_SEARCHABLE,
+    search_all,
 )
+from models import Context
 from models import ArchivedLink
 
 router = APIRouter(prefix="/search-all")
+
+DEFAULT_LIMIT = 20
 
 # Type names entities_router.ENTITY_TYPES also knows how to render -- a search hit of
 # one of these gets a drilldown link into /entities/{type}/{id}; others (Context,
@@ -38,8 +42,20 @@ class SearchHit(BaseModel):
     dist: float
     is_substring: bool
     drilldown: bool
+    context_ids: list[int]  # contexts this hit lives in (several for a tag-addressed row)
+    # How the hit can be moved by dropping it on a context: "parent" (a Context, re-parented),
+    # "context"/"context_or_tag" (context.placement_kind), or None (no context at all).
+    placement: Optional[str]
     original_url: Optional[str] = None
     archivebox_url: Optional[str] = None
+
+
+class SearchInfo(BaseModel):
+    default_limit: int
+    max_dist: float
+    substring_models: list[str]
+    substring_fields: list[str]
+    semantic_models: list[str]
 
 
 def _label(item: Any) -> str:
@@ -48,7 +64,7 @@ def _label(item: Any) -> str:
     )
 
 
-def _to_hit(session: Session, item: Any, dist: float) -> SearchHit:
+def _to_hit(session: Session, item: Any, dist: float, by_tag: dict[int, list[int]]) -> SearchHit:
     type_name = type(item).__name__
     original_url: Optional[str] = None
     ab_url: Optional[str] = None
@@ -66,26 +82,25 @@ def _to_hit(session: Session, item: Any, dist: float) -> SearchHit:
         dist=dist,
         is_substring=dist == _SUBSTRING_DIST,
         drilldown=type_name in _DRILLDOWN_TYPES,
+        context_ids=home_context_ids(item, by_tag),
+        placement="parent" if isinstance(item, Context) else placement_kind(type(item)),
         original_url=original_url,
         archivebox_url=ab_url,
     )
 
 
+@router.get("/info", response_model=SearchInfo)
+def search_info() -> SearchInfo:
+    return SearchInfo(
+        default_limit=DEFAULT_LIMIT,
+        max_dist=MAX_SEMANTIC_DIST,
+        substring_models=[m.__name__ for m in ALL_SEARCHABLE],
+        substring_fields=list(_TEXT_COLUMNS),
+        semantic_models=[m.__name__ for m in SEMANTIC_SEARCHABLE],
+    )
+
+
 @router.get("", response_model=list[SearchHit])
-async def search_all(q: str, limit: int = 20, session: Session = Depends(get_session)) -> list[SearchHit]:
-    substring_hits = search_entities(session, ALL_SEARCHABLE, q)
-    scored: list[tuple[Any, float]] = [(item, _SUBSTRING_DIST) for item in substring_hits]
-
-    raw = embed(q)
-    vec = struct.pack(f"{len(raw)}f", *raw)
-    for model in SEMANTIC_SEARCHABLE:
-        scored.extend(_semantic_hits(model, session, q, limit, None, vec, include_done=False))
-
-    best: dict[tuple[type, int], tuple[Any, float]] = {}
-    for item, dist in scored:
-        key = (type(item), item.id)
-        if key not in best or dist < best[key][1]:
-            best[key] = (item, dist)
-
-    ranked = sorted(best.values(), key=lambda pair: pair[1])[:limit]
-    return [_to_hit(session, item, dist) for item, dist in ranked]
+def search(q: str, limit: int = DEFAULT_LIMIT, session: Session = Depends(get_session)) -> list[SearchHit]:
+    by_tag = contexts_by_tag(session)
+    return [_to_hit(session, item, dist, by_tag) for item, dist in search_all(session, q, limit)]

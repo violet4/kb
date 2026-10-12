@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import PlacementControl from '../../contexts/components/PlacementControl';
+import type { Placement } from '../../contexts/types';
 import { tokens } from '../../shared/tokens';
 import { entityPath } from '../navigation';
 import { useFieldEdit } from '../hooks/useFieldEdit';
@@ -30,6 +32,15 @@ function compareValues(a: unknown, b: unknown): number {
   return String(a).localeCompare(String(b));
 }
 
+// A placement sorts by the name it displays (context, else #tag); every other value as-is.
+function sortValue(value: unknown): unknown {
+  if (value && typeof value === 'object' && 'tag_allowed' in value) {
+    const p = value as Placement;
+    return p.context?.name ?? (p.tag ? `#${p.tag.name}` : null);
+  }
+  return value;
+}
+
 type SortDirection = 'asc' | 'desc';
 interface SortState {
   column: string; // column name, or '__label' for the fixed leading Title column
@@ -57,7 +68,7 @@ export default function EntityTable({ entities, columns, titleSchema, onFieldSav
   const sortedEntities = sort
     ? [...entities].sort((a, b) => {
         const key = sort.column === '__label' ? 'label' : sort.column;
-        const cmp = compareValues(a[key], b[key]);
+        const cmp = compareValues(sortValue(a[key]), sortValue(b[key]));
         return sort.direction === 'asc' ? cmp : -cmp;
       })
     : entities;
@@ -202,6 +213,18 @@ function EntityTableCell({ entity, column, onFieldSaved }: EntityTableCellProps)
   const { clear, saving: clearing } = useFieldEdit(entity.type, entity.id, column.name);
   const isEmpty = value === null || value === undefined || value === '';
 
+  if (column.kind === 'placement' && value) {
+    return (
+      <PlacementControl
+        type={entity.type}
+        id={entity.id}
+        placement={value as Placement}
+        nullable={column.nullable}
+        onSaved={(placement) => onFieldSaved({ ...entity, [column.name]: placement })}
+      />
+    );
+  }
+
   if (column.editable && column.kind === 'enum') {
     return (
       <EnumFieldSelect type={entity.type} id={entity.id} schema={column} value={isEmpty ? '' : String(value)} onSaved={onFieldSaved} />
@@ -231,7 +254,11 @@ function EntityTableCell({ entity, column, onFieldSaved }: EntityTableCellProps)
         onCancel={() => setIsEditing(false)}
       />
     ) : (
-      <span style={{ cursor: 'pointer' }} onClick={() => setIsEditing(true)} title="Click to edit">
+      <span
+        style={{ cursor: 'pointer', ...(column.kind === 'text' ? clampedTextStyle : {}) }}
+        onClick={() => setIsEditing(true)}
+        title={column.kind === 'text' && !isEmpty ? `${String(value)}\n\n(click to edit)` : 'Click to edit'}
+      >
         {formatCellValue(value, column.kind)}
       </span>
     );
@@ -248,8 +275,26 @@ function EntityTableCell({ entity, column, onFieldSaved }: EntityTableCellProps)
     );
   }
 
+  if (column.kind === 'text' && !isEmpty) {
+    return (
+      <span style={clampedTextStyle} title={String(value)}>
+        {formatCellValue(value, column.kind)}
+      </span>
+    );
+  }
   return <>{formatCellValue(value, column.kind)}</>;
 }
+
+// Long text (notes, bodies) stays one line in the table, so a row is as tall as its
+// title and every column stays on screen; the full text is in the hover title.
+const clampedTextStyle = {
+  display: 'inline-block',
+  maxWidth: 320,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+  verticalAlign: 'bottom',
+} as const;
 
 interface InlineEditControlProps {
   entity: EntityRow;

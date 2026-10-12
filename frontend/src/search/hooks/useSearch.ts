@@ -6,12 +6,14 @@ interface UseSearchResult {
   hits: SearchHit[];
   loading: boolean;
   error: string | null;
+  refresh: () => void; // re-run the same query, e.g. after a hit was moved
 }
 
 export function useSearch(query: string): UseSearchResult {
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [generation, setGeneration] = useState(0);
 
   useEffect(() => {
     if (!query.trim()) {
@@ -34,7 +36,7 @@ export function useSearch(query: string): UseSearchResult {
     return () => {
       cancelled = true;
     };
-  }, [query]);
+  }, [query, generation]);
 
-  return { hits, loading, error };
+  return { hits, loading, error, refresh: () => setGeneration((g) => g + 1) };
 }

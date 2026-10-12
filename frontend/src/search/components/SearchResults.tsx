@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { entityPath } from '../../entities/navigation';
 import type { EntityType } from '../../entities/types';
+import { recordDragProps } from '../../shared/recordDrag';
 import { tokens } from '../../shared/tokens';
 import type { SearchHit } from '../types';
 
@@ -36,18 +37,21 @@ function SearchResultRow({ hit }: { hit: SearchHit }) {
   } as const;
 
   const body = hit.drilldown ? (
-    <Link to={entityPath(hit.type as EntityType, hit.id)} style={style}>
+    <Link to={entityPath(hit.type as EntityType, hit.id)} style={style} draggable={false}>
       {content}
     </Link>
   ) : (
     <div style={style}>{content}</div>
   );
 
-  if (!hit.original_url && !hit.archivebox_url) return body;
+  // A hit with a context can be dragged onto a context in the Contexts sidebar to move it there.
+  const drag = hit.placement ? { ...recordDragProps({ type: hit.type, id: hit.id, label: hit.label }), style: { cursor: 'grab' } } : {};
   return (
-    <div>
+    <div {...drag}>
       {body}
-      <ArchivedLinkUrls originalUrl={hit.original_url} archiveboxUrl={hit.archivebox_url} />
+      {(hit.original_url || hit.archivebox_url) && (
+        <ArchivedLinkUrls originalUrl={hit.original_url} archiveboxUrl={hit.archivebox_url} />
+      )}
     </div>
   );
 }

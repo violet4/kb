@@ -27,7 +27,12 @@ export default function EntityView() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <EntityHeader entity={entity} titleSchema={schemas[labelColumnName(entityType)]} onFieldSaved={applyFieldSave} />
+      <EntityHeader
+        entity={entity}
+        titleSchema={schemas[labelColumnName(entityType)]}
+        placementSchema={schemas.context}
+        onFieldSaved={applyFieldSave}
+      />
       <TypeSpecificView entity={entity} schemas={schemas} onFieldSaved={applyFieldSave} />
       <GraphPanel neighbors={graph} />
       <JournalPanel entries={journal} />

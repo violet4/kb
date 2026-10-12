@@ -1,22 +1,25 @@
-"""Context-centred API: the context tree with per-node item counts, and one context's
-page (breadcrumb, children, and every Goal/Todo/Note filed under it) -- backs the
-frontend's Contexts view, the "everything about hecate in one place" surface.
+"""Context-centred API: the context tree with per-node item counts, one context's
+page (breadcrumb, children, and every Goal/Todo/Note filed under it), and creating or
+re-parenting a context -- backs the frontend's Contexts view, the "everything about
+hecate in one place" surface. Name uniqueness and cycle checks live on Context itself.
 
 Which Goals/Todos count as open is decided by each model's own `.active()` (status
 filter plus HasContextOrTag's tag fan-out), never re-derived here."""
 
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import Any, Optional, Sequence
+from typing import Optional, Sequence
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from api.context_homes import contexts_by_tag, home_context_ids
 from api.deps import get_session
 from api.serialize import utc_iso
-from models import Context, Goal, Note, Todo, Wishlist
+from context import get_inbox_context
+from models import Context, Goal, Note, Tag, Todo, Wishlist
 
 router = APIRouter(prefix="/contexts")
 
@@ -45,29 +48,17 @@ def _live_contexts(session: Session) -> Sequence[Context]:
     return session.scalars(select(Context).where(Context.deleted_at.is_(None)).order_by(Context.name)).all()
 
 
-def _homes(row: Any, contexts_by_tag: dict[int, list[int]]) -> list[int]:
-    """Context ids a Goal/Todo shows up under: its own context, or every context carrying its tag."""
-    if row.context_id is not None:
-        return [row.context_id]
-    if getattr(row, "tag_id", None) is not None:
-        return contexts_by_tag.get(row.tag_id, [])
-    return []
-
-
 @router.get("/tree", response_model=list[ContextNode])
 def context_tree(session: Session = Depends(get_session)) -> list[ContextNode]:
     contexts = _live_contexts(session)
-    contexts_by_tag: dict[int, list[int]] = defaultdict(list)
-    for c in contexts:
-        for tag in c.tags:
-            contexts_by_tag[tag.id].append(c.id)
+    by_tag = contexts_by_tag(session)
 
     counts: dict[int, Counts] = defaultdict(Counts)
     for todo in Todo.active(session, include_deferred=True):
-        for cid in _homes(todo, contexts_by_tag):
+        for cid in home_context_ids(todo, by_tag):
             counts[cid].todos += 1
     for goal in Goal.active(session):
-        for cid in _homes(goal, contexts_by_tag):
+        for cid in home_context_ids(goal, by_tag):
             counts[cid].goals += 1
     for note in session.scalars(select(Note).where(Note.deleted_at.is_(None))):
         counts[note.context_id].notes += 1
@@ -78,6 +69,69 @@ def context_tree(session: Session = Depends(get_session)) -> list[ContextNode]:
         ContextNode(id=c.id, name=c.name, parent_id=c.parent_id, tags=[t.name for t in c.tags], counts=counts[c.id])
         for c in contexts
     ]
+
+
+@router.get("/tags", response_model=list[ContextRef])
+def tags(session: Session = Depends(get_session)) -> list[ContextRef]:
+    """Every live Tag -- the other half of a placement picker, for rows that can float on one."""
+    rows = session.scalars(select(Tag).where(Tag.deleted_at.is_(None)).order_by(Tag.name))
+    return [ContextRef(id=t.id, name=t.name) for t in rows]
+
+
+@router.get("/inbox", response_model=ContextRef)
+def inbox(session: Session = Depends(get_session)) -> ContextRef:
+    context = get_inbox_context(session)
+    session.commit()  # get_inbox_context creates it on first use
+    return ContextRef(id=context.id, name=context.name)
+
+
+class ContextCreate(BaseModel):
+    name: str = Field(min_length=1)
+    parent_id: Optional[int] = None
+
+
+class ContextMove(BaseModel):
+    parent_id: Optional[int]  # None makes the context top-level
+
+
+def _live_context(session: Session, context_id: int, status_code: int = 404) -> Context:
+    context = session.get(Context, context_id)
+    if context is None or context.deleted_at is not None:
+        raise HTTPException(status_code=status_code, detail=f"Context:{context_id} not found")
+    return context
+
+
+def _node(context: Context) -> ContextNode:
+    return ContextNode(
+        id=context.id,
+        name=context.name,
+        parent_id=context.parent_id,
+        tags=[t.name for t in context.tags],
+        counts=Counts(),
+    )
+
+
+@router.post("", response_model=ContextNode)
+def create_context(payload: ContextCreate, session: Session = Depends(get_session)) -> ContextNode:
+    parent = _live_context(session, payload.parent_id, 400) if payload.parent_id is not None else None
+    try:
+        context = Context.create(session, payload.name, parent=parent)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    session.commit()
+    return _node(context)
+
+
+@router.put("/{context_id}/parent", response_model=ContextNode)
+def move_context(context_id: int, payload: ContextMove, session: Session = Depends(get_session)) -> ContextNode:
+    context = _live_context(session, context_id)
+    parent = _live_context(session, payload.parent_id, 400) if payload.parent_id is not None else None
+    try:
+        context.move_under(parent)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    session.commit()
+    return _node(context)
 
 
 class GoalItem(BaseModel):
@@ -148,9 +202,7 @@ def _ref(context: Optional[Context]) -> Optional[ContextRef]:
 def context_page(
     context_id: int, include_descendants: bool = True, session: Session = Depends(get_session)
 ) -> ContextPage:
-    context = session.get(Context, context_id)
-    if context is None or context.deleted_at is not None:
-        raise HTTPException(status_code=404, detail=f"Context:{context_id} not found")
+    context = _live_context(session, context_id)
     scope = Context.self_and_descendants(session, context.name) if include_descendants else [context]
     scope_ids = [c.id for c in scope]
 

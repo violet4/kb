@@ -1,4 +1,6 @@
 // Mirrors api/entities_router.py's Pydantic models.
+import type { Placement } from '../contexts/types';
+
 export type EntityType =
   | 'Todo'
   | 'Goal'
@@ -27,7 +29,7 @@ export interface EntityDetail {
   id: number;
   label: string;
   status: string | null;
-  context_name: string | null;
+  placement: Placement | null; // null for types with no context
   created_at: string;
   updated_at: string;
   fields: Record<string, unknown>;
@@ -55,7 +57,7 @@ export interface GraphNeighbor {
 // (editable, choices), and filtering (kind) all from the same introspected shape.
 export interface ColumnSchema {
   name: string;
-  kind: 'text' | 'enum' | 'bool' | 'number' | 'date' | 'reference';
+  kind: 'text' | 'enum' | 'bool' | 'number' | 'date' | 'reference' | 'placement';
   choices: string[] | null;
   shown: boolean;
   editable: boolean;

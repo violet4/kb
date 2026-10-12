@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { tokens } from '../shared/tokens';
+import SearchHelp from './components/SearchHelp';
 import SearchInput from './components/SearchInput';
 import SearchResults from './components/SearchResults';
 import { useSearch } from './hooks/useSearch';
@@ -14,7 +15,12 @@ export default function SearchView() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <h1 style={{ margin: 0, fontSize: 20 }}>Search</h1>
-      <SearchInput value={query} onChange={setQuery} onSubmit={() => setSubmittedQuery(query)} />
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={{ flex: 1 }}>
+          <SearchInput value={query} onChange={setQuery} onSubmit={() => setSubmittedQuery(query)} />
+        </div>
+        <SearchHelp />
+      </div>
       {loading && <p style={{ color: tokens.color.textMuted }}>Searching...</p>}
       {error && <p style={{ color: tokens.color.danger }}>{error}</p>}
       {!loading && !error && <SearchResults hits={hits} />}

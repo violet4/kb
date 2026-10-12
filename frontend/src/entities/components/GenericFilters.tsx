@@ -13,7 +13,7 @@ interface GenericFiltersProps {
 // EnumFieldSelect), everything else a text input. No per-type filter code: a new
 // column added to a type's DEFAULT_COLUMNS just gets a filter automatically.
 export default function GenericFilters({ columns, values, onChange }: GenericFiltersProps) {
-  const filterable = columns.filter((c) => c.kind !== 'reference');
+  const filterable = columns.filter((c) => c.kind !== 'reference' && c.kind !== 'placement');
   if (filterable.length === 0) return null;
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>

@@ -1,18 +1,10 @@
 import { Link } from 'react-router-dom';
 import { tokens } from '../shared/tokens';
+import { formatSeconds } from './formatSeconds';
 import { useAgentSessions } from './hooks/useAgentSessions';
 import { useRefreshIntervalSetting } from './hooks/useRefreshIntervalSetting';
 import type { AgentSession } from './types';
 
-function formatSeconds(seconds: number): string {
-  const s = Math.max(0, Math.round(seconds));
-  if (s < 60) return `${s}s`;
-  const minutes = Math.floor(s / 60);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  return `${Math.floor(hours / 24)}d`;
-}
 
 const cellStyle: React.CSSProperties = {
   padding: '6px 10px',

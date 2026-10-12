@@ -1,6 +1,9 @@
 import { useMemo } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import AgentContentTabs, { type AgentContentTab } from './AgentContentTabs';
+import { formatSeconds } from './formatSeconds';
+import { useAgentSessions } from './hooks/useAgentSessions';
+import { useRefreshIntervalSetting } from './hooks/useRefreshIntervalSetting';
 import { useChannelList } from '../channels/hooks/useChannelList';
 import { useChannelListRefreshInterval } from '../channels/hooks/useChannelListRefreshInterval';
 import { tokens } from '../shared/tokens';
@@ -32,6 +35,12 @@ export default function AgentPage() {
   );
   const channelId = dmChannel?.channel_id ?? null;
 
+  // Present only while the session is live: the same polled list as the Agents table's
+  // Current tab, so the header's age matches the table's.
+  const [agentsIntervalSeconds] = useRefreshIntervalSetting();
+  const { sessions: liveSessions } = useAgentSessions(agentsIntervalSeconds);
+  const liveSession = liveSessions.find((s) => s.id === sessionId) ?? null;
+
   function setTab(next: AgentContentTab) {
     setSearchParams((prev) => {
       const params = new URLSearchParams(prev);
@@ -53,8 +62,22 @@ export default function AgentPage() {
           {backLabel}
         </Link>
         <h1 style={{ margin: 0, fontSize: 18, fontFamily: 'monospace' }} title={sessionId}>
-          {dmChannel?.agent_title || sessionId}
+          {liveSession?.title || dmChannel?.agent_title || sessionId}
         </h1>
+        {liveSession && (
+          <span
+            title={`Live session, registered ${formatSeconds(liveSession.age_seconds)} ago`}
+            style={{
+              padding: '1px 8px',
+              borderRadius: 10,
+              border: `1px solid ${tokens.color.border}`,
+              color: tokens.color.textMuted,
+              fontSize: 12,
+            }}
+          >
+            age {formatSeconds(liveSession.age_seconds)}
+          </span>
+        )}
       </div>
       <AgentContentTabs
         agentSessionId={sessionId}

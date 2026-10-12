@@ -57,26 +57,47 @@ export function extractEntityRefs(text: string): { type: EntityType; id: number 
   return [...refs.values()];
 }
 
+// The canonical id a ref displays as, whatever spelling the text used ("Todo #12" and
+// "Todo:12" both show Todo:12) -- the TYPE:ID form `kb link add` takes, or ArchivedLink's
+// own established AB<id> prefix.
+function displayId(type: EntityType, id: number): string {
+  return type === 'ArchivedLink' ? `AB${id}` : labelKey(type, id);
+}
+
+// A ref with a resolved label shows its canonical id followed by the label, so the record's
+// identity stays visible next to its title; one without a label shows the matched text as
+// written. Rewrites the anchor only when its text differs from what it should show.
+function renderRefAnchor(a: HTMLAnchorElement, label: string | undefined): void {
+  const full = a.dataset.ref ?? '';
+  const id = a.dataset.refId ?? full;
+  const wanted = label ? `${id} ${label}` : full;
+  if (a.textContent === wanted) return;
+  a.replaceChildren();
+  if (label) {
+    const idSpan = document.createElement('span');
+    idSpan.className = 'kb-entity-ref-id';
+    idSpan.textContent = id;
+    idSpan.style.fontFamily = 'monospace';
+    idSpan.style.fontSize = '0.9em';
+    a.append(idSpan, ` ${label}`);
+    a.title = full;
+  } else {
+    a.textContent = full;
+    a.removeAttribute('title');
+  }
+}
+
 // labels: resolved title text keyed by labelKey(type, id) (see entities/api.ts's
-// resolveEntityLabels) -- when present for a ref, the link displays the resolved title
-// instead of the raw "Note:413" text, with the raw text kept as the `title` attribute
-// (a native hover tooltip, no extra component needed). Absent from the map (not yet
-// fetched, or unresolved) falls back to the raw text, same as before this param existed.
+// resolveEntityLabels) -- see renderRefAnchor for how a ref displays with and without one.
+// The raw matched text is kept as the `title` attribute (a native hover tooltip). Absent
+// from the map (not yet fetched, or unresolved) falls back to the raw text.
 export function linkifyEntityRefs(root: HTMLElement, labels?: Map<string, string>): void {
   // Anchors this function already created on an earlier pass (e.g. before labels had
-  // resolved) -- their text is fixed once created, so when `labels` gains an entry for one
-  // of these after the fact, update its display text/tooltip in place rather than leaving
-  // it stuck at whatever the first pass rendered (the tree walker below deliberately never
-  // revisits text inside an existing <a>, so without this pass a link created before labels
-  // arrived would never pick up the resolved title).
+  // resolved) -- the tree walker below deliberately never revisits text inside an existing
+  // <a>, so when `labels` gains an entry for one of these after the fact, it is re-rendered
+  // here rather than left stuck at whatever the first pass rendered.
   for (const a of root.querySelectorAll<HTMLAnchorElement>('a.kb-entity-ref[data-ref]')) {
-    const full = a.dataset.ref ?? '';
-    const key = a.dataset.refKey ?? '';
-    const label = labels?.get(key);
-    const wanted = label ?? full;
-    if (a.textContent !== wanted) a.textContent = wanted;
-    if (label) a.title = full;
-    else a.removeAttribute('title');
+    renderRefAnchor(a, labels?.get(a.dataset.refKey ?? ''));
   }
 
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
@@ -110,12 +131,11 @@ export function linkifyEntityRefs(root: HTMLElement, labels?: Map<string, string
         const a = document.createElement('a');
         a.href = entityPath(ref.type, ref.id);
         const key = labelKey(ref.type, ref.id);
-        const label = labels?.get(key);
-        a.textContent = label ?? full;
-        if (label) a.title = full;
         a.className = 'kb-entity-ref';
         a.dataset.ref = full;
         a.dataset.refKey = key;
+        a.dataset.refId = displayId(ref.type, ref.id);
+        renderRefAnchor(a, labels?.get(key));
         frag.appendChild(a);
       } else {
         frag.appendChild(document.createTextNode(full));

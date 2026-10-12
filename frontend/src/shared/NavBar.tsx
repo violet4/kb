@@ -1,36 +1,48 @@
+import { Fragment } from 'react';
 import { Link } from 'react-router-dom';
 import { tokens } from './tokens';
 
+// Related views sit together; a vertical rule separates the groups.
+const GROUPS: { to: string; label: string }[][] = [
+  [
+    { to: '/contexts', label: 'Contexts' },
+    { to: '/search', label: 'Search' },
+    { to: '/browse', label: 'Browse' },
+  ],
+  [
+    { to: '/', label: 'Dailies' },
+    { to: '/events', label: 'Events' },
+  ],
+  [{ to: '/log', label: 'Log' }],
+  [
+    { to: '/usage', label: 'Usage' },
+    { to: '/agents', label: 'Agents' },
+    { to: '/channels', label: 'Channels' },
+  ],
+];
+
 export default function NavBar() {
   return (
-    <nav style={{ display: 'flex', gap: 16, padding: '12px 24px', borderBottom: `1px solid ${tokens.color.border}` }}>
-      <Link to="/" style={{ color: tokens.color.text, textDecoration: 'none', fontSize: 13 }}>
-        Dailies
-      </Link>
-      <Link to="/contexts" style={{ color: tokens.color.text, textDecoration: 'none', fontSize: 13 }}>
-        Contexts
-      </Link>
-      <Link to="/log" style={{ color: tokens.color.text, textDecoration: 'none', fontSize: 13 }}>
-        Log
-      </Link>
-      <Link to="/events" style={{ color: tokens.color.text, textDecoration: 'none', fontSize: 13 }}>
-        Events
-      </Link>
-      <Link to="/usage" style={{ color: tokens.color.text, textDecoration: 'none', fontSize: 13 }}>
-        Usage
-      </Link>
-      <Link to="/agents" style={{ color: tokens.color.text, textDecoration: 'none', fontSize: 13 }}>
-        Agents
-      </Link>
-      <Link to="/channels" style={{ color: tokens.color.text, textDecoration: 'none', fontSize: 13 }}>
-        Channels
-      </Link>
-      <Link to="/browse" style={{ color: tokens.color.text, textDecoration: 'none', fontSize: 13 }}>
-        Browse
-      </Link>
-      <Link to="/search" style={{ color: tokens.color.text, textDecoration: 'none', fontSize: 13 }}>
-        Search
-      </Link>
+    <nav
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: 14,
+        padding: '12px 24px',
+        borderBottom: `1px solid ${tokens.color.border}`,
+      }}
+    >
+      {GROUPS.map((group, i) => (
+        <Fragment key={group[0].to}>
+          {i > 0 && <span aria-hidden style={{ alignSelf: 'stretch', width: 1, background: tokens.color.border }} />}
+          {group.map((item) => (
+            <Link key={item.to} to={item.to} style={{ color: tokens.color.text, textDecoration: 'none', fontSize: 13 }}>
+              {item.label}
+            </Link>
+          ))}
+        </Fragment>
+      ))}
     </nav>
   );
 }

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import SearchHelp from '../../search/components/SearchHelp';
 import type { SearchHit } from '../../search/types';
 import { tokens } from '../../shared/tokens';
+import { isBoolean, useStoredState } from '../../shared/useStoredState';
 import { draggedRecord, isRecordDrag, isRecordDragEvent, type DraggedRecord } from '../../shared/recordDrag';
 import { createContext, moveContext, setPlacement } from '../api';
 import type { ContextNode } from '../types';
@@ -101,9 +102,12 @@ export default function ContextTreeNav({
   const [error, setError] = useState<string | null>(null);
   const hoverExpandTimer = useRef<number | null>(null);
 
-  // While a record is dragged from the page, every context is a drop target: the tree
-  // shows in full (no search/name filter, no hide-empty) until the drag ends.
-  const [recordDragging, setRecordDragging] = useState(false);
+  // With "show all while dragging" on, dragging a record from the page shows the tree in
+  // full (no search/name filter, no hide-empty) until the drag ends, so every context is a
+  // drop target; off by default, since the tree jumping around mid-drag is distracting.
+  const [revealOnDrag, setRevealOnDrag] = useStoredState('kb-contexts-reveal-on-drag', false, isBoolean);
+  const [recordDraggingRaw, setRecordDragging] = useState(false);
+  const recordDragging = revealOnDrag && recordDraggingRaw;
   useEffect(() => {
     const start = (e: globalThis.DragEvent) => setRecordDragging(isRecordDragEvent(e));
     const end = () => setRecordDragging(false);
@@ -416,10 +420,16 @@ export default function ContextTreeNav({
           +
         </button>
       </div>
-      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: tokens.color.textMuted }}>
-        <input type="checkbox" checked={hideEmpty} onChange={(e) => setHideEmpty(e.target.checked)} />
-        hide empty
-      </label>
+      <div style={{ display: 'flex', flexWrap: 'wrap', columnGap: 12, rowGap: 4 }}>
+        <label style={checkboxLabelStyle}>
+          <input type="checkbox" checked={hideEmpty} onChange={(e) => setHideEmpty(e.target.checked)} />
+          hide empty
+        </label>
+        <label style={checkboxLabelStyle} title="While dragging a record, show every context as a drop target">
+          <input type="checkbox" checked={revealOnDrag} onChange={(e) => setRevealOnDrag(e.target.checked)} />
+          show all while dragging
+        </label>
+      </div>
       {/* One slot reserved up front, so the top-level drop strip (while dragging) or the last
           error (otherwise) never shifts the tree. */}
       <div
@@ -473,6 +483,14 @@ function NewContextInput({ onSubmit, onCancel }: { onSubmit: (name: string) => P
     />
   );
 }
+
+const checkboxLabelStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  fontSize: 12,
+  color: tokens.color.textMuted,
+} as const;
 
 const inputStyle = {
   background: tokens.color.surface,

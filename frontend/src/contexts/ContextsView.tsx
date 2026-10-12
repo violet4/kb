@@ -5,6 +5,7 @@ import SearchResults from '../search/components/SearchResults';
 import { useSearch } from '../search/hooks/useSearch';
 import type { SearchHit } from '../search/types';
 import { recordDragProps, type DraggedRecord } from '../shared/recordDrag';
+import { isoDate } from '../shared/isoDate';
 import { tokens } from '../shared/tokens';
 import { usePolling } from '../shared/usePolling';
 import { fetchContextPage, fetchContextTree, fetchInbox } from './api';
@@ -291,13 +292,6 @@ function compareOpenTodos(a: TodoItem, b: TodoItem): number {
   const ip = (t: TodoItem) => (t.status === 'in_progress' ? 0 : 1);
   if (ip(a) !== ip(b)) return ip(a) - ip(b);
   return b.id - a.id;
-}
-
-function isoDate(utc: string | null): string {
-  if (!utc) return '';
-  const d = new Date(utc);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 function Breadcrumb({ ancestors }: { ancestors: ContextRef[] }) {

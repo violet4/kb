@@ -1,6 +1,7 @@
 import { useEffect, useState, type KeyboardEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { fetchContextTree } from '../contexts/api';
+import { isoDateTime } from '../shared/isoDate';
 import { tokens } from '../shared/tokens';
 import { usePolling } from '../shared/usePolling';
 import { createLogEntry, fetchRecentLog } from './api';
@@ -138,7 +139,7 @@ function LogRow({ entry }: { entry: LogItem }) {
     <div style={{ padding: '8px 0', borderBottom: `1px solid ${tokens.color.border}` }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', fontSize: 12 }}>
         <span style={{ color: tokens.color.textMuted, fontVariantNumeric: 'tabular-nums' }}>
-          {isoLocal(entry.occurred_at_utc)}
+          {isoDateTime(entry.occurred_at_utc)}
         </span>
         {entry.context && (
           <Link
@@ -160,9 +161,4 @@ function LogRow({ entry }: { entry: LogItem }) {
   );
 }
 
-function isoLocal(utc: string | null): string {
-  if (!utc) return '';
-  const d = new Date(utc);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
+

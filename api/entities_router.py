@@ -20,6 +20,7 @@ from sqlalchemy import inspect, select
 from sqlalchemy.orm import Session
 
 from api.deps import get_session
+from api.serialize import utc_iso
 from context import PlacementError, place, placement_kind, placement_required
 from archivebox_compat.config import ArchiveBoxConfigError
 from kb_cli.archivebox import archivebox_url
@@ -487,7 +488,7 @@ async def get_entity_journal(
             old_value=e.old_value,
             new_value=e.new_value,
             note=e.note,
-            created_at=e.created_at.isoformat(),
+            created_at=utc_iso(e.created_at) or "",
         )
         for e in entries
     ]

@@ -1,3 +1,4 @@
+import { isoDateTime } from '../../shared/isoDate';
 import { tokens } from '../../shared/tokens';
 import type { JournalEntry } from '../types';
 
@@ -20,7 +21,7 @@ export default function JournalPanel({ entries }: JournalPanelProps) {
 }
 
 function JournalEntryRow({ entry }: { entry: JournalEntry }) {
-  const when = new Date(entry.created_at).toLocaleString();
+  const when = isoDateTime(entry.created_at);
   return (
     <div style={{ fontSize: 13, borderLeft: `2px solid ${tokens.color.border}`, paddingLeft: 10 }}>
       <p style={{ margin: 0, color: tokens.color.textMuted }}>{when}</p>

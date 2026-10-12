@@ -1059,6 +1059,20 @@ class Todo(Base, HasContextOrTag, HasEmbedding, HasAutoLinks):
         q = select(cls).where(cls.urgent.is_(True), cls.status.in_([TodoStatus.PENDING, TodoStatus.IN_PROGRESS]))
         return session.scalars(q).all()
 
+    def triage_key(self) -> tuple[bool, int, int, bool, int]:
+        """Sort key for a triage list: urgent first, then resolution distance (mechanical
+        first), severity (critical first), bugs before other kinds, newest first. Ranks
+        follow each enum's declaration order; an unset field sorts after every set value."""
+        distances = list(TodoResolutionDistance)
+        severities = list(reversed(TodoSeverity))
+        return (
+            not self.urgent,
+            distances.index(self.resolution_distance) if self.resolution_distance else len(distances),
+            severities.index(self.severity) if self.severity else len(severities),
+            self.kind is not TodoKind.BUG,
+            -self.id,
+        )
+
     @classmethod
     def recently_completed(
         cls, session: Session, since: datetime, context: Optional[Context] = None, limit: int = 50

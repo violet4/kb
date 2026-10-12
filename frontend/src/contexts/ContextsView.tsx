@@ -240,7 +240,8 @@ function ContextPageBody({
 
   const now = Date.now();
   const isScheduled = (t: TodoItem) => t.defer_until_utc !== null && Date.parse(t.defer_until_utc) > now;
-  const open = todos.filter((t) => !isScheduled(t)).sort(compareOpenTodos);
+  // The server sends todos in triage order (Todo.triage_key).
+  const open = todos.filter((t) => !isScheduled(t));
   const scheduled = todos
     .filter(isScheduled)
     .sort((a, b) => Date.parse(a.defer_until_utc!) - Date.parse(b.defer_until_utc!));
@@ -320,14 +321,6 @@ function ContextPageBody({
       )}
     </div>
   );
-}
-
-// Urgent first, then in-progress, then newest.
-function compareOpenTodos(a: TodoItem, b: TodoItem): number {
-  if (a.urgent !== b.urgent) return a.urgent ? -1 : 1;
-  const ip = (t: TodoItem) => (t.status === 'in_progress' ? 0 : 1);
-  if (ip(a) !== ip(b)) return ip(a) - ip(b);
-  return b.id - a.id;
 }
 
 function Breadcrumb({ ancestors }: { ancestors: ContextRef[] }) {
@@ -435,6 +428,7 @@ function TodoRow({ todo, here, showDeferDate }: { todo: TodoItem; here: number; 
         </span>
       )}
       {todo.urgent && <Chip color={tokens.color.danger}>urgent</Chip>}
+      {todo.resolution_distance && <Chip>{todo.resolution_distance.replace('_', ' ')}</Chip>}
       {todo.kind !== 'task' && <Chip color={todo.kind === 'bug' ? tokens.color.danger : undefined}>{todo.kind}</Chip>}
       {todo.status === 'in_progress' && <Chip color={tokens.color.accent}>in progress</Chip>}
       <TitleLink type="Todo" id={todo.id} title={todo.title} />

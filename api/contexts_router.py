@@ -154,6 +154,7 @@ class TodoItem(BaseModel):
     kind: str
     effort: Optional[str]
     severity: Optional[str]
+    resolution_distance: Optional[str]
     urgent: bool
     defer_until_utc: Optional[str]
     goal: Optional[GoalRef]
@@ -207,7 +208,7 @@ def context_page(
     scope_ids = [c.id for c in scope]
 
     goals = sorted(Goal.active(session, contexts=scope), key=lambda g: g.id)
-    todos = sorted(Todo.active(session, contexts=scope, include_deferred=True), key=lambda t: t.id)
+    todos = sorted(Todo.active(session, contexts=scope, include_deferred=True), key=Todo.triage_key)
     notes = session.scalars(
         select(Note).where(Note.deleted_at.is_(None), Note.context_id.in_(scope_ids)).order_by(Note.updated_at.desc())
     ).all()
@@ -241,6 +242,7 @@ def context_page(
                 kind=t.kind.value,
                 effort=t.effort.value if t.effort else None,
                 severity=t.severity.value if t.severity else None,
+                resolution_distance=t.resolution_distance.value if t.resolution_distance else None,
                 urgent=t.urgent,
                 defer_until_utc=utc_iso(t.defer_until),
                 goal=GoalRef(id=t.goal.id, title=t.goal.title) if t.goal else None,

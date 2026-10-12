@@ -35,6 +35,7 @@ export interface TodoItem {
   kind: string;
   effort: string | null;
   severity: string | null;
+  resolution_distance: string | null;
   urgent: boolean;
   defer_until_utc: string | null;
   goal: { id: number; title: string } | null;

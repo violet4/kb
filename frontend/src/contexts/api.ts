@@ -33,3 +33,10 @@ export function fetchInbox(): Promise<ContextRef> {
 export function setPlacement(type: string, id: number, choice: PlacementChoice): Promise<Placement> {
   return sendJson('PUT', `/entities/${type}/${id}/placement`, choice);
 }
+
+export type QuickCreateType = 'Goal' | 'Todo' | 'Note' | 'Wishlist';
+
+// A new record with only a title, filed in the given context; the entity page sets the rest.
+export function quickCreate(type: QuickCreateType, title: string, contextId: number): Promise<{ id: number }> {
+  return sendJson('POST', `/entities/${type}`, { title, context_id: contextId });
+}

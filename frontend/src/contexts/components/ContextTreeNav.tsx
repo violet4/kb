@@ -371,7 +371,7 @@ export default function ContextTreeNav({
               onClick={() => startCreate(n.id)}
               title={`New context under ${n.name}`}
               aria-label={`New context under ${n.name}`}
-              style={addButtonStyle}
+              style={tokens.glyphButton}
             >
               +
             </button>
@@ -405,7 +405,7 @@ export default function ContextTreeNav({
             if (e.key === 'Escape') onFilterChange('');
           }}
           placeholder="filter contexts or search kb"
-          style={{ ...inputStyle, flex: 1, minWidth: 0 }}
+          style={{ ...tokens.input, flex: 1, minWidth: 0 }}
         />
         <SearchHelp
           align="start"
@@ -415,7 +415,7 @@ export default function ContextTreeNav({
           onClick={() => startCreate(ROOT)}
           title="New top-level context"
           aria-label="New top-level context"
-          style={{ ...addButtonStyle, fontSize: 16, padding: '0 6px' }}
+          style={{ ...tokens.glyphButton, fontSize: 16, padding: '0 6px' }}
         >
           +
         </button>
@@ -479,7 +479,7 @@ function NewContextInput({ onSubmit, onCancel }: { onSubmit: (name: string) => P
           setBusy(false);
         }
       }}
-      style={{ ...inputStyle, width: '100%', boxSizing: 'border-box', margin: '2px 0' }}
+      style={{ ...tokens.input, width: '100%', boxSizing: 'border-box', margin: '2px 0' }}
     />
   );
 }
@@ -492,21 +492,4 @@ const checkboxLabelStyle = {
   color: tokens.color.textMuted,
 } as const;
 
-const inputStyle = {
-  background: tokens.color.surface,
-  color: tokens.color.text,
-  border: `1px solid ${tokens.color.border}`,
-  borderRadius: 4,
-  padding: '4px 8px',
-  fontSize: 13,
-} as const;
 
-const addButtonStyle = {
-  padding: '0 4px',
-  border: 'none',
-  background: 'none',
-  color: tokens.color.textMuted,
-  cursor: 'pointer',
-  fontSize: 13,
-  lineHeight: 1,
-} as const;

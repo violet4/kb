@@ -12,7 +12,7 @@ enum value) needs no change here to show up in /columns, /fields, filtering, or 
 generic list/detail responses. shown/editable/nullable are all derived structurally
 (see _introspect_columns) rather than hand-picked per type."""
 
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -464,6 +464,46 @@ async def resolve_entity_labels(refs: list[EntityRefIn], session: Session = Depe
         if row is not None:
             labels.append(EntityLabel(type=ref.type, id=ref.id, label=_label(row)))
     return labels
+
+
+def _new_wishlist(session: Session, title: str, context: Context) -> Wishlist:
+    item = Wishlist(title=title, context=context)
+    session.add(item)
+    return item
+
+
+# How a title alone becomes a new row, per type that supports quick creation. Every other
+# field is set afterwards on the entity page, one field at a time.
+_QUICK_CREATORS: dict[str, Callable[[Session, str, Context], Any]] = {
+    "Goal": lambda session, title, context: Goal.create(session, title, context=context),
+    "Todo": lambda session, title, context: Todo.create(session, title, context=context),
+    "Note": lambda session, title, context: Note.create(session, title, "", context=context),
+    "Wishlist": _new_wishlist,
+}
+
+
+class QuickCreateIn(BaseModel):
+    title: str
+    context_id: int
+
+
+# Defined after /labels so that route's literal path wins over this one's {entity_type}.
+@router.post("/{entity_type}")
+async def quick_create(
+    entity_type: str, body: QuickCreateIn, session: Session = Depends(get_session)
+) -> dict[str, Any]:
+    create = _QUICK_CREATORS.get(entity_type)
+    if create is None:
+        raise HTTPException(status_code=400, detail=f"{entity_type} has no quick create")
+    title = body.title.strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="title is empty")
+    context = session.get(Context, body.context_id)
+    if context is None or context.deleted_at is not None:
+        raise HTTPException(status_code=400, detail=f"Context:{body.context_id} not found")
+    row = create(session, title, context)
+    session.commit()
+    return _to_row(entity_type, row, _introspect_columns(entity_type, ENTITY_TYPES[entity_type]))
 
 
 class JournalEntry(BaseModel):

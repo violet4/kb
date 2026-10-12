@@ -10,7 +10,7 @@ import { recordDragProps, type DraggedRecord } from '../shared/recordDrag';
 import { isoDate } from '../shared/isoDate';
 import { tokens } from '../shared/tokens';
 import { usePolling } from '../shared/usePolling';
-import { fetchContextPage, fetchContextTree, fetchInbox } from './api';
+import { fetchContextPage, fetchContextTree, fetchInbox, quickCreate, type QuickCreateType } from './api';
 import ContextTreeNav from './components/ContextTreeNav';
 import type { ContextNode, ContextPage, ContextRef, NoteItem, TodoItem, WishlistItem } from './types';
 import { InboxIdContext, useContextLink, useIncludeDescendants } from './useContextLink';
@@ -142,6 +142,7 @@ export default function ContextsView() {
                 onIncludeDescendants={setIncludeDescendants}
                 hits={search ? hitsHere : null}
                 textFilter={search ? '' : filterText}
+                onCreated={refreshAll}
               />
             )
           )}
@@ -220,12 +221,14 @@ function ContextPageBody({
   onIncludeDescendants,
   hits,
   textFilter,
+  onCreated,
 }: {
   page: ContextPage;
   includeDescendants: boolean;
   onIncludeDescendants: (v: boolean) => void;
   hits: SearchHit[] | null; // search hits in this page's scope; null when no search is active
   textFilter: string; // typed in the sidebar box: rows whose title contains it
+  onCreated: () => void;
 }) {
   const contextLink = useContextLink();
   const hitKeys = hits && new Set(hits.map((h) => hitKey(h.type, h.id)));
@@ -246,6 +249,14 @@ function ContextPageBody({
     .filter(isScheduled)
     .sort((a, b) => Date.parse(a.defer_until_utc!) - Date.parse(b.defer_until_utc!));
   const here = page.context.id;
+  const quickAdd = (type: QuickCreateType) => ({
+    type,
+    submit: async (title: string) => {
+      const created = await quickCreate(type, title, here);
+      onCreated();
+      return created.id;
+    },
+  });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 960 }}>
@@ -280,7 +291,7 @@ function ContextPageBody({
         )}
       </header>
 
-      <Section title="Goals" count={goals.length}>
+      <Section title="Goals" count={goals.length} add={quickAdd('Goal')}>
         {goals.map((g) => (
           <Row key={g.id} record={{ type: 'Goal', id: g.id, label: g.title }}>
             <IdCell type="Goal" id={g.id} />
@@ -290,7 +301,7 @@ function ContextPageBody({
         ))}
       </Section>
 
-      <Section title="Todos" count={open.length}>
+      <Section title="Todos" count={open.length} add={quickAdd('Todo')}>
         {open.map((t) => (
           <TodoRow key={t.id} todo={t} here={here} />
         ))}
@@ -302,13 +313,13 @@ function ContextPageBody({
         ))}
       </Section>
 
-      <Section title="Notes" count={notes.length}>
+      <Section title="Notes" count={notes.length} add={quickAdd('Note')}>
         {notes.map((n) => (
           <NoteRow key={n.id} note={n} here={here} />
         ))}
       </Section>
 
-      <Section title="Wishlist" count={wishlist.length}>
+      <Section title="Wishlist" count={wishlist.length} add={quickAdd('Wishlist')}>
         {wishlist.map((w) => (
           <WishlistRow key={w.id} item={w} here={here} />
         ))}
@@ -340,14 +351,90 @@ function Breadcrumb({ ancestors }: { ancestors: ContextRef[] }) {
   );
 }
 
-function Section({ title, count, children }: { title: string; count: number; children: ReactNode }) {
+interface QuickAdd {
+  type: QuickCreateType;
+  submit: (title: string) => Promise<number>; // resolves to the new record's id
+}
+
+function Section({
+  title,
+  count,
+  add,
+  children,
+}: {
+  title: string;
+  count: number;
+  add?: QuickAdd;
+  children: ReactNode;
+}) {
+  const [adding, setAdding] = useState(false);
   return (
     <section style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <h2 style={{ margin: '0 0 6px', fontSize: 14, fontWeight: 600 }}>
+      <h2 style={{ margin: '0 0 6px', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'baseline', gap: 6 }}>
         {title} <span style={{ color: tokens.color.textMuted, fontWeight: 400 }}>{count}</span>
+        {add && (
+          <button
+            onClick={() => setAdding(true)}
+            title={`New ${add.type}`}
+            aria-label={`New ${add.type}`}
+            style={{ ...tokens.glyphButton, fontSize: 16 }}
+          >
+            +
+          </button>
+        )}
       </h2>
-      {count === 0 ? <p style={{ margin: 0, fontSize: 13, color: tokens.color.textMuted }}>none</p> : children}
+      {add && adding && <QuickAddInput add={add} onClose={() => setAdding(false)} />}
+      {count === 0 && !adding ? (
+        <p style={{ margin: 0, fontSize: 13, color: tokens.color.textMuted }}>none</p>
+      ) : (
+        children
+      )}
     </section>
+  );
+}
+
+// Stays open after each Enter, for adding several records in a row; Esc (or leaving it
+// empty) closes it. The status beside the input names the record just added, since a new
+// row can sort out of view.
+function QuickAddInput({ add, onClose }: { add: QuickAdd; onClose: () => void }) {
+  const [title, setTitle] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<{ addedId: number } | { error: string } | null>(null);
+  const submit = async () => {
+    setBusy(true);
+    try {
+      const id = await add.submit(title.trim());
+      setTitle('');
+      setStatus({ addedId: id });
+    } catch (e) {
+      setStatus({ error: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4, fontSize: 12 }}>
+      <input
+        autoFocus
+        value={title}
+        readOnly={busy}
+        placeholder={`new ${add.type.toLowerCase()} title, Enter to add, Esc to close`}
+        onChange={(e) => setTitle(e.target.value)}
+        onBlur={() => !busy && !title.trim() && onClose()}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') onClose();
+          if (e.key === 'Enter' && title.trim() && !busy) submit();
+        }}
+        style={{ ...tokens.input, flex: 1, maxWidth: 560 }}
+      />
+      {status && 'error' in status && <span style={{ color: tokens.color.danger }}>{status.error}</span>}
+      {status && 'addedId' in status && (
+        <Link to={entityPath(add.type, status.addedId)} style={tokens.link}>
+          added {add.type[0]}
+          {status.addedId}
+        </Link>
+      )}
+    </div>
   );
 }
 

@@ -138,12 +138,13 @@ export default function ContextTreeNav({
     return visible;
   }, [searchTotals, needle, nodes, index]);
 
-  const isShown = (n: ContextNode) => {
-    if (recordDragging) return true;
+  // Shown outside a record drag: by the search/name filter, else by hide-empty.
+  const isNormallyShown = (n: ContextNode) => {
     if (filterVisible) return filterVisible.has(n.id);
     const empty = (index.subtreeTotal.get(n.id) ?? 0) === 0;
     return !hideEmpty || !empty || n.id === selectedId || n.id === creatingUnder || justCreated.has(n.id);
   };
+  const isShown = (n: ContextNode) => recordDragging || isNormallyShown(n);
 
   // Ctrl-click collapses or expands the whole subtree, following the clicked node's new state.
   const toggle = (id: number, e: MouseEvent) =>
@@ -273,7 +274,9 @@ export default function ContextTreeNav({
     (index.childrenOf.get(parent) ?? []).filter(isShown).map((n) => {
       const kids = (index.childrenOf.get(n.id) ?? []).filter(isShown);
       const creatingHere = creatingUnder === n.id;
-      const open = (filterVisible !== null && !recordDragging) || expanded.has(n.id);
+      // A drag keeps every row that was already open open, so visible targets stay put.
+      const open = (filterVisible?.has(n.id) ?? false) || expanded.has(n.id);
+      const revealed = recordDragging && !isNormallyShown(n); // shown only for this drag
       const total = displayCount(n);
       const selected = n.id === selectedId;
       const isDropTarget = dropTarget === n.id;
@@ -295,7 +298,13 @@ export default function ContextTreeNav({
               gap: 4,
               paddingLeft: depth * 14,
               borderRadius: 4,
-              background: isDropTarget ? tokens.color.border : selected ? tokens.color.surface : 'transparent',
+              background: isDropTarget
+                ? tokens.color.border
+                : selected
+                  ? tokens.color.surface
+                  : revealed
+                    ? tokens.color.revealed
+                    : 'transparent',
               outline: isDropTarget ? `1px solid ${tokens.color.accent}` : 'none',
               opacity: draggingId === n.id ? 0.5 : 1,
               cursor: 'grab',

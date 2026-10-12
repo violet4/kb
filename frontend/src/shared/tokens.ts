@@ -6,6 +6,7 @@ export const tokens = {
   color: {
     background: '#111417',
     surface: '#1b1f24',
+    revealed: '#18222e', // a row shown only temporarily, e.g. a drop target revealed during a drag
     border: '#2c3138',
     text: '#e6e9ec',
     textMuted: '#8b939c',

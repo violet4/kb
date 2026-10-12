@@ -307,6 +307,13 @@ def describe_entity_ref(session: Session, entity_type: str, entity_id: int) -> s
     return f"{label} {row!r}"
 
 
+def journal_read(session: Session, entity_type: str, entity_id: int) -> None:
+    """Record that this agent session read one record -- see Journal.record_read. Every
+    single-record `show` command calls this once per record it prints."""
+    if Journal.record_read(session, entity_type, entity_id) is not None:
+        session.commit()
+
+
 def print_links(
     session: Session,
     entity_type: str,
@@ -417,6 +424,20 @@ def print_table(headers: Sequence[str], rows: Sequence[Sequence[str]]) -> None:
         print(fmt(row))
 
 
+def journal_lines(entries: Sequence[Journal], with_entity: bool = False) -> list[str]:
+    """One line per Journal entry: when, what happened, and which session did it."""
+    lines = []
+    for e in entries:
+        line = f"[{e.created_at.strftime('%Y-%m-%d %H:%M')}] "
+        if with_entity:
+            line += f"{e.entity_type}:{e.entity_id} "
+        line += e.describe()
+        if e.harness_session is not None:
+            line += f"  · session {e.harness_session.harness_id}"
+        lines.append(line)
+    return lines
+
+
 def print_journal_history(
     session: Session,
     journal_cls: Type[Journal],
@@ -432,16 +453,7 @@ def print_journal_history(
     """
     history = journal_cls.for_entity(session, entity_type, entity_id)
     if history_arg is not None:
-        shown = history[-history_arg:] if history_arg else history
-        for j, e in enumerate(shown):
-            if j > 0:
-                print()
-            when = e.created_at.strftime("%Y-%m-%d %H:%M")
-            if e.field:
-                print(f"  [{when}] {e.field}: {e.old_value!r} -> {e.new_value!r}")
-                if e.note:
-                    print(f"    {e.note}")
-            else:
-                print(f"  [{when}] {e.note}")
+        for line in journal_lines(history[-history_arg:] if history_arg else history):
+            print(f"  {line}")
     elif history:
         print(f"journal history: {len(history)} entries — {hint_cmd}")

@@ -9,6 +9,7 @@ from sqlalchemy import select
 from client import KBClient
 from context import find_context, place, resolve_context_only
 from kb_cli._util import (
+    journal_read,
     add_placement_argument,
     apply_purge,
     apply_restore,
@@ -28,6 +29,7 @@ def cmd_show(args: argparse.Namespace) -> None:
     if note is None:
         print(f"Note #{args.id}: not found", file=sys.stderr)
         sys.exit(1)
+    journal_read(args.session, "Note", note.id)
     print(f"id: {note.id}")
     print(f"title: {note.title}")
     print(f"collection: {note.collection.value}")

@@ -18,6 +18,7 @@ from sqlalchemy import (
     Date,
     Enum,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -33,6 +34,7 @@ from sqlalchemy import (
     select,
 )
 from sqlalchemy.orm import (
+    MANYTOONE,
     Mapped,
     MappedColumn,
     Session,
@@ -49,6 +51,7 @@ from sqlalchemy.orm.base import NO_VALUE, NEVER_SET
 from sqlalchemy.pool import ConnectionPoolEntry
 
 from base import Base, UtcDateTime, _now
+from harness import current_session_id
 from mixins import HasUniqueName, HasWeight
 
 _DB_PATH = Path(__file__).parent / "data" / "kb.db"
@@ -515,7 +518,26 @@ class HasContextOrTag:
         return cls.context_id.in_(ids) | cls.tag_id.in_(tag_ids)
 
 
-class Instruction(Base, HasContextOrTag, HasEmbedding):
+class HasJournal:
+    """Journals every create, field change, and delete of a subclass row automatically, via
+    the flush listeners in the HasJournal section below, so no command has to remember to.
+    Reads are the one action a command records itself (Journal.record_read), since loading a
+    row is not a write.
+
+    A change is one UPDATE row per changed column, holding old and new values as text. A
+    many-to-one relationship assignment (todo.context = ...) is recorded under its foreign
+    key column, since that is what changed in the row. Setting deleted_at is a DELETE, and
+    removing the row outright is a DELETE noted "purged"."""
+
+    __tablename__: str
+    id: Mapped[int]
+
+    # Bookkeeping columns rewritten as a side effect of other changes, never a change of
+    # their own worth a row.
+    _journal_ignored: ClassVar[frozenset[str]] = frozenset({"created_at", "updated_at", "embedding", "embedding_model"})
+
+
+class Instruction(Base, HasContextOrTag, HasEmbedding, HasJournal):
     """A node in the graph of durable guidance -- unifies what would otherwise be scattered
     across CLAUDE.md files, Claude Code skills, and Claude Code memory into one structure. Tree
     structure (topic parent/child, e.g. "engineering" -> "react" -> "dnd-kit") is expressed as
@@ -893,11 +915,107 @@ def _sync_auto_links_dirty(session: Session, flush_context: UOWTransaction) -> N
 
 
 # ---------------------------------------------------------------------------
+# HasJournal
+# ---------------------------------------------------------------------------
+
+
+def _journal_text(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, enum.Enum):
+        return str(value.value)
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return str(value)
+
+
+def _journal_changes(session: Session, obj: HasJournal) -> list[Journal]:
+    state = inspect(obj)
+    assert state is not None
+    old_values: dict[str, Any] = {}
+    new_values: dict[str, Any] = {}
+    for attr in state.mapper.column_attrs:
+        if attr.key in obj._journal_ignored:
+            continue
+        history = state.attrs[attr.key].history
+        if history.has_changes():
+            # committed_state holds the value from before the first change, or NO_VALUE when
+            # the attribute was expired (e.g. by a commit) and set without being read.
+            old_values[attr.key] = state.committed_state.get(attr.key, NO_VALUE)
+            new_values[attr.key] = history.added[0] if history.added else None
+    for rel in state.mapper.relationships:
+        if rel.direction is not MANYTOONE:
+            continue
+        history = state.attrs[rel.key].history
+        (column,) = rel.local_columns
+        if history.has_changes() and column.key not in new_values:
+            # The foreign key column is synced from the relationship during the flush, so
+            # before it the column still holds the old id, if it is loaded at all.
+            old_values[column.key] = state.dict.get(column.key, NO_VALUE)
+            new = history.added[0] if history.added else None
+            new_values[column.key] = new.id if new is not None else None
+
+    unknown = [key for key, value in old_values.items() if value is NO_VALUE]
+    if unknown:
+        table = state.mapper.local_table
+        stored = session.connection().execute(select(*(table.c[k] for k in unknown)).where(table.c.id == obj.id)).one()
+        old_values.update(zip(unknown, stored))
+
+    entity_type = type(obj).__name__
+    rows = []
+    changes = {key: (old_values[key], new_values[key]) for key in new_values}
+    for field, (old, new) in changes.items():
+        if old == new:
+            continue
+        if field == "deleted_at" and new is not None:
+            rows.append(Journal(entity_type=entity_type, entity_id=obj.id, action=JournalAction.DELETE))
+            continue
+        rows.append(
+            Journal(
+                entity_type=entity_type,
+                entity_id=obj.id,
+                action=JournalAction.UPDATE,
+                field=field,
+                old_value=_journal_text(old),
+                new_value=_journal_text(new),
+            )
+        )
+    return rows
+
+
+_journal_created: list[HasJournal] = []
+
+
+@event.listens_for(Session, "before_flush")
+def _journal_flush(session: Session, flush_context: UOWTransaction, instances: Optional[Sequence[Any]]) -> None:
+    # A new row has no id until the flush, so its CREATE row is written in after_flush;
+    # changes and deletes are written here, while attribute history still holds old values.
+    _journal_created.extend(obj for obj in session.new if isinstance(obj, HasJournal))
+    for obj in list(session.dirty):
+        if isinstance(obj, HasJournal):
+            session.add_all(_journal_changes(session, obj))
+    for obj in list(session.deleted):
+        if isinstance(obj, HasJournal):
+            session.add(
+                Journal(entity_type=type(obj).__name__, entity_id=obj.id, action=JournalAction.DELETE, note="purged")
+            )
+
+
+@event.listens_for(Session, "after_flush")
+def _journal_created_rows(session: Session, flush_context: UOWTransaction) -> None:
+    if not _journal_created:
+        return
+    created, _journal_created[:] = list(_journal_created), []
+    for obj in created:
+        session.add(Journal(entity_type=type(obj).__name__, entity_id=obj.id, action=JournalAction.CREATE))
+
+
+# ---------------------------------------------------------------------------
 # Goal
 # ---------------------------------------------------------------------------
 
 
-class Goal(Base, HasContextOrTag, HasEmbedding, HasAutoLinks):
+class Goal(Base, HasContextOrTag, HasEmbedding, HasAutoLinks, HasJournal):
     __tablename__ = "goal"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -965,7 +1083,7 @@ class Goal(Base, HasContextOrTag, HasEmbedding, HasAutoLinks):
 # ---------------------------------------------------------------------------
 
 
-class Todo(Base, HasContextOrTag, HasEmbedding, HasAutoLinks):
+class Todo(Base, HasContextOrTag, HasEmbedding, HasAutoLinks, HasJournal):
     __tablename__ = "todo"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -1144,7 +1262,7 @@ class Todo(Base, HasContextOrTag, HasEmbedding, HasAutoLinks):
 # ---------------------------------------------------------------------------
 
 
-class Daily(Base, HasContextOrTag, HasEmbedding):
+class Daily(Base, HasContextOrTag, HasEmbedding, HasJournal):
     """A recurring/optional item — distinct from Goal (a purpose/end-state) and Todo (a step toward one).
 
     domain ("irl"/"pg", mirrors Vendor.domain) separates life-maintenance dailies from game dailies.
@@ -1392,7 +1510,7 @@ class Daily(Base, HasContextOrTag, HasEmbedding):
 # ---------------------------------------------------------------------------
 
 
-class Event(Base, HasContextOrTag, HasEmbedding):
+class Event(Base, HasContextOrTag, HasEmbedding, HasJournal):
     """A dated occurrence -- distinct from Daily (recurring actionable chore with completion
     state), Todo (committed next-action work), and LogEntry (a fact about the past). An Event
     is a fact pinned to a date/time with no status: a game release, an anniversary, an
@@ -1648,28 +1766,87 @@ class Purchase(Base, HasEmbedding):
 
 
 # ---------------------------------------------------------------------------
-# Journal — structured change history for any entity, keyed by (entity_type,
+# Journal — structured activity history for any entity, keyed by (entity_type,
 # entity_id). Distinct from LogEntry (a fact about the world, not about a
 # specific record) and from Note (durable reference knowledge, not history).
 # ---------------------------------------------------------------------------
 
 
+class JournalAction(enum.Enum):
+    """What happened to a Journal row's entity. CREATE/UPDATE/DELETE are written by the
+    HasJournal listener, READ by a `show` command run inside an agent session, NOTE by a
+    hand-written entry (`kb journal add`)."""
+
+    CREATE = "create"
+    READ = "read"
+    UPDATE = "update"
+    DELETE = "delete"
+    NOTE = "note"
+
+
 class Journal(Base):
+    """One event in an entity's history: its creation, a field change (field/old_value/
+    new_value), a deletion, a read, or a free-text note. session_id names the agent session
+    that caused it, filled in automatically on insert (see _stamp_journal_session) and NULL
+    for anything done outside a registered session, such as the web UI. Indexed by session
+    so one session's whole trajectory is a single query, and by entity for an entity's
+    history.
+
+    entity_type/entity_id address any row in any table, with no foreign key, the same way
+    EntityLink does. That also covers records outside the database: an si node is
+    ("SiNode", its numeric file id)."""
+
     __tablename__ = "journal"
+    __table_args__ = (Index("ix_journal_entity", "entity_type", "entity_id"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     entity_type: Mapped[str] = mapped_column(String, nullable=False)
     entity_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    action: Mapped[JournalAction] = mapped_column(
+        Enum(JournalAction, create_constraint=True, validate_strings=True), nullable=False
+    )
     field: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     old_value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     new_value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    session_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("harness_session.id"), nullable=True, index=True
+    )
+
+    harness_session: Mapped[Optional[HarnessSession]] = relationship("HarnessSession")
 
     @classmethod
-    def for_entity(cls, session: Session, entity_type: str, entity_id: int) -> Sequence[Journal]:
-        return session.scalars(
-            select(cls).filter_by(entity_type=entity_type, entity_id=entity_id).order_by(cls.created_at)
-        ).all()
+    def for_entity(
+        cls, session: Session, entity_type: str, entity_id: int, include_reads: bool = False
+    ) -> Sequence[Journal]:
+        """An entity's history, oldest first. Reads are left out unless asked for: they say
+        who looked, not what changed, and a frequently consulted record has far more of them."""
+        q = select(cls).filter_by(entity_type=entity_type, entity_id=entity_id)
+        if not include_reads:
+            q = q.where(cls.action != JournalAction.READ)
+        return session.scalars(q.order_by(cls.created_at, cls.id)).all()
+
+    @classmethod
+    def for_session(cls, session: Session, session_id: int) -> Sequence[Journal]:
+        """Everything one agent session did to kb records, oldest first: its trajectory."""
+        return session.scalars(select(cls).where(cls.session_id == session_id).order_by(cls.created_at, cls.id)).all()
+
+    def describe(self) -> str:
+        """One line naming what happened, without timestamp or session."""
+        if self.action is JournalAction.UPDATE and self.field:
+            text = f"{self.field}: {self.old_value!r} -> {self.new_value!r}"
+        elif self.action is JournalAction.NOTE:
+            text = self.note or ""
+        else:
+            text = {
+                JournalAction.CREATE: "created",
+                JournalAction.READ: "read",
+                JournalAction.DELETE: "deleted",
+                JournalAction.UPDATE: "updated",
+            }[self.action]
+        if self.note and self.action is not JournalAction.NOTE:
+            text += f" ({self.note})"
+        return text
 
     @classmethod
     def record(
@@ -1677,6 +1854,7 @@ class Journal(Base):
         session: Session,
         entity_type: str,
         entity_id: int,
+        action: JournalAction = JournalAction.NOTE,
         field: Optional[str] = None,
         old_value: Optional[str] = None,
         new_value: Optional[str] = None,
@@ -1685,6 +1863,7 @@ class Journal(Base):
         entry = cls(
             entity_type=entity_type,
             entity_id=entity_id,
+            action=action,
             field=field,
             old_value=old_value,
             new_value=new_value,
@@ -1694,11 +1873,44 @@ class Journal(Base):
         session.flush()
         return entry
 
+    @classmethod
+    def record_read(cls, session: Session, entity_type: str, entity_id: int) -> Optional[Journal]:
+        """A READ row, written only inside an agent session: a read is worth recording as part
+        of a session's trajectory, and a read with no session (the web UI, a plain shell) has
+        nothing to attribute it to."""
+        if current_session_id() is None:
+            return None
+        return cls.record(session, entity_type, entity_id, action=JournalAction.READ)
+
     def __repr__(self) -> str:
         target = f"{self.entity_type}#{self.entity_id}"
         if self.field:
-            return f"<Journal {target}.{self.field}>"
-        return f"<Journal {target}>"
+            return f"<Journal {self.action.value} {target}.{self.field}>"
+        return f"<Journal {self.action.value} {target}>"
+
+
+# The integer key of each harness session already looked up by this process. A session's
+# row never changes key, so a hit is cached for the life of the process; a miss is not,
+# since the session may register later.
+_session_keys: dict[str, int] = {}
+
+
+def _current_session_key(connection: Any) -> Optional[int]:
+    harness_id = current_session_id()
+    if harness_id is None:
+        return None
+    if harness_id not in _session_keys:
+        key = connection.scalar(select(HarnessSession.id).where(HarnessSession.harness_id == harness_id))
+        if key is None:
+            return None
+        _session_keys[harness_id] = key
+    return _session_keys[harness_id]
+
+
+@event.listens_for(Journal, "before_insert")
+def _stamp_journal_session(mapper: Any, connection: Any, target: Journal) -> None:
+    if target.session_id is None:
+        target.session_id = _current_session_key(connection)
 
 
 # ---------------------------------------------------------------------------
@@ -1895,7 +2107,7 @@ class WorkingMemory(Base):
 # ---------------------------------------------------------------------------
 
 
-class LogEntry(Base, HasEmbedding):
+class LogEntry(Base, HasEmbedding, HasJournal):
     """A timestamped observation — a fact or set of facts about a moment, not durable reference
     knowledge and not work with a status. Append-only; the point is to build a queryable history
     (health, events, commits referenced by free text) that reveals patterns over time. domain is
@@ -1909,10 +2121,6 @@ class LogEntry(Base, HasEmbedding):
     body: Mapped[str] = mapped_column(Text, nullable=False)
     domain: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     context_id: Mapped[int] = mapped_column(Integer, ForeignKey("context.id"), nullable=False)
-    source_ref: Mapped[Optional[str]] = mapped_column(
-        String, nullable=True
-    )  # free-form origin pointer, e.g. a Claude Code session ID -- most entries (a cat note, a
-    # health fact) have none; only set when the entry came from a traceable external context
 
     context: Mapped[Context] = relationship("Context")
 
@@ -1931,14 +2139,12 @@ class LogEntry(Base, HasEmbedding):
         context: Context,
         domain: Optional[str] = None,
         occurred_at: Optional[datetime] = None,
-        source_ref: Optional[str] = None,
     ) -> LogEntry:
         entry = cls(
             body=body,
             domain=domain,
             context=context,
             occurred_at=occurred_at or _now(),
-            source_ref=source_ref,
         )
         entry.reembed()
         session.add(entry)
@@ -2031,7 +2237,7 @@ class ArchivedLinkContentStatus(enum.Enum):
     FETCH_FAILED = "fetch_failed"  # content fetch was attempted and failed -- see content_fetch_error, `kb ab pull`
 
 
-class ArchivedLink(Base, HasEmbedding):
+class ArchivedLink(Base, HasEmbedding, HasJournal):
     """A URL queued for archival -- interim capture ahead of a live ArchiveBox instance
     (kb Goal/Todo #70). Today this is just url+title+reason+timestamp; migrated_at marks
     the row as already pushed into a real ArchiveBox once that integration exists, so the
@@ -2157,7 +2363,7 @@ class ArchivedLink(Base, HasEmbedding):
 _STORAGE_COLLECTIONS = {c for c in Collection if c != Collection.ALL}
 
 
-class Note(Base, HasEmbedding, HasAutoLinks):
+class Note(Base, HasEmbedding, HasAutoLinks, HasJournal):
     """A personal knowledge base / lab notebook entry -- durable facts worth keeping because
     they were useful or interesting to this user, with no claim of being fact-checked, curated,
     or written for an audience. Deliberately NOT designed for shareable/git-tracked export the
@@ -2240,7 +2446,7 @@ class Note(Base, HasEmbedding, HasAutoLinks):
 # ---------------------------------------------------------------------------
 
 
-class Wishlist(Base):
+class Wishlist(Base, HasJournal):
     __tablename__ = "wishlist"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -2311,7 +2517,7 @@ class Wishlist(Base):
         return f"<Wishlist #{self.id} {self.title!r}{price} [{self.context.name}] effort={self.effort.value}{priority_str}{pin}{self.age_marker()}>"
 
 
-class Idea(Base, HasContextOrTag, HasEmbedding):
+class Idea(Base, HasContextOrTag, HasEmbedding, HasJournal):
     """GTD Someday/Maybe: a project idea you like but haven't committed to acting
     on, distinct from Todo (committed next-action work) and Wishlist (acquire/
     purchase, price-bearing). Deliberately has no defer_until, priority, or score --

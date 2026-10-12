@@ -25,6 +25,7 @@ from models import EntityLink, Instruction
 
 from context import resolve_context
 from kb_cli._util import (
+    journal_read,
     apply_replace_range,
     apply_text_edit,
     check_no_links,
@@ -167,6 +168,7 @@ def cmd_show(args: argparse.Namespace) -> None:
             any_failed = True
         else:
             nodes.append(node)
+            journal_read(args.session, "Instruction", node.id)
             _print_node(
                 args.session,
                 node,

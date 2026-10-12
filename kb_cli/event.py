@@ -12,6 +12,7 @@ from context import resolve_placement
 from models import Event
 
 from kb_cli._util import (
+    journal_read,
     add_context_filter_argument,
     add_placement_argument,
     apply_context_or_tag_update,
@@ -69,6 +70,7 @@ def cmd_show(args: argparse.Namespace) -> None:
     if event is None:
         print(f"Event #{args.id}: not found", file=sys.stderr)
         sys.exit(1)
+    journal_read(args.session, "Event", event.id)
     print_fields(_event_fields(event))
     next_occ = event.next_occurrence()
     print(f"next_occurrence: {next_occ.isoformat() if next_occ else 'none (past, non-recurring)'}")

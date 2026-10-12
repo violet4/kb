@@ -66,6 +66,8 @@ export interface ColumnSchema {
 
 export interface JournalEntry {
   id: number;
+  action: 'create' | 'read' | 'update' | 'delete' | 'note';
+  session_id: string | null; // harness session id; links to /agents/:sessionId
   field: string | null;
   old_value: string | null;
   new_value: string | null;

@@ -10,6 +10,7 @@ from kb_cli.context_cmd import render_tree
 from models import Journal, Tag, Todo, TodoKind, TodoResolutionDistance, TodoSeverity, TodoStatus, WishlistEffort
 
 from kb_cli._util import (
+    journal_read,
     add_history_arg,
     apply_context_or_tag_update,
     add_context_filter_argument,
@@ -53,6 +54,7 @@ def cmd_show(args: argparse.Namespace) -> None:
         if todo is None:
             print(f"id: {todo_id}\nerror: not found", file=sys.stderr)
             continue
+        journal_read(args.session, "Todo", todo.id)
         print(f"id: {todo.id}")
         print(f"title: {todo.title}")
         print(f"status: {todo.status.value}")

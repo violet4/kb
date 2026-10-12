@@ -31,9 +31,11 @@ from models import (
     EntityLink,
     Event,
     Goal,
+    HasJournal,
     Idea,
     Instruction,
     Journal,
+    JournalAction,
     LogEntry,
     Note,
     Tag,
@@ -333,7 +335,6 @@ async def update_entity_field(
     if body.is_null and not column.nullable:
         raise HTTPException(status_code=400, detail=f"{entity_type}.{body.field} is not nullable")
 
-    old_value = _row_value(row, column)
     new_value: Any
     if body.is_null:
         new_value = None
@@ -353,14 +354,6 @@ async def update_entity_field(
     else:
         new_value = body.value
     setattr(row, body.field, new_value)
-    Journal.record(
-        session,
-        entity_type,
-        entity_id,
-        field=body.field,
-        old_value=str(old_value) if old_value is not None else None,
-        new_value=None if body.is_null else body.value,
-    )
     session.commit()
     session.refresh(row)
     return _to_row(entity_type, row, columns)
@@ -394,7 +387,16 @@ def set_placement(
     except (PlacementError, ValueError) as e:
         raise HTTPException(status_code=409, detail=str(e))
     result = _placement(row)
-    Journal.record(session, entity_type, entity_id, field="context", old_value=old, new_value=_placement_label(result))
+    if not isinstance(row, HasJournal):  # a HasJournal row journals its own change
+        Journal.record(
+            session,
+            entity_type,
+            entity_id,
+            action=JournalAction.UPDATE,
+            field="context",
+            old_value=old,
+            new_value=_placement_label(result),
+        )
     session.commit()
     return result
 
@@ -508,6 +510,8 @@ async def quick_create(
 
 class JournalEntry(BaseModel):
     id: int
+    action: str
+    session_id: Optional[str]  # the harness's own session id, for /agents/{session_id}
     field: Optional[str]
     old_value: Optional[str]
     new_value: Optional[str]
@@ -524,6 +528,8 @@ async def get_entity_journal(
     return [
         JournalEntry(
             id=e.id,
+            action=e.action.value,
+            session_id=e.harness_session.harness_id if e.harness_session else None,
             field=e.field,
             old_value=e.old_value,
             new_value=e.new_value,

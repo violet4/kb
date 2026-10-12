@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from archivebox_compat import ArchiveBoxConfig, ArchiveBoxConfigError, ArchiveMethodResult, Snapshot, get_client
 from base import _now
-from kb_cli._util import print_links, resolve_text_arg
+from kb_cli._util import journal_read, print_links, resolve_text_arg
 from kb_cli.text import extract_paragraphs
 from kb_cli.secrets import CredentialUnavailableError, get_credential, set_credential
 from models import ArchivedLink, ArchivedLinkContentStatus, ArchivedLinkPushStatus, Settings
@@ -360,6 +360,7 @@ def _show_one(args: argparse.Namespace, link_id: int) -> None:
         if args.urls_only:
             return
         sys.exit(1)
+    journal_read(args.session, "ArchivedLink", link.id)
 
     if args.urls_only:
         if not link.ab_id:

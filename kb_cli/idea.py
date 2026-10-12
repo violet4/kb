@@ -9,6 +9,7 @@ from context import resolve_placement
 from models import Idea, IdeaStatus, Journal
 
 from kb_cli._util import (
+    journal_read,
     add_context_filter_argument,
     add_history_arg,
     add_placement_argument,
@@ -65,6 +66,7 @@ def cmd_show(args: argparse.Namespace) -> None:
         if idea is None:
             print(f"id: {idea_id}\nerror: not found", file=sys.stderr)
             continue
+        journal_read(args.session, "Idea", idea.id)
         print(f"id: {idea.id}")
         print(f"title: {idea.title}")
         print(f"status: {idea.status.value}")

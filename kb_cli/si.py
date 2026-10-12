@@ -27,7 +27,7 @@ import sys
 from typing import Callable, Optional
 
 from kb_cli import si_files as sf
-from kb_cli._util import apply_replace_range, apply_text_edit, extract_range, resolve_text_arg
+from kb_cli._util import apply_replace_range, apply_text_edit, extract_range, journal_read, resolve_text_arg
 
 _SYSTEM_WRITE_WARNING = (
     "kb si: this writes instructions_system/ directly -- the git-tracked, shared-by-every-user "
@@ -137,6 +137,7 @@ def cmd_show(args: argparse.Namespace) -> None:
             any_failed = True
             continue
         shown += 1
+        journal_read(args.session, "SiNode", int(node.id))
         _print_node(node, show_body=True)
         if args.links:
             _print_links(node)

@@ -4,7 +4,6 @@ import argparse
 from datetime import datetime, timezone
 
 from context import resolve_context, resolve_context_only
-from harness import current_session_id
 from models import LogEntry
 
 from kb_cli._util import add_placement_argument, resolve_text_arg
@@ -37,7 +36,6 @@ def cmd_flag(args: argparse.Namespace) -> None:
         body=args.note,
         domain="claude-behavior",
         context=resolve_context_only(args.session, args.place),
-        source_ref=current_session_id(),
     )
     args.session.commit()
     print(entry)

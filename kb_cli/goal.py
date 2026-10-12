@@ -11,6 +11,7 @@ from context import resolve_placement
 from models import Goal, GoalStatus, Journal
 
 from kb_cli._util import (
+    journal_read,
     add_context_filter_argument,
     add_history_arg,
     add_placement_argument,
@@ -67,6 +68,7 @@ def cmd_show(args: argparse.Namespace) -> None:
         if goal is None:
             print(f"id: {goal_id}\nerror: not found", file=sys.stderr)
             continue
+        journal_read(args.session, "Goal", goal.id)
         print(f"id: {goal.id}")
         print(f"title: {goal.title}")
         print(f"status: {goal.status.value}")

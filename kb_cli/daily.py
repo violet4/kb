@@ -11,6 +11,7 @@ from context import resolve_placement
 from models import Daily, DailyTier
 
 from kb_cli._util import (
+    journal_read,
     add_placement_argument,
     apply_context_or_tag_update,
     apply_purge,
@@ -49,6 +50,7 @@ def cmd_show(args: argparse.Namespace) -> None:
     if daily is None:
         print(f"Daily #{args.id}: not found", file=sys.stderr)
         sys.exit(1)
+    journal_read(args.session, "Daily", daily.id)
     print_fields(_daily_fields(daily))
     print_links(args.session, "Daily", daily.id)
 

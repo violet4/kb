@@ -4,7 +4,7 @@ import argparse
 import sys
 from typing import Iterable
 
-from context import find_context, resolve_context_only
+from context import find_context, place, resolve_context_only
 from models import Wishlist, WishlistEffort, WishlistStatus
 from kb_cli._util import (
     add_placement_argument,
@@ -70,7 +70,7 @@ def cmd_update(args: argparse.Namespace) -> None:
         },
     )
     if args.new_context is not None:
-        item.context = find_context(args.session, args.new_context)
+        place(item, context=find_context(args.session, args.new_context))
     args.session.commit()
     print(f"Updated: {item} score={item.score}")
 

@@ -23,9 +23,9 @@ from dataclasses import dataclass
 from typing import Optional, Sequence, Type, TypeVar, Union
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, class_mapper
 
-from models import Context, Tag
+from models import Context, HasContextOrTag, Tag
 
 INBOX_CONTEXT_NAME = "inbox"
 
@@ -106,3 +106,44 @@ def resolve_context_only(session: Session, value: str) -> Context:
 def get_inbox_context(session: Session) -> Context:
     """The fixed `inbox` Context: the default placement in the web UI's quick-capture forms."""
     return Context.get_or_create(session, INBOX_CONTEXT_NAME)
+
+
+def placement_kind(model: type) -> Optional[str]:
+    """How a row of `model` can be placed: "context_or_tag" (HasContextOrTag), "context" (a
+    plain context_id), or None (not placeable). Context rows move with Context.move_under."""
+    if issubclass(model, HasContextOrTag):
+        return "context_or_tag"
+    if model is not Context and hasattr(model, "context_id"):
+        return "context"
+    return None
+
+
+def place(row: object, context: Optional[Context] = None, tag: Optional[Tag] = None) -> None:
+    """Move an existing row to `context`, or float it on `tag` -- the one implementation
+    behind every `update --context/--tag` and the web UI's placement edits. Setting one
+    clears the other; passing neither clears the placement where the row allows that."""
+    kind = placement_kind(type(row))
+    if kind is None:
+        raise PlacementError(f"{type(row).__name__} has no context")
+    if context is not None and tag is not None:
+        raise PlacementError("a record goes in a context or on a tag, not both")
+    if context is not None and context.deleted_at is not None:
+        raise PlacementError(f"context {context.name!r} is deleted")
+    if tag is not None and kind != "context_or_tag":
+        raise PlacementError(f"{type(row).__name__} needs a context, not a tag")
+    if context is None and tag is None and placement_required(type(row)):
+        raise PlacementError(f"{type(row).__name__} must have a context")
+    if kind == "context_or_tag":
+        # Clear first, so HasContextOrTag's mutual-exclusion validator never sees both set.
+        row.context = None  # type: ignore[attr-defined]
+        row.tag = None  # type: ignore[attr-defined]
+        row.tag = tag  # type: ignore[attr-defined]
+    row.context = context  # type: ignore[attr-defined]
+
+
+def placement_required(model: type) -> bool:
+    """Whether every row of `model` must have a placement: HasContextOrTag declares it (its
+    CHECK constraint); otherwise it's the context_id column's own NOT NULL."""
+    if issubclass(model, HasContextOrTag):
+        return model._context_or_tag_required
+    return not class_mapper(model).columns["context_id"].nullable

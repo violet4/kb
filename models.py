@@ -260,6 +260,32 @@ class Context(Base, HasUniqueName):
         return obj
 
     @classmethod
+    def create(
+        cls, session: Session, name: str, parent: Optional[Context] = None, description: Optional[str] = None
+    ) -> Context:
+        """A new context, refusing a name already taken (names are unique across deleted rows too)."""
+        name = name.strip()
+        if not name:
+            raise ValueError("context name is empty")
+        existing = session.scalars(select(cls).where(cls.name == name)).one_or_none()
+        if existing is not None:
+            raise ValueError(f"Context {name!r} already exists (#{existing.id})")
+        context = cls(name=name, description=description)
+        session.add(context)
+        context.move_under(parent)
+        session.flush()
+        return context
+
+    def move_under(self, parent: Optional[Context]) -> None:
+        """Re-parent this context (None makes it top-level), refusing any move that would form a cycle."""
+        if parent is not None:
+            if parent.deleted_at is not None:
+                raise ValueError(f"cannot move under deleted context {parent.name!r}")
+            if self in parent.ancestors():
+                raise ValueError(f"cannot move {self.name!r} under its own descendant {parent.name!r}")
+        self.parent = parent
+
+    @classmethod
     def get_existing(cls, session: Session, name: str) -> Context:
         """Look up a context by name, raising if it's missing -- used only where the name is
         known-good already (e.g. self_and_descendants walking an already-resolved Context), never

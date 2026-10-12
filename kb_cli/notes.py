@@ -7,7 +7,7 @@ from typing import Optional
 from sqlalchemy import select
 
 from client import KBClient
-from context import find_context, resolve_context_only
+from context import find_context, place, resolve_context_only
 from kb_cli._util import (
     add_placement_argument,
     apply_purge,
@@ -83,7 +83,7 @@ def cmd_update(args: argparse.Namespace) -> None:
     collection = _resolve_collection(args.collection)
     note.update(title=args.title, body=body, tags=args.tags, collection=collection)
     if args.new_context is not None:
-        note.context = find_context(args.session, args.new_context)
+        place(note, context=find_context(args.session, args.new_context))
     args.session.commit()
     print(f"Updated: {note}")
 

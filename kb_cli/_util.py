@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from base import Base, _now
-from context import resolve_context
+from context import find_context, place, resolve_context
 from mixins import HasUniqueName
 from models import Context, EntityLink, HasContextOrTag, Journal, Settings, Tag
 from models_pg import PgItem
@@ -292,11 +292,9 @@ def apply_context_or_tag_update(
     behind every entity's `update --context`/`--tag` flags. Setting one clears the
     other, matching HasContextOrTag's mutual-exclusivity validator."""
     if new_context is not None:
-        row.tag = None
-        row.context = resolve_context(session, new_context)
+        place(row, context=find_context(session, new_context))
     if new_tag is not None:
-        row.context = None
-        row.tag = get_by_name(session, Tag, new_tag)
+        place(row, tag=get_by_name(session, Tag, new_tag))
 
 
 def describe_entity_ref(session: Session, entity_type: str, entity_id: int) -> str:

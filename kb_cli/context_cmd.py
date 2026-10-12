@@ -42,14 +42,13 @@ ALL_ENTITY_MODELS = tuple(m for m in CONTEXT_LINKED_MODELS if m not in (LogEntry
 
 
 def cmd_add(args: argparse.Namespace) -> None:
-    existing = args.session.scalars(select(Context).where(Context.name == args.name)).one_or_none()
-    if existing is not None:
-        print(f"Context {args.name!r} already exists (#{existing.id})", file=sys.stderr)
-        sys.exit(1)
     parent = find_context(args.session, args.parent) if args.parent else None
     description = resolve_text_arg(args.description) if args.description is not None else None
-    context = Context(name=args.name, description=description, parent=parent)
-    args.session.add(context)
+    try:
+        context = Context.create(args.session, args.name, parent=parent, description=description)
+    except ValueError as e:
+        print(e, file=sys.stderr)
+        sys.exit(1)
     args.session.commit()
     print(context)
 
@@ -57,7 +56,11 @@ def cmd_add(args: argparse.Namespace) -> None:
 def cmd_set_parent(args: argparse.Namespace) -> None:
     context = find_context(args.session, args.name)
     parent = find_context(args.session, args.parent) if args.parent else None
-    context.parent = parent
+    try:
+        context.move_under(parent)
+    except ValueError as e:
+        print(e, file=sys.stderr)
+        sys.exit(1)
     args.session.commit()
     print(context)
 

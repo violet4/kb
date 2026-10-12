@@ -67,7 +67,7 @@ class Base(DeclarativeBase):
         `show` commands print via kb_cli._util.print_timestamps. This is what lets a kb record's
         age be weighed at the point a claim is actually read/relayed (temporal-record-skepticism,
         kb Instruction #81), rather than requiring a separate deliberate date lookup."""
-        delta = _now() - self.updated_at.replace(tzinfo=timezone.utc)
+        delta = _now() - self.updated_at
         days = delta.days
         if days < 1:
             return ""

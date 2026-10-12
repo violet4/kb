@@ -279,7 +279,7 @@ def cmd_usage(args: argparse.Namespace) -> None:
             print(f"No usage samples recorded in the last {args.history}h.")
             return
         for s in samples:
-            sampled_at = s.sampled_at.replace(tzinfo=timezone.utc).astimezone()
+            sampled_at = s.sampled_at.astimezone()
             print(
                 f"{sampled_at.strftime('%Y-%m-%d %H:%M:%S')}  " f"session {s.session_pct:>3}%  ·  week {s.week_pct:>3}%"
             )

@@ -248,11 +248,9 @@ def list_live_sessions(session: Session) -> tuple[list[LiveSessionInfo], int]:
         # created_at is set once at first registration (HarnessSession.register upserts, never
         # re-inserts on a resumed/restarted `kb sessions listen`), so this is genuinely "when
         # the session was created," not reset by listen's own exit-and-restart cycle.
-        age_seconds = (now - row.created_at.replace(tzinfo=timezone.utc)).total_seconds()
+        age_seconds = (now - row.created_at).total_seconds()
         last_msg_at = _last_message_at(session, row.id)
-        last_message_seconds = (
-            (now - last_msg_at.replace(tzinfo=timezone.utc)).total_seconds() if last_msg_at is not None else None
-        )
+        last_message_seconds = (now - last_msg_at).total_seconds() if last_msg_at is not None else None
         infos.append(
             LiveSessionInfo(
                 id=row.id,
@@ -367,7 +365,7 @@ def list_history_sessions(session: Session, project: Optional[str] = None) -> li
                         id=cached.session_id,
                         project=cached.project,
                         title=cached.title,
-                        timestamp=cached.file_mtime.replace(tzinfo=timezone.utc).isoformat(),
+                        timestamp=cached.file_mtime.isoformat(),
                         message_count=cached.message_count,
                     )
                 )
@@ -599,7 +597,7 @@ def cmd_show(args: argparse.Namespace) -> None:
 
     print(f"Project: {path.parent.name}")
     print(f"Title:   {cached.title}")
-    print(f"Updated: {cached.file_mtime.replace(tzinfo=timezone.utc).isoformat()}")
+    print(f"Updated: {cached.file_mtime.isoformat()}")
 
 
 def cmd_send(args: argparse.Namespace) -> None:

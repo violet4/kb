@@ -90,13 +90,10 @@ def _date_column(model: Any) -> Any:
 
 def _row_date(obj: Any) -> datetime:
     """Instance-level counterpart to `_date_column` -- the actual timestamp value on a
-    fetched row, read the same way (`occurred_at` if present, else `created_at`).
-    SQLite drops tzinfo from DateTime(timezone=True) columns on readback even though
-    every writer (`_now()`, see base.py) always stores UTC -- reattach it here before
-    comparing against `since` (which is itself tz-aware, from parse_since)."""
+    fetched row, read the same way (`occurred_at` if present, else `created_at`)."""
     raw = obj.occurred_at if hasattr(obj, "occurred_at") else obj.created_at
     assert isinstance(raw, datetime)
-    return raw.replace(tzinfo=timezone.utc) if raw.tzinfo is None else raw
+    return raw
 
 
 def search_entities(

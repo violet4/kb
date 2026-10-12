@@ -718,12 +718,7 @@ class Person(Base):
             if p.last_contacted is None:
                 overdue.append((p, None))
             else:
-                last = (
-                    p.last_contacted.replace(tzinfo=timezone.utc)
-                    if p.last_contacted.tzinfo is None
-                    else p.last_contacted
-                )
-                days_since = (now - last).days
+                days_since = (now - p.last_contacted).days
                 assert p.reach_out_every_days is not None  # guaranteed by the isnot(None) filter above
                 if days_since >= p.reach_out_every_days:
                     overdue.append((p, days_since))
@@ -1390,8 +1385,7 @@ class Event(Base, HasContextOrTag, HasEmbedding):
     appointment. See kb Idea #13 for the motivating gap (these were previously shoehorned into
     Todo with an ad hoc due-date-like title).
 
-    starts_at is always a full UTC instant (see CLAUDE.md's UtcDateTime() note --
-    read it back through _now()-written convention, .replace(tzinfo=utc) before use). is_all_day
+    starts_at is always a full UTC instant (a UtcDateTime column, see base.py). is_all_day
     marks a date-only event (an anniversary, a release day) where starts_at's time-of-day
     component is not meaningful -- stored as midnight UTC and never displayed with a clock time,
     rather than adding a separate Date-typed column: one instant column keeps every event
@@ -1488,7 +1482,7 @@ class Event(Base, HasContextOrTag, HasEmbedding):
         from dateutil.rrule import rrulestr
 
         after = after or _now()
-        starts_at = self.starts_at.replace(tzinfo=timezone.utc) if self.starts_at.tzinfo is None else self.starts_at
+        starts_at = self.starts_at
         if not self.recurrence:
             return starts_at if starts_at >= after else None
         rule = rrulestr(self.recurrence, dtstart=starts_at)
@@ -1503,7 +1497,7 @@ class Event(Base, HasContextOrTag, HasEmbedding):
         class touches dateutil (see class docstring)."""
         from dateutil.rrule import rrulestr
 
-        starts_at = self.starts_at.replace(tzinfo=timezone.utc) if self.starts_at.tzinfo is None else self.starts_at
+        starts_at = self.starts_at
         if not self.recurrence:
             return [starts_at] if range_start <= starts_at < range_end else []
         rule = rrulestr(self.recurrence, dtstart=starts_at)
@@ -2779,11 +2773,7 @@ class TranscriptCache(Base):
 
         mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
         row = session.get(cls, path.stem)
-        # row.file_mtime reads back tz-naive (SQLite drops tzinfo on UtcDateTime()
-        # columns, see base.py's docstring / AGENTS.md) even though it was always written as
-        # UTC via mtime above -- .replace(tzinfo=utc) makes this comparison apples-to-apples;
-        # without it every lookup mismatches (naive != aware) and the cache never hits.
-        if row is not None and row.file_mtime.replace(tzinfo=timezone.utc) == mtime:
+        if row is not None and row.file_mtime == mtime:
             return row
 
         info = _session_info(path)

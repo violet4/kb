@@ -76,7 +76,7 @@ def cmd_show(args: argparse.Namespace) -> None:
         if todo.resolution_distance:
             print(f"resolution_distance: {todo.resolution_distance.value}")
         if todo.defer_until:
-            print(f"defer_until: {todo.defer_until.replace(tzinfo=timezone.utc)}")
+            print(f"defer_until: {todo.defer_until}")
         print_timestamps(todo)
 
         print_journal_history(
@@ -197,9 +197,8 @@ def cmd_pending(args: argparse.Namespace) -> None:
     for t in todos:
         marker = ""
         if t.defer_until is not None:
-            defer_until = t.defer_until.replace(tzinfo=timezone.utc) if t.defer_until.tzinfo is None else t.defer_until
-            if defer_until > now:
-                marker = f" (deferred until {defer_until.strftime('%Y-%m-%d %H:%M')})"
+            if t.defer_until > now:
+                marker = f" (deferred until {t.defer_until.strftime('%Y-%m-%d %H:%M')})"
         print(f"{t!r}{marker}")
 
 

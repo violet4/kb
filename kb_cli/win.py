@@ -44,7 +44,7 @@ def cmd_win_recent(args: argparse.Namespace) -> None:
         print(f"No wins in the last {args.days} day(s).")
         return
     for t in reversed(todos):
-        when = t.updated_at.replace(tzinfo=timezone.utc).strftime("%Y-%m-%d %H:%M")
+        when = t.updated_at.strftime("%Y-%m-%d %H:%M")
         print(f"#{t.id} {when}: {t.title}")
 
 

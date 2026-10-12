@@ -32,7 +32,7 @@ def _parse_starts_at(value: str, is_all_day: bool = False) -> datetime:
     """Accepts a bare date ("2026-10-15") or a full ISO-ish datetime ("2026-10-15 14:30") --
     dateutil.parser handles both without a caller-specified format string. A naive result
     (no offset/zone in the input) is assumed local time, then converted to UTC for storage,
-    matching every other DateTime(timezone=True) column's _now()-derived UTC convention.
+    matching every UtcDateTime column's UTC convention.
 
     is_all_day bypasses that local->UTC conversion entirely and stores the given calendar
     date as UTC midnight -- an all-day event's date must round-trip to the same date it was
@@ -49,7 +49,7 @@ def _parse_starts_at(value: str, is_all_day: bool = False) -> datetime:
 
 
 def _event_fields(event: Event) -> list[tuple[str, object]]:
-    starts_at = event.starts_at.replace(tzinfo=timezone.utc) if event.starts_at.tzinfo is None else event.starts_at
+    starts_at = event.starts_at
     return [
         ("id", event.id),
         ("title", event.title),
@@ -59,8 +59,8 @@ def _event_fields(event: Event) -> list[tuple[str, object]]:
         ("context", event.context.name if event.context else None),
         ("tag", event.tag.name if event.tag else None),
         ("notes", event.notes),
-        ("created_at", event.created_at.replace(tzinfo=timezone.utc)),
-        ("updated_at", event.updated_at.replace(tzinfo=timezone.utc)),
+        ("created_at", event.created_at),
+        ("updated_at", event.updated_at),
     ]
 
 

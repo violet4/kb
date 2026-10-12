@@ -66,11 +66,11 @@ def _fetch_history_sync(since: datetime) -> list[UsageSampleOut]:
         ).all()
         return [
             UsageSampleOut(
-                sampled_at=s.sampled_at.replace(tzinfo=timezone.utc).isoformat(),
+                sampled_at=s.sampled_at.isoformat(),
                 session_pct=s.session_pct,
-                session_resets_at=s.session_resets_at.replace(tzinfo=timezone.utc).isoformat(),
+                session_resets_at=s.session_resets_at.isoformat(),
                 week_pct=s.week_pct,
-                week_resets_at=s.week_resets_at.replace(tzinfo=timezone.utc).isoformat(),
+                week_resets_at=s.week_resets_at.isoformat(),
             )
             for s in samples
         ]

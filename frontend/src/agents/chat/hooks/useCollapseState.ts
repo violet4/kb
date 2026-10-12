@@ -1,60 +1,51 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useState } from 'react';
 import type { AddressedBlock } from '../blockAddress';
 
 interface UseCollapseStateResult {
-  isCollapsed: (id: string) => boolean;
-  toggle: (id: string) => void;
+  isCollapsed: (block: AddressedBlock) => boolean;
+  toggle: (block: AddressedBlock) => void;
   collapseMatching: (blocks: AddressedBlock[]) => void;
   expandMatching: (blocks: AddressedBlock[]) => void;
 }
 
-// Collapsed-by-default rule: any block kind other than plain text starts collapsed (tool
-// calls/results and any future unrecognized block kind), since those are usually the bulky,
-// skim-later part of a transcript -- text is always the part worth reading immediately.
+// Collapsed-by-default rule: text and thinking start expanded, since they are the part of a
+// transcript worth reading immediately; every other kind (tool calls/results and any future
+// unrecognized block kind) starts collapsed as the bulky, skim-later part.
+const EXPANDED_KINDS: ReadonlySet<string> = new Set(['text', 'thinking']);
+
 function defaultCollapsed(block: AddressedBlock): boolean {
-  return block.block.kind !== 'text';
+  return !EXPANDED_KINDS.has(block.block.kind);
 }
 
-export function useCollapseState(allBlocks: AddressedBlock[]): UseCollapseStateResult {
-  const defaults = useMemo(() => {
-    const map = new Map<string, boolean>();
-    for (const block of allBlocks) map.set(block.id, defaultCollapsed(block));
-    return map;
-  }, [allBlocks]);
-
+// The default is derived from the block itself rather than from a map over every block, so
+// isCollapsed keeps its identity while a live transcript appends messages and only changes
+// when the user actually toggles something.
+export function useCollapseState(): UseCollapseStateResult {
   const [overrides, setOverrides] = useState<Map<string, boolean>>(new Map());
 
   const isCollapsed = useCallback(
-    (id: string) => overrides.get(id) ?? defaults.get(id) ?? false,
-    [overrides, defaults],
+    (block: AddressedBlock) => overrides.get(block.id) ?? defaultCollapsed(block),
+    [overrides],
   );
 
-  const toggle = useCallback((id: string) => {
+  const toggle = useCallback((block: AddressedBlock) => {
     setOverrides((prev) => {
       const next = new Map(prev);
-      next.set(id, !(prev.get(id) ?? defaults.get(id) ?? false));
-      return next;
-    });
-    // defaults is stable enough per-render for this toggle's purposes -- omitted from deps
-    // to avoid recreating the callback on every facet recompute.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const collapseMatching = useCallback((blocks: AddressedBlock[]) => {
-    setOverrides((prev) => {
-      const next = new Map(prev);
-      for (const block of blocks) next.set(block.id, true);
+      next.set(block.id, !(prev.get(block.id) ?? defaultCollapsed(block)));
       return next;
     });
   }, []);
 
-  const expandMatching = useCallback((blocks: AddressedBlock[]) => {
+  const setMatching = useCallback((blocks: AddressedBlock[], collapsed: boolean) => {
     setOverrides((prev) => {
       const next = new Map(prev);
-      for (const block of blocks) next.set(block.id, false);
+      for (const block of blocks) next.set(block.id, collapsed);
       return next;
     });
   }, []);
+
+  const collapseMatching = useCallback((blocks: AddressedBlock[]) => setMatching(blocks, true), [setMatching]);
+  const expandMatching = useCallback((blocks: AddressedBlock[]) => setMatching(blocks, false), [setMatching]);
 
   return { isCollapsed, toggle, collapseMatching, expandMatching };
 }

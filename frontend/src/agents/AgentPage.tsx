@@ -44,18 +44,10 @@ export default function AgentPage() {
 
   return (
     // flex: 1 + minHeight: 0 (not a hardcoded calc(100vh - Npx)) for the same reason as
-    // ChannelsView's own layout -- see that component's comment. Only applied for the Chat
-    // tab, which needs a bounded height to scroll internally; the Session tab keeps its
-    // legacy behavior of letting the whole page grow/scroll naturally.
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 16,
-        flex: tab === 'chat' ? 1 : undefined,
-        minHeight: tab === 'chat' ? 0 : undefined,
-      }}
-    >
+    // ChannelsView's own layout -- see that component's comment. Both tabs need the bounded
+    // height: Chat scrolls its message list internally, and Session scrolls its transcript
+    // and filter legend independently, with the legend toggle fixed in view.
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, flex: 1, minHeight: 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <Link to={backHref} style={{ color: tokens.color.textMuted, fontSize: 13, textDecoration: 'none' }}>
           {backLabel}

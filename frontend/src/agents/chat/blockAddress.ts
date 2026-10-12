@@ -11,18 +11,15 @@ export interface AddressedBlock {
   tags: Record<string, string>;
 }
 
-export function addressBlocks(messages: ChatMessage[]): AddressedBlock[] {
-  const result: AddressedBlock[] = [];
-  messages.forEach((message, messageIndex) => {
-    message.blocks.forEach((block, blockIndex) => {
-      result.push({
-        id: `${messageIndex}:${blockIndex}`,
-        messageIndex,
-        message,
-        block,
-        tags: { kind: block.kind, ...block.tags },
-      });
-    });
-  });
-  return result;
+// Addressed once per message, when the message arrives: a live transcript appends messages
+// without re-addressing the ones already shown, so their AddressedBlock objects keep their
+// identity and memoized rows for them never re-render.
+export function addressMessage(message: ChatMessage, messageIndex: number): AddressedBlock[] {
+  return message.blocks.map((block, blockIndex) => ({
+    id: `${messageIndex}:${blockIndex}`,
+    messageIndex,
+    message,
+    block,
+    tags: { kind: block.kind, ...block.tags },
+  }));
 }

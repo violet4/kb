@@ -407,8 +407,8 @@ class ChatBlock(NamedTuple):
     result -- kept separate from ChatMessage since a single message commonly carries several
     (e.g. one assistant turn with a text block followed by a tool_use block).
 
-    `kind` is the most specific shape this parser recognizes today ("text", "tool_use",
-    "tool_result", or "unknown" for a future content-block type it doesn't -- see
+    `kind` is the most specific shape this parser recognizes today ("text", "thinking",
+    "tool_use", "tool_result", or "unknown" for a future content-block type it doesn't -- see
     _extract_blocks). `tags` is deliberately open-ended metadata about this block and its
     parent message (every scalar field the raw JSONL carries, flattened -- see
     _flatten_tags) -- the frontend legend/filter panel is built entirely from whatever keys
@@ -416,8 +416,8 @@ class ChatBlock(NamedTuple):
     (a new `stop_reason`, a new hook type, a future MCP server) becomes filterable the moment
     it appears in a transcript, with no parser change required."""
 
-    kind: str  # "text", "tool_use", "tool_result", or "unknown"
-    text: Optional[str] = None  # for kind == "text"
+    kind: str  # "text", "thinking", "tool_use", "tool_result", or "unknown"
+    text: Optional[str] = None  # for kind == "text" or "thinking"
     tool_name: Optional[str] = None  # for kind == "tool_use"
     tool_input: Optional[dict[str, Any]] = None  # for kind == "tool_use"
     tool_output: Optional[str] = None  # for kind == "tool_result"
@@ -467,6 +467,9 @@ _TAG_EXCLUDE_KEYS = frozenset(
         "toolUseResult",  # duplicates bulk tool output already surfaced as tool_output.
         "stdout",
         "stderr",
+        "text",  # a text block's own text, surfaced as ChatBlock.text.
+        "thinking",  # a thinking block's own text, surfaced as ChatBlock.text.
+        "signature",  # a thinking block's opaque verification token, unique per block.
     }
 )
 
@@ -506,7 +509,7 @@ def _flatten_tags(obj: object, prefix: str = "") -> dict[str, str]:
 
 def _extract_blocks(content: object, message_tags: dict[str, str]) -> list[ChatBlock]:
     """Parses message.content into ChatBlocks as specifically as this function recognizes
-    (text/tool_use/tool_result), falling back to kind="unknown" with the block's own raw
+    (text/thinking/tool_use/tool_result), falling back to kind="unknown" with the block's own raw
     scalar fields flattened into tags for anything else -- a future content-block type this
     parser has never seen renders as a generic block instead of being silently dropped."""
     if isinstance(content, str):
@@ -521,6 +524,8 @@ def _extract_blocks(content: object, message_tags: dict[str, str]) -> list[ChatB
         block_tags = {**message_tags, **_flatten_tags(item)}
         if item_type == "text":
             blocks.append(ChatBlock(kind="text", text=item.get("text", ""), tags=block_tags))
+        elif item_type == "thinking":
+            blocks.append(ChatBlock(kind="thinking", text=item.get("thinking", ""), tags=block_tags))
         elif item_type == "tool_use":
             tool_name = item.get("name")
             if isinstance(tool_name, str) and tool_name.startswith("mcp__"):
@@ -551,39 +556,45 @@ def _extract_blocks(content: object, message_tags: dict[str, str]) -> list[ChatB
     return blocks
 
 
-def list_chat_messages(path: Path) -> list[ChatMessage]:
-    """Every real chat message in a session transcript, in file order, with nothing
-    compacted or summarized -- backs both a future `kb sessions show --chat` and the
-    frontend's session-viewer page. See ChatMessage's own docstring for what counts as
-    a message versus dropped bookkeeping, and ChatBlock's for the generic tags this attaches
-    to every block for frontend-driven filtering."""
+def list_chat_messages(path: Path, offset: int = 0) -> tuple[list[ChatMessage], int]:
+    """Every real chat message in a session transcript from byte `offset` on, in file
+    order, with nothing compacted or summarized, plus the offset to pass next time. The
+    frontend's session viewer polls a live session with the returned offset, so each poll
+    parses only the lines appended since the previous one. Only newline-terminated lines
+    are consumed: a line the harness is still writing stays unread until it is complete.
+    See ChatMessage's own docstring for what counts as a message versus dropped
+    bookkeeping, and ChatBlock's for the generic tags this attaches to every block for
+    frontend-driven filtering."""
+    with path.open("rb") as fh:
+        fh.seek(offset)
+        data = fh.read()
+    complete_end = data.rfind(b"\n") + 1
     messages = []
-    with path.open() as fh:
-        for line in fh:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                d = json.loads(line)
-            except ValueError:
-                continue
-            if d.get("type") not in ("user", "assistant"):
-                continue
-            message = d.get("message")
-            if not isinstance(message, dict):
-                continue
-            # Flattened once per line (top-level record fields like isSidechain/stop_reason/
-            # effort/model/origin/promptSource, plus message's own non-content fields like
-            # role/model/usage) and inherited by every block on that line -- these describe
-            # the whole message, not any one block, so every block should carry them as tags.
-            message_tags = {**_flatten_tags(d), **_flatten_tags(message)}
-            blocks = _extract_blocks(message.get("content"), message_tags)
-            if not blocks:
-                continue
-            messages.append(
-                ChatMessage(role=message.get("role", d["type"]), timestamp=d.get("timestamp", ""), blocks=blocks)
-            )
-    return messages
+    for raw_line in data[:complete_end].splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            d = json.loads(line)
+        except ValueError:
+            continue
+        if d.get("type") not in ("user", "assistant"):
+            continue
+        message = d.get("message")
+        if not isinstance(message, dict):
+            continue
+        # Flattened once per line (top-level record fields like isSidechain/stop_reason/
+        # effort/model/origin/promptSource, plus message's own non-content fields like
+        # role/model/usage) and inherited by every block on that line -- these describe
+        # the whole message, not any one block, so every block should carry them as tags.
+        message_tags = {**_flatten_tags(d), **_flatten_tags(message)}
+        blocks = _extract_blocks(message.get("content"), message_tags)
+        if not blocks:
+            continue
+        messages.append(
+            ChatMessage(role=message.get("role", d["type"]), timestamp=d.get("timestamp", ""), blocks=blocks)
+        )
+    return messages, offset + complete_end
 
 
 def cmd_show(args: argparse.Namespace) -> None:

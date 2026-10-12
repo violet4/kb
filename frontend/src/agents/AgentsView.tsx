@@ -86,15 +86,7 @@ export default function AgentsView() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <h1 style={{ margin: 0, fontSize: 20 }}>Agents</h1>
-          <Link to="/agents/history" style={{ color: tokens.color.textMuted, fontSize: 13 }}>
-            Past sessions →
-          </Link>
-        </div>
-        <SettingsSection intervalSeconds={intervalSeconds} onChangeIntervalSeconds={setIntervalSeconds} />
-      </div>
+      <SettingsSection intervalSeconds={intervalSeconds} onChangeIntervalSeconds={setIntervalSeconds} />
       {error && <p style={{ margin: 0, color: tokens.color.danger }}>{error}</p>}
       <div style={{ overflowX: 'auto', border: `1px solid ${tokens.color.border}`, borderRadius: 8 }}>
         <table style={{ borderCollapse: 'collapse', width: '100%' }}>

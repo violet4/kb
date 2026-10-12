@@ -1,6 +1,6 @@
 // Mirrors api/sessions_router.py's ChatMessageOut/ChatBlockOut Pydantic models.
 export interface ChatBlock {
-  kind: 'text' | 'tool_use' | 'tool_result' | 'unknown';
+  kind: 'text' | 'thinking' | 'tool_use' | 'tool_result' | 'unknown';
   text: string | null;
   tool_name: string | null;
   tool_input: Record<string, unknown> | null;

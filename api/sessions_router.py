@@ -6,7 +6,7 @@ counts as a chat message -- see those functions' own docstrings."""
 
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -88,13 +88,22 @@ class ChatMessageOut(BaseModel):
     blocks: list[ChatBlockOut]
 
 
-@router.get("/{session_id}/chat", response_model=list[ChatMessageOut])
-async def get_session_chat(session_id: str) -> list[ChatMessageOut]:
+class ChatPageOut(BaseModel):
+    messages: list[ChatMessageOut]
+    # Byte offset to pass as `offset` on the next request to get only newer messages.
+    next_offset: int
+
+
+@router.get("/{session_id}/chat", response_model=ChatPageOut)
+async def get_session_chat(session_id: str, offset: int = Query(0, ge=0)) -> ChatPageOut:
     path = find_session_transcript_path(session_id)
     if path is None:
         raise HTTPException(status_code=404, detail=f"No transcript found for session {session_id!r}")
-    messages = list_chat_messages(path)
-    return [
-        ChatMessageOut(role=m.role, timestamp=m.timestamp, blocks=[ChatBlockOut(**b._asdict()) for b in m.blocks])
-        for m in messages
-    ]
+    messages, next_offset = list_chat_messages(path, offset)
+    return ChatPageOut(
+        messages=[
+            ChatMessageOut(role=m.role, timestamp=m.timestamp, blocks=[ChatBlockOut(**b._asdict()) for b in m.blocks])
+            for m in messages
+        ],
+        next_offset=next_offset,
+    )

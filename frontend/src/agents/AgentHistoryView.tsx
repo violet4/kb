@@ -13,7 +13,8 @@ const cellStyle: React.CSSProperties = {
 
 const PAGE_SIZE_OPTIONS = [10, 20, 25, 50, 100];
 
-// Past (not currently live) sessions. Two alternative views share this one component:
+// Past (not currently live) sessions, the By Project and By Recency tabs of AgentsLayout.
+// Two alternative views share this one component:
 // by-project (the original, drill into one project directory's sessions) and by-recency (flat,
 // most-recent-first across every project, paginated since the full list can be large).
 // Selecting a session links into the same /agents/:sessionId route AgentsView does, so
@@ -27,7 +28,7 @@ export default function AgentHistoryView() {
   const loc = useLocation();
 
   if (loc.pathname === '/agents/history/recent') {
-    return <RecencyView onBack={() => navigate('/agents/history')} />;
+    return <RecencyView />;
   }
   if (project === undefined) {
     return <ProjectPicker />;
@@ -35,34 +36,11 @@ export default function AgentHistoryView() {
   return <SessionList project={project === 'all' ? null : decodeURIComponent(project)} onBack={() => navigate('/agents/history')} />;
 }
 
-function ViewTabs({ active }: { active: 'project' | 'recency' }) {
-  const tabStyle = (isActive: boolean): React.CSSProperties => ({
-    padding: '4px 10px',
-    borderRadius: 6,
-    fontSize: 13,
-    textDecoration: 'none',
-    color: isActive ? tokens.color.text : tokens.color.textMuted,
-    background: isActive ? tokens.color.border : 'transparent',
-  });
-  return (
-    <div style={{ display: 'flex', gap: 4 }}>
-      <Link to="/agents/history" style={tabStyle(active === 'project')}>
-        By Project
-      </Link>
-      <Link to="/agents/history/recent" style={tabStyle(active === 'recency')}>
-        By Recency
-      </Link>
-    </div>
-  );
-}
-
 function ProjectPicker() {
   const { projects, isLoading, error } = useAgentHistoryProjects();
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <Header title="Past Sessions" />
-      <ViewTabs active="project" />
       {error && <p style={{ margin: 0, color: tokens.color.danger }}>{error}</p>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         <ProjectLink label="All projects" project="all" />
@@ -107,7 +85,6 @@ function SessionList({ project, onBack }: { project: string | null; onBack: () =
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <Header title={project ?? 'All projects'} onBack={onBack} monospaceTitle={project !== null} />
-      <ViewTabs active="project" />
       {error && <p style={{ margin: 0, color: tokens.color.danger }}>{error}</p>}
       <SessionTable sessions={sessions} showProject={project === null} isLoading={isLoading} />
     </div>
@@ -117,7 +94,7 @@ function SessionList({ project, onBack }: { project: string | null; onBack: () =
 // Flat view across every project, sorted most-recent-first (the API's own sort order, see
 // list_history_sessions), paginated client-side since the full cross-project list can be long
 // and we don't want to render it all at once.
-function RecencyView({ onBack }: { onBack: () => void }) {
+function RecencyView() {
   const { sessions, isLoading, error } = useAgentHistorySessions(null);
   const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0]);
   const [page, setPage] = useState(0);
@@ -131,8 +108,6 @@ function RecencyView({ onBack }: { onBack: () => void }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <Header title="All projects (by recency)" onBack={onBack} />
-      <ViewTabs active="recency" />
       {error && <p style={{ margin: 0, color: tokens.color.danger }}>{error}</p>}
       <SessionTable sessions={pageSessions} showProject isLoading={isLoading} />
       {!error && sessions.length > 0 && (
@@ -252,26 +227,24 @@ function SessionRow({ session, showProject }: { session: HistorySession; showPro
   );
 }
 
-function Header({ title, onBack, monospaceTitle }: { title: string; onBack?: () => void; monospaceTitle?: boolean }) {
+function Header({ title, onBack, monospaceTitle }: { title: string; onBack: () => void; monospaceTitle?: boolean }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-      {onBack && (
-        <button
-          type="button"
-          onClick={onBack}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: tokens.color.textMuted,
-            fontSize: 13,
-            cursor: 'pointer',
-            padding: 0,
-          }}
-        >
-          ← Projects
-        </button>
-      )}
-      <h1 style={{ margin: 0, fontSize: 18, fontFamily: monospaceTitle ? 'monospace' : undefined }}>{title}</h1>
+      <button
+        type="button"
+        onClick={onBack}
+        style={{
+          background: 'none',
+          border: 'none',
+          color: tokens.color.textMuted,
+          fontSize: 13,
+          cursor: 'pointer',
+          padding: 0,
+        }}
+      >
+        ← Projects
+      </button>
+      <h2 style={{ margin: 0, fontSize: 16, fontFamily: monospaceTitle ? 'monospace' : undefined }}>{title}</h2>
     </div>
   );
 }

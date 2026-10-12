@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Markdown from '../../shared/Markdown';
 import { tokens } from '../../shared/tokens';
-import { fetchSessionChat } from './api';
-import { addressBlocks, type AddressedBlock } from './blockAddress';
+import { useRefreshIntervalSetting } from '../hooks/useRefreshIntervalSetting';
+import type { AddressedBlock } from './blockAddress';
 import type { FacetFilter } from './facets';
 import { useCollapseState } from './hooks/useCollapseState';
+import { useSessionChat, type TranscriptEntry } from './hooks/useSessionChat';
 import LegendPanel, { filterBlocks } from './LegendPanel';
 import type { ChatMessage } from './types';
 
@@ -43,7 +44,7 @@ function BlockRow({
         ? `tool_result${block.is_error ? ' (error)' : ''}`
         : block.kind === 'unknown'
           ? 'unknown block'
-          : 'text';
+          : block.kind;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -71,6 +72,11 @@ function BlockRow({
       {!collapsed && (
         <>
           {block.kind === 'text' && <Markdown text={block.text ?? ''} />}
+          {block.kind === 'thinking' && (
+            <div style={{ color: tokens.color.textMuted, fontStyle: 'italic' }}>
+              <Markdown text={block.text ?? ''} />
+            </div>
+          )}
           {block.kind === 'tool_use' && (
             <pre
               style={{
@@ -110,6 +116,7 @@ function BlockRow({
 function blockToMarkdown(addressed: AddressedBlock): string {
   const { block } = addressed;
   if (block.kind === 'text') return block.text ?? '';
+  if (block.kind === 'thinking') return `**thinking**\n\n${block.text ?? ''}`;
   if (block.kind === 'tool_use') {
     return `**tool_use: ${block.tool_name}**\n\`\`\`json\n${JSON.stringify(block.tool_input, null, 2)}\n\`\`\``;
   }
@@ -152,17 +159,22 @@ function CopyMarkdownButton({ getText }: { getText: () => string }) {
   );
 }
 
-function MessageRow({
-  message,
-  addressedBlocks,
+// Memoized so a live transcript's appended messages render only the new rows: an existing
+// row's props (its entry, the filter, the collapse callbacks) are unchanged by an append, so
+// React skips it and leaves its DOM, and any text selection inside it, untouched.
+const MessageRow = memo(function MessageRow({
+  entry,
+  filter,
   isCollapsed,
   onToggle,
 }: {
-  message: ChatMessage;
-  addressedBlocks: AddressedBlock[];
-  isCollapsed: (id: string) => boolean;
-  onToggle: (id: string) => void;
+  entry: TranscriptEntry;
+  filter: FacetFilter;
+  isCollapsed: (block: AddressedBlock) => boolean;
+  onToggle: (block: AddressedBlock) => void;
 }) {
+  const { message } = entry;
+  const addressedBlocks = useMemo(() => filterBlocks(entry.blocks, filter), [entry.blocks, filter]);
   if (addressedBlocks.length === 0) return null;
   const isUser = message.role === 'user';
   return (
@@ -190,13 +202,17 @@ function MessageRow({
         <BlockRow
           key={addressed.id}
           addressed={addressed}
-          collapsed={isCollapsed(addressed.id)}
-          onToggle={() => onToggle(addressed.id)}
+          collapsed={isCollapsed(addressed)}
+          onToggle={() => onToggle(addressed)}
         />
       ))}
     </div>
   );
-}
+});
+
+// Distance from the bottom, in pixels, within which the message pane counts as scrolled to
+// the bottom and keeps following new messages.
+const FOLLOW_THRESHOLD_PX = 40;
 
 interface SessionTranscriptProps {
   sessionId: string;
@@ -206,35 +222,37 @@ interface SessionTranscriptProps {
 // tool_use/tool_result block, with the generic tag-filter legend. Distinct from a Channel DM
 // (frontend/src/channels/): this reads the session's own transcript file, not the
 // cross-session ChannelMessage mailbox -- see the two-tab split in AgentPage.tsx for why they
-// must never be conflated into one view.
+// must never be conflated into one view. A live session's new messages are appended at the
+// bottom as they are written (see useSessionChat); while the message pane is scrolled to the
+// bottom it follows them.
 export default function SessionTranscript({ sessionId }: SessionTranscriptProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [intervalSeconds] = useRefreshIntervalSetting();
+  const { entries, loading, error } = useSessionChat(sessionId, intervalSeconds);
   const [filter, setFilter] = useState<FacetFilter>(new Map());
-  const [legendOpen, setLegendOpen] = useState(true);
+  const [legendOpen, setLegendOpen] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    fetchSessionChat(sessionId)
-      .then((result) => {
-        if (!cancelled) setMessages(result);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [sessionId]);
-
-  const allBlocks = useMemo(() => addressBlocks(messages), [messages]);
+  const allBlocks = useMemo(() => entries.flatMap((entry) => entry.blocks), [entries]);
   const visibleBlocks = useMemo(() => filterBlocks(allBlocks, filter), [allBlocks, filter]);
-  const { isCollapsed, toggle, collapseMatching, expandMatching } = useCollapseState(allBlocks);
+  const { isCollapsed, toggle, collapseMatching, expandMatching } = useCollapseState();
+
+  // Whether the pane was at the bottom before the latest render, updated on every scroll.
+  // Read in the layout effect below, after new rows are in the DOM but before paint, so a
+  // follow scroll never shows a frame of the old position.
+  const paneRef = useRef<HTMLDivElement>(null);
+  const followRef = useRef(false);
+  const seenCountRef = useRef(0);
+  const onPaneScroll = useCallback(() => {
+    const pane = paneRef.current;
+    if (pane) followRef.current = pane.scrollHeight - pane.scrollTop - pane.clientHeight <= FOLLOW_THRESHOLD_PX;
+  }, []);
+  useLayoutEffect(() => {
+    const previousCount = seenCountRef.current;
+    seenCountRef.current = entries.length;
+    // The first load opens at the top of the transcript; only later appends follow.
+    if (previousCount === 0 || entries.length <= previousCount) return;
+    const pane = paneRef.current;
+    if (pane && followRef.current) pane.scrollTop = pane.scrollHeight;
+  }, [entries]);
 
   const toggleFilterValue = useCallback((key: string, value: string) => {
     setFilter((prev) => {
@@ -247,41 +265,28 @@ export default function SessionTranscript({ sessionId }: SessionTranscriptProps)
     });
   }, []);
 
-  const messageBlockGroups = useMemo(
-    () => messages.map((_message, messageIndex) => visibleBlocks.filter((b) => b.messageIndex === messageIndex)),
-    [messages, visibleBlocks],
-  );
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minHeight: 0, flex: 1 }}>
       {loading && <p style={{ margin: 0, color: tokens.color.textMuted, fontSize: 13 }}>Loading...</p>}
       {error && <p style={{ margin: 0, color: tokens.color.danger }}>{error}</p>}
-      {!loading && !error && messages.length === 0 && (
+      {!loading && !error && entries.length === 0 && (
         <p style={{ margin: 0, color: tokens.color.textMuted, fontSize: 13 }}>No chat messages found.</p>
       )}
       {/* alignItems defaults to stretch (not flex-start) so both the message pane and the
-          legend actually fill this row's real height -- with flex-start, each pane sized to
-          its own content, meaning this row (and the page above it) grew to fit the taller of
-          the two, defeating both panes' own overflowY: auto and pushing the whole PAGE into
-          scroll instead of just the one pane that's actually long (confirmed live
-          2026-08-28: a session with many distinct facet values made the legend taller than
-          the viewport, and the page itself scrolled to show the rest of it). */}
-      {/* position: relative so the collapsed-state expand tab (below) can float over this
-          row as an absolutely-positioned overlay rather than reserving its own flex slice --
-          confirmed live 2026-08-28 that even an ~8px-wide reserved rail still read as a
-          visible "lost strip" on top of its own width once the inter-pane gap was counted;
-          removing it from flow entirely (not just shrinking it) is the actual fix. */}
+          legend fill this row's bounded height and scroll independently of each other and
+          of the page; with flex-start each pane sizes to its own content and the page
+          scrolls instead. */}
+      {/* position: relative so the collapsed-state expand tab (below) floats over this row
+          as an absolutely positioned overlay instead of reserving its own flex slice, which
+          reads as a lost strip beside the messages. */}
       <div style={{ display: 'flex', gap: legendOpen ? 16 : 0, flex: 1, minHeight: 0, position: 'relative' }}>
-        {/* Its own scroll container, independent of the page (and, inside Channels, the left
-            channel sidebar) -- overflowY here, not on some page-level wrapper, is what lets a
-            long transcript scroll without taking the sidebar or legend along with it. */}
-        <div style={{ flex: 1, minWidth: 0, height: '100%', overflowY: 'auto' }}>
+        <div ref={paneRef} onScroll={onPaneScroll} style={{ flex: 1, minWidth: 0, height: '100%', overflowY: 'auto' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {messages.map((message, i) => (
+            {entries.map((entry, i) => (
               <MessageRow
                 key={i}
-                message={message}
-                addressedBlocks={messageBlockGroups[i]}
+                entry={entry}
+                filter={filter}
                 isCollapsed={isCollapsed}
                 onToggle={toggle}
               />
@@ -303,10 +308,9 @@ export default function SessionTranscript({ sessionId }: SessionTranscriptProps)
           </div>
         )}
         {allBlocks.length > 0 && !legendOpen && (
-          // Overlay tab, not a flex item -- takes zero width from the message pane. Sits
-          // just inside the pane's own right edge (not the container's, since the message
-          // pane spans the full row when the legend is collapsed) so it reads as a
-          // hover/reveal affordance rather than a permanent UI slice.
+          // Overlay tab, not a flex item -- takes zero width from the message pane. Anchored
+          // to this bounded row rather than to the scrolling content, so it stays in view at
+          // any scroll position; inset from the right edge to clear the pane's scrollbar.
           <button
             type="button"
             onClick={() => setLegendOpen(true)}
@@ -315,7 +319,7 @@ export default function SessionTranscript({ sessionId }: SessionTranscriptProps)
             style={{
               position: 'absolute',
               top: 0,
-              right: 8,
+              right: 16,
               padding: '6px 4px',
               borderRadius: 6,
               border: `1px solid ${tokens.color.border}`,

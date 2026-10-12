@@ -54,6 +54,7 @@ export default function LegendPanel({
     <div
       style={{
         height: '100%',
+        boxSizing: 'border-box',
         display: 'flex',
         flexDirection: 'column',
         gap: 10,
@@ -62,7 +63,6 @@ export default function LegendPanel({
         border: `1px solid ${tokens.color.border}`,
         borderRadius: 8,
         fontSize: 12,
-        overflowY: 'auto',
       }}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -95,7 +95,9 @@ export default function LegendPanel({
           </button>
         </div>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {/* Only the facet list scrolls; the header above it, with the collapse button, stays
+          in view at any scroll position. */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minHeight: 0, overflowY: 'auto' }}>
         {facets.map((facet) => {
           const isExpanded = expandedKeys.has(facet.key);
           const activeValues = filter.get(facet.key);

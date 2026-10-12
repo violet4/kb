@@ -438,10 +438,14 @@ def cmd_session_inbox_check(args: argparse.Namespace) -> None:
     started or nagged-for by default -- forcing it onto every session proved too heavyweight
     once kb had more than one user (see CLAUDE_GLOBAL.md's own history and kb Goal #23/#46).
     A session that never runs Layer 2 simply only sees messages via this per-prompt check,
-    which is an acceptable degraded mode, not an error state to nag about."""
+    which is an acceptable degraded mode, not an error state to nag about.
+
+    Also reopens this session if it is marked ended: see the comment at that step."""
     from base import _now
     from harness import current_session_id
     from models import ChannelMessage, ChannelRead, HarnessSession, HarnessSessionStatus
+
+    from kb_cli.sessions import _find_claude_ancestor_pid
 
     session_id = current_session_id()
     if not session_id:
@@ -449,6 +453,10 @@ def cmd_session_inbox_check(args: argparse.Namespace) -> None:
     row = HarnessSession.by_harness_id(args.session, session_id)
     if row is None:
         return
+    if row.ended_at is not None:
+        # A prompt in this session proves it is live, which outranks any inference that
+        # marked it ended (e.g. a liveness read that raced a migration).
+        row = HarnessSession.register(args.session, session_id, cwd=os.getcwd(), pid=_find_claude_ancestor_pid())
     row.status = HarnessSessionStatus.INFERRING
     row.last_active_at = _now()
     args.session.commit()

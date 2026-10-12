@@ -3,12 +3,14 @@ still running, identified by pid and start time, and only until another session 
 the same process (`/clear`, `/resume`). live() stamps ended_at on each session it finds ended
 and never checks that row again."""
 
+import argparse
 import os
 from datetime import timedelta
 
 import pytest
 from sqlalchemy.orm import Session
 
+from kb_cli.hooks import cmd_session_inbox_check
 from models import HarnessSession
 
 PID = os.getpid()
@@ -62,3 +64,11 @@ def test_ended_row_is_not_checked_again(db_session: Session, monkeypatch: pytest
 
     monkeypatch.setattr(HarnessSession, "is_alive", fail)
     assert HarnessSession.live(db_session) == []
+
+
+def test_prompt_reopens_a_session_marked_ended(db_session: Session, agent_session: HarnessSession) -> None:
+    agent_session.ended_at = agent_session.created_at
+    db_session.commit()
+    cmd_session_inbox_check(argparse.Namespace(session=db_session))
+    assert agent_session.ended_at is None
+    assert HarnessSession.live(db_session) == [agent_session]

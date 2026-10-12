@@ -288,6 +288,49 @@ See `kb hooks --help` / `kb_cli/hooks.py` for what this does and why (nudge to s
 
 Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/user/kb/kb`). If a `PostToolUse`/`Bash` entry already exists for `mypy-check`, this is a separate matcher (`WebSearch|WebFetch` vs `Bash`) so it needs its own entry in the `PostToolUse` array, not merged into that one.
 
+## session-register, session-inbox-check, session-stop (session tracking)
+
+`kb hooks session-register` records the session in `harness_session`. Every Journal row a session writes points at that row, so without this hook a session's creates, changes, and reads are journaled with no session and are missing from `kb journal session`; `kb health` reports an unregistered session. It also subscribes the session to cross-session messaging. It runs on every `SessionStart` with no matcher: `/clear` starts a new session id that needs its own row, and a resumed session's re-registration is an upsert. `session-inbox-check` marks the session as working and prints unread messages on each prompt; `session-stop` marks it idle when a turn ends. `kb hooks --help` describes each.
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.session_id' | /path/to/kb hooks session-register 2>/dev/null; printf '{}'"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hint=$(/path/to/kb hooks session-inbox-check 2>/dev/null); jq -n --arg h \"$hint\" '{hookSpecificOutput: {hookEventName: \"UserPromptSubmit\", additionalContext: $h}}'"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/path/to/kb hooks session-stop 2>/dev/null; true"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/user/kb/kb`).
+
 ## Adding a new one
 
 Harness-agnostic detector (default — prefer this unless the check genuinely needs Claude Code's own event data):
@@ -317,4 +360,5 @@ echo '{"cwd":"/path/to/kb-repo","session_id":"abcd1234","message":"hello"}' | /p
 hint=$(/path/to/kb hooks tree-reminder); jq -n --arg h "$hint" '{hookSpecificOutput: {hookEventName: "UserPromptSubmit", additionalContext: $h}}'
 echo '{"session_id":"abcd1234","source":"startup"}' | jq -r '.session_id' | /path/to/kb hooks daily-check   # first session today: prints the priming reminder
 /path/to/kb hooks daily-check-release   # clear the lock early, e.g. after testing
+/path/to/kb health   # inside a session: "Agent session: OK" once session-register has run
 ```

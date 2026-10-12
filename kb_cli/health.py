@@ -1,26 +1,26 @@
-"""Structural health checks over kb's own data -- distinct from `kb stats` (volume/activity
-counts) in that these are invariant checks: a condition that should always hold and, if it
-doesn't, indicates silent data corruption rather than just "here's how much stuff there is."
+"""Structural health checks over kb's own data and its harness wiring -- distinct from `kb
+stats` (volume/activity counts) in that these are invariant checks: a condition that should
+always hold and, if it doesn't, means data or attribution is silently going wrong rather than
+just "here's how much stuff there is."
 
-Currently covers exactly one invariant: the Instruction tree must have exactly one root
-(Instruction.roots() returning more than one row means some node lost its "parent-of"
-EntityLink and is now floating disconnected from the tree, invisible to normal `kb i show`
-navigation from root -- see kb Instruction #83's incident for the motivating case, found
-2026-09-01, orphaned since 2026-08-23 with nobody noticing). `roots()` itself already defines
-what "no incoming parent-of edge" means (models.py); this module doesn't redefine that, it
-just asks whether more than one such node exists and, if so, which ones beyond the one
-actually titled "root".
+Two invariants:
 
-Other structural invariants (broken/dangling EntityLinks, stale nodes, etc.) are plausible
-future additions here but out of scope for now -- this module intentionally checks only the
-Instruction-root invariant until a second one is actually needed."""
+- The Instruction tree has exactly one root. Instruction.roots() returning more than one row
+  means some node lost its "parent-of" EntityLink and is floating disconnected from the tree,
+  invisible to normal `kb i show` navigation from root (kb Instruction #83's incident).
+- An agent session is registered. When the harness exposes a session id
+  (harness.current_session_id()) but no HarnessSession row exists for it, every Journal row
+  this session writes carries no session, so its work is missing from `kb journal session`
+  and everything built on it. The usual cause is a harness whose session-start hook does not
+  call `kb hooks session-register`; docs/harnesses/ has the wiring per harness."""
 
 import argparse
 import sys
 
 from sqlalchemy.orm import Session
 
-from models import Instruction
+from harness import current_session_id
+from models import HarnessSession, Instruction
 
 
 def _orphans(session: Session) -> list[Instruction]:
@@ -30,13 +30,35 @@ def _orphans(session: Session) -> list[Instruction]:
     return [node for node in Instruction.roots(session) if node.title != "root"]
 
 
-def cmd_check(args: argparse.Namespace) -> None:
-    orphans = _orphans(args.session)
+def _check_instruction_tree(session: Session) -> bool:
+    orphans = _orphans(session)
     if not orphans:
         print("Instruction tree: OK (1 root)")
-        return
+        return True
     print(f"Instruction tree: {len(orphans)} orphaned node(s) -- run `kb health orphans` for detail")
-    sys.exit(1)
+    return False
+
+
+def _check_session_registered(session: Session) -> bool:
+    harness_id = current_session_id()
+    if harness_id is None:
+        print("Agent session: none detected (not running inside a known harness)")
+        return True
+    if HarnessSession.by_harness_id(session, harness_id) is not None:
+        print(f"Agent session: OK ({harness_id} registered)")
+        return True
+    print(
+        f"Agent session: {harness_id} is NOT registered -- its kb activity is journaled without a session. "
+        "Wire your harness's session-start hook to `kb hooks session-register` (see docs/harnesses/), "
+        "or run `kb hooks session-register` once for this session."
+    )
+    return False
+
+
+def cmd_check(args: argparse.Namespace) -> None:
+    results = [_check_instruction_tree(args.session), _check_session_registered(args.session)]
+    if not all(results):
+        sys.exit(1)
 
 
 def cmd_orphans(args: argparse.Namespace) -> None:
@@ -50,10 +72,12 @@ def cmd_orphans(args: argparse.Namespace) -> None:
 
 
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
-    parser = subparsers.add_parser("health", help="Structural health checks over kb's own data")
+    parser = subparsers.add_parser("health", help="Health checks over kb's own data and its harness wiring")
     sub = parser.add_subparsers(dest="cmd", required=False)
 
-    p_check = sub.add_parser("check", help="Summary count of orphaned Instruction nodes (default)")
+    p_check = sub.add_parser(
+        "check", help="Run every check: Instruction tree root, agent session registration (default)"
+    )
     p_check.set_defaults(func=cmd_check)
 
     p_orphans = sub.add_parser("orphans", help="List orphaned Instruction nodes' ids and titles")

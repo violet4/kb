@@ -66,10 +66,10 @@ def test_soft_delete_and_purge(db_session: Session, no_agent_session: None) -> N
     todo.deleted_at = _now()
     db_session.commit()
     todo_id = todo.id
+    assert [a for a, *_ in _actions(db_session, todo_id)] == [JournalAction.CREATE, JournalAction.DELETE]
     db_session.delete(todo)
     db_session.commit()
-    actions = [a for a, *_ in _actions(db_session, todo_id)]
-    assert actions == [JournalAction.CREATE, JournalAction.DELETE, JournalAction.DELETE]
+    assert _actions(db_session, todo_id) == []
 
 
 def test_read_needs_an_agent_session(db_session: Session, no_agent_session: None) -> None:

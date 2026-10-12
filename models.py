@@ -27,6 +27,7 @@ from sqlalchemy import (
     UniqueConstraint,
     and_,
     create_engine,
+    delete,
     event,
     func,
     inspect,
@@ -526,8 +527,9 @@ class HasJournal:
 
     A change is one UPDATE row per changed column, holding old and new values as text. A
     many-to-one relationship assignment (todo.context = ...) is recorded under its foreign
-    key column, since that is what changed in the row. Setting deleted_at is a DELETE, and
-    removing the row outright is a DELETE noted "purged"."""
+    key column, since that is what changed in the row. Setting deleted_at is a DELETE. Removing
+    the row outright (purge) removes its whole journal too: a purged record was deliberately
+    erased, and its id can be reused by the next row, which must not inherit its history."""
 
     __tablename__: str
     id: Mapped[int]
@@ -996,8 +998,8 @@ def _journal_flush(session: Session, flush_context: UOWTransaction, instances: O
             session.add_all(_journal_changes(session, obj))
     for obj in list(session.deleted):
         if isinstance(obj, HasJournal):
-            session.add(
-                Journal(entity_type=type(obj).__name__, entity_id=obj.id, action=JournalAction.DELETE, note="purged")
+            session.connection().execute(
+                delete(Journal).where(Journal.entity_type == type(obj).__name__, Journal.entity_id == obj.id)
             )
 
 

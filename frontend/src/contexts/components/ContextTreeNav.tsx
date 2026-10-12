@@ -261,13 +261,19 @@ export default function ContextTreeNav({
   };
 
   // With sub-contexts excluded, a count is what's filed directly on the node, matching the page.
-  const displayCount = (n: ContextNode): number => {
+  // With sub-contexts excluded, an open node counts what's filed directly on it, matching
+  // the page; a collapsed node with children counts its whole subtree (shown in parentheses),
+  // so collapsing never hides that there is something inside.
+  const displayCount = (n: ContextNode, collapsedWithKids: boolean): { count: number; rolledUp: boolean } => {
+    const subtree = includeDescendants || collapsedWithKids;
     if (searchHits) {
-      if (includeDescendants) return searchTotals?.get(n.id) ?? 0;
-      return searchHits.filter((h) => h.context_ids.includes(n.id)).length;
+      const count = subtree
+        ? (searchTotals?.get(n.id) ?? 0)
+        : searchHits.filter((h) => h.context_ids.includes(n.id)).length;
+      return { count, rolledUp: subtree && !includeDescendants };
     }
-    if (includeDescendants) return index.subtreeTotal.get(n.id) ?? 0;
-    return n.counts.todos + n.counts.goals + n.counts.notes + n.counts.wishlist;
+    if (subtree) return { count: index.subtreeTotal.get(n.id) ?? 0, rolledUp: !includeDescendants };
+    return { count: n.counts.todos + n.counts.goals + n.counts.notes + n.counts.wishlist, rolledUp: false };
   };
 
   const renderLevel = (parent: number | null, depth: number) =>
@@ -277,7 +283,7 @@ export default function ContextTreeNav({
       // A drag keeps every row that was already open open, so visible targets stay put.
       const open = (filterVisible?.has(n.id) ?? false) || expanded.has(n.id);
       const revealed = recordDragging && !isNormallyShown(n); // shown only for this drag
-      const total = displayCount(n);
+      const { count: total, rolledUp } = displayCount(n, !open && kids.length > 0);
       const selected = n.id === selectedId;
       const isDropTarget = dropTarget === n.id;
       return (
@@ -341,7 +347,14 @@ export default function ContextTreeNav({
             >
               {n.name}
             </Link>
-            {total > 0 && <span style={{ color: tokens.color.textMuted, fontSize: 11 }}>{total}</span>}
+            {total > 0 && (
+              <span
+                style={{ color: tokens.color.textMuted, fontSize: 11 }}
+                title={rolledUp ? 'Includes sub-contexts; expand for per-context counts' : undefined}
+              >
+                {rolledUp ? `(${total})` : total}
+              </span>
+            )}
             <button
               className="context-row-add"
               onClick={() => startCreate(n.id)}

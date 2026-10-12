@@ -49,7 +49,7 @@ Replace `/path/to/kb-repo` with this repo's absolute path (e.g. `/home/user/kb`)
 
 ## mypy-check (harness-agnostic detector)
 
-See `kb hooks --help` / `kb_cli/hooks.py` for what this detects and what it says (points at `kb instructions show 20`, type-safety) — this section is only the Claude Code wiring: pipes a Bash command's combined stdout+stderr through on `PostToolUse`.
+See `kb hooks --help` / `kb_cli/hooks.py` for what this detects and what it says (points at `kb si show type-safety`) — this section is only the Claude Code wiring: pipes a Bash command's combined stdout+stderr through on `PostToolUse`.
 
 ```json
 {

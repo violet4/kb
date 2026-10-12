@@ -24,7 +24,7 @@ _MYPY_FAILURE_RE = re.compile(r"Found \d+ error")
 
 _MYPY_HINT = (
     "A mypy run just failed. Before reaching for cast() or another type-checker "
-    "workaround, run `kb instructions show 20` (type-safety) for the correct-fix "
+    "workaround, run `kb si show type-safety` for the correct-fix "
     "guidance -- a real narrowing construct (isinstance, TypeGuard, runtime assert), "
     "never cast()."
 )

@@ -2722,6 +2722,15 @@ class Timer(Base, HasContextOrTag):
 # ---------------------------------------------------------------------------
 
 
+def process_started_at(pid: int) -> Optional[datetime]:
+    """When the process currently holding `pid` started, or None if no process holds it. A
+    (pid, start time) pair identifies one process for its whole life; a pid alone does not."""
+    try:
+        return datetime.fromtimestamp(psutil.Process(pid).create_time(), timezone.utc)
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        return None
+
+
 class HarnessSessionStatus(enum.Enum):
     INFERRING = "inferring"
     IDLE = "idle"
@@ -2755,12 +2764,15 @@ class HarnessSession(Base):
     36-character string costs roughly ten times an integer per row and per index entry.
     by_harness_id() is the one lookup from the external id to the row.
 
-    Liveness is a pid check at read time (psutil.pid_exists(pid)) for kind == AGENT, not a
-    status flag here -- a crashed/killed process self-heals out of `kb sessions` output with no
-    de-registration hook required. Same-machine only for now (pid doesn't resolve across
-    hosts); revisit with a last_active_at-based heartbeat instead of/alongside pid if
-    cross-machine sessions (SSH, Remote Control) become a real use case -- not designed for
-    yet, deliberately. kind == HUMAN skips the pid check entirely -- see HarnessSessionKind.
+    Liveness for kind == AGENT is checked against the process at read time (is_alive()): a
+    process with this pid must exist and have started at process_started_at, since a pid alone
+    is reused by unrelated processes once the session's own process exits. A crashed or killed
+    process therefore drops out of `kb sessions` output with no de-registration hook. One
+    process can host several sessions in turn (`/clear` and `/resume` issue a new session id
+    in the same process), so register() ends every other open row for the same pid. ended_at
+    records the first time kb found a session ended, not the exact moment it ended; live()
+    stamps it, so each later read checks only the open rows. Same-machine only (a pid doesn't
+    resolve across hosts). kind == HUMAN skips the process check -- see HarnessSessionKind.
 
     status/last_active_at/last_response_at are populated only by hooks that actually observe
     those transitions (UserPromptSubmit -> INFERRING + bump last_active_at, Stop -> IDLE +
@@ -2797,6 +2809,10 @@ class HarnessSession(Base):
     listener_pid: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     last_active_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime(), nullable=True)
     last_response_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime(), nullable=True)
+    # Start time of the process at `pid` when it registered; None for HUMAN rows and for rows
+    # whose process had already exited or been reused when this column was added.
+    process_started_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime(), nullable=True)
+    ended_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime(), nullable=True)
 
     @classmethod
     def by_harness_id(cls, session: Session, harness_id: str) -> Optional[HarnessSession]:
@@ -2806,19 +2822,34 @@ class HarnessSession(Base):
     def register(
         cls, session: Session, harness_id: str, cwd: str, pid: int, title: Optional[str] = None
     ) -> HarnessSession:
-        """Called from a SessionStart hook. Upserts -- a resumed session reuses the same
-        harness session id, so this updates cwd/pid/title in place rather than erroring
-        on a duplicate key."""
-        existing = cls.by_harness_id(session, harness_id)
-        if existing is not None:
-            existing.cwd = cwd
-            existing.pid = pid
+        """Called from a SessionStart hook, which fires on startup, resume, and `/clear`.
+        Upserts -- a resumed session reuses the same harness session id, so this updates
+        cwd/pid/title in place and reopens it rather than erroring on a duplicate key. Ends
+        every other open AGENT row for the same pid: the process now hosts this session, so
+        any earlier session in it is over, and a row from an earlier process that held the
+        same pid is over too."""
+        now = _now()
+        row = cls.by_harness_id(session, harness_id)
+        if row is None:
+            row = cls(harness_id=harness_id, cwd=cwd, pid=pid, title=title)
+            session.add(row)
+        else:
+            row.cwd = cwd
+            row.pid = pid
             if title is not None:
-                existing.title = title
-            session.flush()
-            return existing
-        row = cls(harness_id=harness_id, cwd=cwd, pid=pid, title=title)
-        session.add(row)
+                row.title = title
+        row.process_started_at = process_started_at(pid)
+        row.ended_at = None
+        session.flush()
+        for other in session.scalars(
+            select(cls).where(
+                cls.kind == HarnessSessionKind.AGENT,
+                cls.pid == pid,
+                cls.ended_at.is_(None),
+                cls.id != row.id,
+            )
+        ):
+            other.ended_at = now
         session.flush()
         return row
 
@@ -2838,9 +2869,14 @@ class HarnessSession(Base):
         return row
 
     def is_alive(self) -> bool:
+        """For an AGENT row: not ended, and the process at `pid` is the one that registered
+        (same start time), not a later process that reused the pid."""
         if self.kind == HarnessSessionKind.HUMAN:
             return True
-        return psutil.pid_exists(self.pid)
+        if self.ended_at is not None or self.process_started_at is None:
+            return False
+        started = process_started_at(self.pid)
+        return started is not None and abs((started - self.process_started_at).total_seconds()) < 1
 
     def is_listening_live(self) -> bool:
         """is_listening, corrected for a listener process that died without clearing its own
@@ -2861,12 +2897,23 @@ class HarnessSession(Base):
         them: this method answers "which Claude Code sessions can I message/see the status
         of," a different question from "who can post in a Channel" (every messaging query
         that needs to include humans, e.g. Channel membership, goes through HarnessSession
-        directly or ChannelSubscription, never through this method)."""
-        return [
-            row
-            for row in session.scalars(select(cls).where(cls.kind == HarnessSessionKind.AGENT)).all()
-            if row.is_alive()
-        ]
+        directly or ChannelSubscription, never through this method).
+
+        Checks only open rows (ended_at unset) and stamps ended_at on each one it finds no
+        longer alive, so a session is checked against the process table until the first read
+        that finds it ended and never again. Flushes; the caller commits."""
+        live = []
+        now = _now()
+        open_rows = session.scalars(
+            select(cls).where(cls.kind == HarnessSessionKind.AGENT, cls.ended_at.is_(None))
+        ).all()
+        for row in open_rows:
+            if row.is_alive():
+                live.append(row)
+            else:
+                row.ended_at = now
+        session.flush()
+        return live
 
     @classmethod
     def stale_listeners(cls, session: Session) -> list[HarnessSession]:
@@ -2899,23 +2946,10 @@ class HarnessSession(Base):
     @classmethod
     def detached_listeners(cls, session: Session) -> list[HarnessSession]:
         """Every row whose listener is genuinely alive (is_listening_live() True) but whose
-        own `pid` (the harness process, not listener_pid) has since gone on to register a
-        *different*, more recently active HarnessSession row -- a `kb sessions listen` process
-        that outlived the specific harness *session* that spawned it, even though the
-        underlying OS process (`pid`) is still very much alive.
-
-        Deliberately not `not row.is_alive()` (bare pid liveness) -- confirmed live 2026-08-17
-        (kb Note #163's follow-up) that this undercounts: `/clear` resets a Claude Code
-        session's transcript and gets issued a brand-new session id (CLAUDE_CODE_SESSION_ID
-        is fixed per-process, harness.py:current_session_id() reflects whatever id is current,
-        but the *old* id's HarnessSession row and its background `kb sessions listen` task are
-        never torn down), all while the OS process backing `pid` keeps right on running under
-        the new id. Three real rows were found sharing one pid this way. row.is_alive() reports
-        True for all of them, including the two stale ones -- pid liveness alone can't tell
-        "this is still my current session" from "this pid moved on to a newer session and I'm
-        an abandoned leftover". The real signal is relative: is there another row for the same
-        pid with a strictly later last_active_at -- if so, this row's session has been
-        superseded and its listener (if still running) is an orphan even though `pid` resolves.
+        own session is not (is_alive() False) -- a `kb sessions listen` process that outlived
+        the harness session that spawned it. The harness process itself may still be running
+        under a newer session: `/clear` issues a new session id in the same process, and
+        register() ends the old row while its background listener keeps polling.
 
         Distinct from stale_listeners(): that method covers a listener that already died
         without clearing its own flag (DB bookkeeping wrong, no live process to worry about).
@@ -2927,27 +2961,10 @@ class HarnessSession(Base):
         automatically. Unlike clear_stale_listeners() though, correcting this case requires
         actually killing listener_pid, not just fixing the DB row -- see
         kill_detached_listeners()."""
-        listening = [
-            row
-            for row in session.scalars(select(cls).where(cls.is_listening.is_(True))).all()
-            if row.is_listening_live()
-        ]
-        if not listening:
-            return []
-        pids = {row.pid for row in listening}
-        latest_active_by_pid: dict[int, datetime] = {}
-        for row in session.scalars(select(cls).where(cls.pid.in_(pids))).all():
-            if row.last_active_at is None:
-                continue
-            current = latest_active_by_pid.get(row.pid)
-            if current is None or row.last_active_at > current:
-                latest_active_by_pid[row.pid] = row.last_active_at
         return [
             row
-            for row in listening
-            if row.last_active_at is not None
-            and row.pid in latest_active_by_pid
-            and row.last_active_at < latest_active_by_pid[row.pid]
+            for row in session.scalars(select(cls).where(cls.is_listening.is_(True))).all()
+            if row.is_listening_live() and not row.is_alive()
         ]
 
     @classmethod

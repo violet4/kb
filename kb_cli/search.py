@@ -48,6 +48,7 @@ ALL_SEARCHABLE: tuple[Any, ...] = (
     Wishlist,
     Instruction,
     Idea,
+    Note,
     Context,
     Daily,
     Event,
@@ -284,17 +285,60 @@ SEMANTIC_SEARCHABLE: tuple[type[HasEmbedding], ...] = (
 )
 
 
-def _rank_and_print(scored: list[tuple[Any, float]], limit: int, truncate: bool = True) -> None:
-    # De-dupe: the same row can surface via both the substring pass and a semantic pass --
-    # keep the best (lowest-distance, i.e. substring) scoring of the two.
+def rank(scored: list[tuple[Any, float]], limit: int) -> list[tuple[Any, float]]:
+    """De-dupe (a row can surface via both the substring pass and a semantic pass -- keep
+    its best, i.e. lowest-distance, score), sort ascending by distance so substring hits
+    (_SUBSTRING_DIST) lead, and keep the first `limit`."""
     best: dict[tuple[type, int], tuple[Any, float]] = {}
     for item, dist in scored:
         key = (type(item), item.id)
         if key not in best or dist < best[key][1]:
             best[key] = (item, dist)
+    return sorted(best.values(), key=lambda pair: pair[1])[:limit]
 
-    ranked = sorted(best.values(), key=lambda pair: pair[1])[:limit]
 
+# Semantic hits farther than this cosine distance are dropped. With the default embedding
+# model, relevant hits sit at <=0.68, a nonsense query's nearest row is ~0.68, and
+# near-duplicate rows form a floor at ~0.70 (verified 2026-10-11).
+MAX_SEMANTIC_DIST = 0.68
+
+
+def search_all(
+    session: Session,
+    query: str,
+    limit: int,
+    context: Optional[Context] = None,
+    include_done: bool = False,
+    since: Optional[datetime] = None,
+    max_dist: Optional[float] = MAX_SEMANTIC_DIST,
+) -> list[tuple[Any, float]]:
+    """The top-level `kb search` (also the web UI's): every substring match over
+    ALL_SEARCHABLE, plus each SEMANTIC_SEARCHABLE model's `limit` nearest rows within
+    `max_dist` cosine distance (None: no cutoff), merged by `rank` down to `limit` total."""
+    import struct
+
+    from embed import embed
+
+    substring_hits = search_entities(
+        session, ALL_SEARCHABLE, query, include_done=include_done, context=context, since=since
+    )
+    scored: list[tuple[Any, float]] = [(item, _SUBSTRING_DIST) for item in substring_hits]
+
+    # Embed the query once and reuse the vector across every semantic search below,
+    # rather than each one calling embed() independently for identical text.
+    raw = embed(query)
+    vec = struct.pack(f"{len(raw)}f", *raw)
+    for model in SEMANTIC_SEARCHABLE:
+        hits = _semantic_hits(model, session, query, limit, context, vec, include_done, since)
+        scored.extend(hit for hit in hits if max_dist is None or hit[1] <= max_dist)
+    return rank(scored, limit)
+
+
+def _rank_and_print(scored: list[tuple[Any, float]], limit: int, truncate: bool = True) -> None:
+    _print_ranked(rank(scored, limit), truncate)
+
+
+def _print_ranked(ranked: list[tuple[Any, float]], truncate: bool = True) -> None:
     if not ranked:
         print("No matches.")
         return
@@ -338,29 +382,9 @@ def cmd_search_one(args: argparse.Namespace) -> None:
 
 
 def _run_one_search(args: argparse.Namespace, query: str) -> None:
-    include_done = args.all
-    context = _scope(args)
-    limit = args.limit
     since = parse_since(args.since) if getattr(args, "since", None) else None
-
-    substring_hits = search_entities(
-        args.session, ALL_SEARCHABLE, query, include_done=include_done, context=context, since=since
-    )
-    scored: list[tuple[Any, float]] = [(item, _SUBSTRING_DIST) for item in substring_hits]
-
-    # Embed the query once and reuse the vector across every semantic search below,
-    # rather than each one calling embed() independently for identical text.
-    import struct
-
-    from embed import embed
-
-    raw = embed(query)
-    vec = struct.pack(f"{len(raw)}f", *raw)
-
-    for model in SEMANTIC_SEARCHABLE:
-        scored.extend(_semantic_hits(model, args.session, query, limit, context, vec, include_done, since))
-
-    _rank_and_print(scored, limit)
+    max_dist = None if args.max_dist < 0 else args.max_dist
+    _print_ranked(search_all(args.session, query, args.limit, _scope(args), args.all, since, max_dist))
 
 
 def cmd_search_all(args: argparse.Namespace) -> None:
@@ -396,6 +420,12 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         default=10,
         help="Max results across all entities combined, ranked by score (substring matches rank first, "
         "then semantic matches by ascending distance)",
+    )
+    parser.add_argument(
+        "--max-dist",
+        type=float,
+        default=MAX_SEMANTIC_DIST,
+        help=f"Drop semantic matches farther than this cosine distance (default {MAX_SEMANTIC_DIST}; -1 for no cutoff)",
     )
     parser.add_argument(
         "--since",

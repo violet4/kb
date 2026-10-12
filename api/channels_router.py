@@ -67,7 +67,7 @@ async def list_channels(display_name: str, session: Session = Depends(get_sessio
             ChannelSummaryOut(
                 channel_id=channel_id,
                 kind="dm",
-                agent_session_id=agent.id,
+                agent_session_id=agent.harness_id,
                 agent_title=agent.title or "",
                 agent_cwd=agent.cwd,
                 last_message_at=_latest_message_at(session, channel_id) if channel_id is not None else None,
@@ -108,19 +108,11 @@ async def get_channel_messages(
     if session.get(Channel, channel_id) is None:
         raise HTTPException(status_code=404, detail=f"No channel with id {channel_id}")
     messages = ChannelMessage.history(session, channel_id, before_id=before_id, limit=limit)
-    senders = {
-        row.id: row
-        for row in session.scalars(
-            select(HarnessSession).where(HarnessSession.id.in_({m.from_session for m in messages}))
-        )
-    }
     return [
         ChannelMessageOut(
             id=m.id,
-            from_session=m.from_session,
-            from_title=(
-                (senders[m.from_session].title or m.from_session) if m.from_session in senders else m.from_session
-            ),
+            from_session=m.sender.harness_id,
+            from_title=m.sender.title or m.sender.harness_id,
             body=m.body,
             created_at=m.created_at.isoformat(),
         )
@@ -142,7 +134,7 @@ async def send_dm(payload: SendDmIn, session: Session = Depends(get_session)) ->
     loaded but has since exited still succeeds, matching cmd_send's own "not blocked" behavior
     for a no-longer-live recipient."""
     human = HarnessSession.get_or_create_human(session, payload.display_name)
-    agent = session.get(HarnessSession, payload.agent_session_id)
+    agent = HarnessSession.by_harness_id(session, payload.agent_session_id)
     if agent is None:
         raise HTTPException(status_code=404, detail=f"No session with id {payload.agent_session_id!r}")
     channel = Channel.find_or_create_dm(session, human.id, agent.id)
@@ -150,7 +142,7 @@ async def send_dm(payload: SendDmIn, session: Session = Depends(get_session)) ->
     session.commit()
     return ChannelMessageOut(
         id=msg.id,
-        from_session=human.id,
+        from_session=human.harness_id,
         from_title=payload.display_name,
         body=msg.body,
         created_at=msg.created_at.isoformat(),
@@ -183,7 +175,7 @@ async def send_to_named_channel(
     session.commit()
     return ChannelMessageOut(
         id=msg.id,
-        from_session=human.id,
+        from_session=human.harness_id,
         from_title=payload.display_name,
         body=msg.body,
         created_at=msg.created_at.isoformat(),

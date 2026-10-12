@@ -451,16 +451,17 @@ def cmd_session_inbox_check(args: argparse.Namespace) -> None:
     session_id = current_session_id()
     if not session_id:
         return
-    row = args.session.get(HarnessSession, session_id)
-    if row is not None:
-        row.status = HarnessSessionStatus.INFERRING
-        row.last_active_at = _now()
-        args.session.commit()
-    messages = ChannelMessage.unread(args.session, session_id)
-    lines = [f"New message from session {msg.from_session}:\n  {msg.body}" for msg in messages]
+    row = HarnessSession.by_harness_id(args.session, session_id)
+    if row is None:
+        return
+    row.status = HarnessSessionStatus.INFERRING
+    row.last_active_at = _now()
+    args.session.commit()
+    messages = ChannelMessage.unread(args.session, row.id)
+    lines = [f"New message from session {msg.sender.harness_id}:\n  {msg.body}" for msg in messages]
     channel_ids = {msg.channel_id for msg in messages}
     for channel_id in channel_ids:
-        ChannelRead.record(args.session, channel_id=channel_id, session_id=session_id)
+        ChannelRead.record(args.session, channel_id=channel_id, session_id=row.id)
     if messages:
         args.session.commit()
 
@@ -479,7 +480,7 @@ def cmd_session_stop(args: argparse.Namespace) -> None:
     session_id = current_session_id()
     if not session_id:
         return
-    row = args.session.get(HarnessSession, session_id)
+    row = HarnessSession.by_harness_id(args.session, session_id)
     if row is None:
         return
     row.status = HarnessSessionStatus.IDLE

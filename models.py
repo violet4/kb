@@ -2506,10 +2506,12 @@ class HarnessSession(Base):
     discovery/messaging -- see Goal #46. Named HarnessSession, not Session, since SQLAlchemy's
     own Session class is already imported under that name throughout this file.
 
-    id is the harness's own session id (harness.py:current_session_id()), not a surrogate --
-    it's already globally unique and is exactly what ChannelMessage.from_session and
-    ChannelSubscription.session_id need to reference, the same way source_ref (LogEntry) reuses
-    it as a plain string rather than inventing a second id space.
+    harness_id is the harness's own session id (harness.py:current_session_id(), a UUID for
+    Claude Code), the identifier every external surface uses: CLI arguments, API payloads,
+    transcript filenames. id is an integer surrogate that every other table references
+    instead, since a session id is repeated on every row that points at a session and a
+    36-character string costs roughly ten times an integer per row and per index entry.
+    by_harness_id() is the one lookup from the external id to the row.
 
     Liveness is a pid check at read time (psutil.pid_exists(pid)) for kind == AGENT, not a
     status flag here -- a crashed/killed process self-heals out of `kb sessions` output with no
@@ -2534,7 +2536,8 @@ class HarnessSession(Base):
 
     __tablename__ = "harness_session"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    harness_id: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     cwd: Mapped[str] = mapped_column(String, nullable=False)
     title: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     pid: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -2554,13 +2557,17 @@ class HarnessSession(Base):
     last_response_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime(), nullable=True)
 
     @classmethod
+    def by_harness_id(cls, session: Session, harness_id: str) -> Optional[HarnessSession]:
+        return session.scalars(select(cls).where(cls.harness_id == harness_id)).first()
+
+    @classmethod
     def register(
-        cls, session: Session, session_id: str, cwd: str, pid: int, title: Optional[str] = None
+        cls, session: Session, harness_id: str, cwd: str, pid: int, title: Optional[str] = None
     ) -> HarnessSession:
         """Called from a SessionStart hook. Upserts -- a resumed session reuses the same
         harness session id, so this updates cwd/pid/title in place rather than erroring
-        on a duplicate PK."""
-        existing = session.get(cls, session_id)
+        on a duplicate key."""
+        existing = cls.by_harness_id(session, harness_id)
         if existing is not None:
             existing.cwd = cwd
             existing.pid = pid
@@ -2568,22 +2575,22 @@ class HarnessSession(Base):
                 existing.title = title
             session.flush()
             return existing
-        row = cls(id=session_id, cwd=cwd, pid=pid, title=title)
+        row = cls(harness_id=harness_id, cwd=cwd, pid=pid, title=title)
         session.add(row)
         session.flush()
         return row
 
     @classmethod
     def get_or_create_human(cls, session: Session, display_name: str) -> HarnessSession:
-        """One HarnessSession row per distinct human display name -- id is a stable
+        """One HarnessSession row per distinct human display name -- harness_id is a stable
         "human:<display_name>" string (its own id namespace, never collides with a harness's
         own session id) so the same person sending from the web UI under an unchanged display
         name always resolves to the same row rather than growing a new one per message."""
-        session_id = f"human:{display_name}"
-        existing = session.get(cls, session_id)
+        harness_id = f"human:{display_name}"
+        existing = cls.by_harness_id(session, harness_id)
         if existing is not None:
             return existing
-        row = cls(id=session_id, cwd="", pid=0, title=display_name, kind=HarnessSessionKind.HUMAN)
+        row = cls(harness_id=harness_id, cwd="", pid=0, title=display_name, kind=HarnessSessionKind.HUMAN)
         session.add(row)
         session.flush()
         return row
@@ -2740,7 +2747,7 @@ class HarnessSession(Base):
 
     def __repr__(self) -> str:
         listening_str = " listening" if self.is_listening else ""
-        return f"<HarnessSession {self.id[:8]} [{self.status.value}]{listening_str} cwd={self.cwd!r}>"
+        return f"<HarnessSession {self.harness_id[:8]} [{self.status.value}]{listening_str} cwd={self.cwd!r}>"
 
 
 class TranscriptCache(Base):
@@ -2836,7 +2843,7 @@ class Channel(Base):
         return row
 
     @classmethod
-    def find_dm(cls, session: Session, a: str, b: str) -> Optional[Channel]:
+    def find_dm(cls, session: Session, a: int, b: int) -> Optional[Channel]:
         """A DM is a nameless Channel whose subscriber set is exactly {a, b} -- found by
         looking for a nameless channel both are subscribed to with no third subscriber, not by
         any stored pairing key, since ChannelSubscription is already the one source of truth
@@ -2857,7 +2864,7 @@ class Channel(Base):
         return None
 
     @classmethod
-    def find_or_create_dm(cls, session: Session, a: str, b: str) -> Channel:
+    def find_or_create_dm(cls, session: Session, a: int, b: int) -> Channel:
         """Creates the channel and subscribes both sessions if find_dm finds none yet."""
         existing = cls.find_dm(session, a, b)
         if existing is not None:
@@ -2886,11 +2893,11 @@ class ChannelSubscription(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     channel_id: Mapped[int] = mapped_column(Integer, ForeignKey("channel.id"), nullable=False)
-    session_id: Mapped[str] = mapped_column(String, ForeignKey("harness_session.id"), nullable=False)
+    session_id: Mapped[int] = mapped_column(Integer, ForeignKey("harness_session.id"), nullable=False)
     subscribed_at: Mapped[datetime] = mapped_column(UtcDateTime(), nullable=False, default=_now)
 
     @classmethod
-    def subscribe(cls, session: Session, channel_id: int, session_id: str) -> ChannelSubscription:
+    def subscribe(cls, session: Session, channel_id: int, session_id: int) -> ChannelSubscription:
         existing = session.scalars(
             select(cls).where(cls.channel_id == channel_id, cls.session_id == session_id)
         ).first()
@@ -2914,11 +2921,13 @@ class ChannelMessage(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     channel_id: Mapped[int] = mapped_column(Integer, ForeignKey("channel.id"), nullable=False)
-    from_session: Mapped[str] = mapped_column(String, ForeignKey("harness_session.id"), nullable=False)
+    from_session: Mapped[int] = mapped_column(Integer, ForeignKey("harness_session.id"), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
 
+    sender: Mapped[HarnessSession] = relationship("HarnessSession")
+
     @classmethod
-    def post(cls, session: Session, channel_id: int, from_session: str, body: str) -> ChannelMessage:
+    def post(cls, session: Session, channel_id: int, from_session: int, body: str) -> ChannelMessage:
         msg = cls(channel_id=channel_id, from_session=from_session, body=body)
         session.add(msg)
         session.flush()
@@ -2941,7 +2950,7 @@ class ChannelMessage(Base):
         return list(rows)
 
     @classmethod
-    def unread(cls, session: Session, session_id: str, channel_id: Optional[int] = None) -> Sequence[ChannelMessage]:
+    def unread(cls, session: Session, session_id: int, channel_id: Optional[int] = None) -> Sequence[ChannelMessage]:
         """Messages in channels session_id is subscribed to, with id greater than that
         session's own read cursor for that channel (MAX(up_to_message_id) across its
         ChannelRead rows for the channel, or 0/all if it has never read that channel), bounded
@@ -2975,7 +2984,7 @@ class ChannelMessage(Base):
         ).all()
 
     def __repr__(self) -> str:
-        return f"<ChannelMessage #{self.id} channel={self.channel_id} from={self.from_session}>"
+        return f"<ChannelMessage #{self.id} channel={self.channel_id} from={self.sender.harness_id}>"
 
 
 class ChannelRead(Base):
@@ -2993,12 +3002,12 @@ class ChannelRead(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     channel_id: Mapped[int] = mapped_column(Integer, ForeignKey("channel.id"), nullable=False)
-    session_id: Mapped[str] = mapped_column(String, ForeignKey("harness_session.id"), nullable=False)
+    session_id: Mapped[int] = mapped_column(Integer, ForeignKey("harness_session.id"), nullable=False)
     read_at: Mapped[datetime] = mapped_column(UtcDateTime(), nullable=False, default=_now)
     up_to_message_id: Mapped[int] = mapped_column(Integer, ForeignKey("channel_message.id"), nullable=False)
 
     @classmethod
-    def record(cls, session: Session, channel_id: int, session_id: str) -> Optional[ChannelRead]:
+    def record(cls, session: Session, channel_id: int, session_id: int) -> Optional[ChannelRead]:
         """Writes one ChannelRead row pinned to the channel's true current max message id.
         Returns None (writes nothing) if the channel has no messages at all yet -- there is no
         meaningful up_to_message_id to record."""

@@ -65,7 +65,7 @@ def _humanize_age(delta_seconds: float) -> str:
     return f"{days}d"
 
 
-def _last_message_at(session: Session, session_id: str) -> Optional[datetime]:
+def _last_message_at(session: Session, session_id: int) -> Optional[datetime]:
     """Most recent ChannelMessage either sent by session_id or posted into any channel it
     subscribes to -- covers both directions (something it said, something it was told)
     rather than only inbound mail, since "time since most recent message" should reflect
@@ -136,12 +136,19 @@ def _session_info(path: Path) -> Optional[dict[str, Any]]:
     return {"title": resolved_title, "message_count": message_count}
 
 
-def _require_session_id() -> str:
-    session_id = current_session_id()
-    if not session_id:
+def _require_self(session: Session) -> HarnessSession:
+    """This process's own registered session row, or exit with the reason there is none."""
+    harness_id = current_session_id()
+    if not harness_id:
         print("kb sessions: no harness session ID detected (current_session_id() returned None)")
         raise SystemExit(1)
-    return session_id
+    row = HarnessSession.by_harness_id(session, harness_id)
+    if row is None:
+        print(
+            f"kb sessions: session {harness_id} is not registered -- run `kb hooks session-register` once, then retry"
+        )
+        raise SystemExit(1)
+    return row
 
 
 def _find_claude_ancestor_pid() -> int:
@@ -176,11 +183,11 @@ def cmd_register(args: argparse.Namespace) -> None:
         session_id = current_session_id() or ""
     if not session_id:
         return
-    HarnessSession.register(
+    row = HarnessSession.register(
         args.session, session_id, cwd=os.getcwd(), pid=_find_claude_ancestor_pid(), title=args.title
     )
     broadcast = Channel.get_or_create_named(args.session, _BROADCAST_CHANNEL_NAME)
-    ChannelSubscription.subscribe(args.session, channel_id=broadcast.id, session_id=session_id)
+    ChannelSubscription.subscribe(args.session, channel_id=broadcast.id, session_id=row.id)
     args.session.commit()
 
 
@@ -201,7 +208,7 @@ def refresh_agent_title(session: Session, agent: HarnessSession) -> None:
     path in the whole module; the cache makes a poll against an unchanged transcript (the
     overwhelmingly common case -- most polls land between two user messages) a cheap
     mtime-stat, not a full re-scan."""
-    path = find_session_transcript_path(agent.id)
+    path = find_session_transcript_path(agent.harness_id)
     if path is None:
         return
     cached = TranscriptCache.get_or_refresh(session, path)
@@ -253,8 +260,8 @@ def list_live_sessions(session: Session) -> tuple[list[LiveSessionInfo], int]:
         last_message_seconds = (now - last_msg_at).total_seconds() if last_msg_at is not None else None
         infos.append(
             LiveSessionInfo(
-                id=row.id,
-                is_self=row.id == self_id,
+                id=row.harness_id,
+                is_self=row.harness_id == self_id,
                 status=row.status.value,
                 listening=listening,
                 age_seconds=age_seconds,
@@ -611,17 +618,17 @@ def cmd_send(args: argparse.Namespace) -> None:
     the question directly instead of waiting on that session to answer. A truly unregistered
     session id (no HarnessSession row at all, e.g. a typo) is refused outright -- that's not
     "will never read it," it's "this id was never a real session.\" """
-    from_session = _require_session_id()
-    recipient = args.session.get(HarnessSession, args.to)
+    sender = _require_self(args.session)
+    recipient = HarnessSession.by_harness_id(args.session, args.to)
     if recipient is None:
         print(f"kb sessions send: {args.to!r} is not a known session id (see `kb sessions list`)")
         raise SystemExit(1)
-    channel = Channel.find_or_create_dm(args.session, from_session, args.to)
+    channel = Channel.find_or_create_dm(args.session, sender.id, recipient.id)
     msg = ChannelMessage.post(
-        args.session, channel_id=channel.id, from_session=from_session, body=resolve_text_arg(args.body)
+        args.session, channel_id=channel.id, from_session=sender.id, body=resolve_text_arg(args.body)
     )
     args.session.commit()
-    print(f"<ChannelMessage #{msg.id} {from_session}->{args.to}>")
+    print(f"<ChannelMessage #{msg.id} {sender.harness_id}->{args.to}>")
 
     if not recipient.is_alive():
         print(
@@ -640,14 +647,14 @@ def cmd_broadcast(args: argparse.Namespace) -> None:
     --dry-run prints exactly who would receive it (the live, subscribed session list) without
     writing anything -- added after a live mistake where a broadcast meant as a test of the
     feature itself was sent for real and reached every other session unintentionally."""
-    from_session = _require_session_id()
+    sender = _require_self(args.session)
     broadcast = Channel.get_or_create_named(args.session, _BROADCAST_CHANNEL_NAME)
     subscriber_ids = set(
         args.session.scalars(
             select(ChannelSubscription.session_id).where(ChannelSubscription.channel_id == broadcast.id)
         ).all()
     )
-    live = [row for row in HarnessSession.live(args.session) if row.id != from_session and row.id in subscriber_ids]
+    live = [row for row in HarnessSession.live(args.session) if row.id != sender.id and row.id in subscriber_ids]
     if not live:
         print("kb sessions broadcast: no other live sessions to send to.")
         return
@@ -655,15 +662,15 @@ def cmd_broadcast(args: argparse.Namespace) -> None:
     if args.dry_run:
         print(f"kb sessions broadcast --dry-run: would send to {len(live)} session(s), nothing sent:")
         for row in live:
-            print(f"  {row.id}  ({row.cwd})")
+            print(f"  {row.harness_id}  ({row.cwd})")
         print(f"Body: {body}")
         return
-    msg = ChannelMessage.post(args.session, channel_id=broadcast.id, from_session=from_session, body=body)
+    msg = ChannelMessage.post(args.session, channel_id=broadcast.id, from_session=sender.id, body=body)
     args.session.commit()
-    print(f"<ChannelMessage #{msg.id} {from_session}->[broadcast]>")
+    print(f"<ChannelMessage #{msg.id} {sender.harness_id}->[broadcast]>")
     print(f"Delivered to {len(live)} live session(s):")
     for row in live:
-        print(f"  {row.id}  ({row.cwd})")
+        print(f"  {row.harness_id}  ({row.cwd})")
 
 
 def _channel_tag(session: Session, channel_id: int) -> str:
@@ -680,10 +687,8 @@ def cmd_inbox(args: argparse.Namespace) -> None:
     UserPromptSubmit hook adapter (see kb Goal #46 Layer 1) -- unread messages are printed and
     a ChannelRead row is recorded per affected channel in the same call, matching this design's
     read-event-log state (no separate archive/dismiss step)."""
-    to_session = _require_session_id()
-    messages = (
-        ChannelMessage.unread(args.session, to_session) if not args.all else _all_messages(args.session, to_session)
-    )
+    me = _require_self(args.session)
+    messages = ChannelMessage.unread(args.session, me.id) if not args.all else _all_messages(args.session, me.id)
     if not messages:
         if not args.quiet:
             print("No new messages.")
@@ -691,15 +696,15 @@ def cmd_inbox(args: argparse.Namespace) -> None:
     channel_ids = set()
     for msg in messages:
         tag = _channel_tag(args.session, msg.channel_id)
-        print(f"From {msg.from_session} at {msg.created_at.isoformat()}:\n  {tag}{msg.body}\n")
+        print(f"From {msg.sender.harness_id} at {msg.created_at.isoformat()}:\n  {tag}{msg.body}\n")
         channel_ids.add(msg.channel_id)
     if not args.all:
         for channel_id in channel_ids:
-            ChannelRead.record(args.session, channel_id=channel_id, session_id=to_session)
+            ChannelRead.record(args.session, channel_id=channel_id, session_id=me.id)
     args.session.commit()
 
 
-def _all_messages(session: Session, to_session: str) -> Sequence[ChannelMessage]:
+def _all_messages(session: Session, to_session: int) -> Sequence[ChannelMessage]:
     """--all support: every message (read or not) in every channel to_session is subscribed
     to, newest-filtering-agnostic -- unlike ChannelMessage.unread this ignores read cursors
     entirely, matching the old --all's "show everything, mark nothing" behavior."""
@@ -725,7 +730,8 @@ def cmd_listen(args: argparse.Namespace) -> None:
     in an idle session. Sets is_listening while running and clears it on the way out
     (including on an unhandled exception), so a killed listener never leaves a stale
     "listening" status behind."""
-    to_session = _require_session_id()
+    row = _require_self(args.session)
+    to_session = row.harness_id
     # Sweep detached listeners (orphaned by a harness that exited without tearing down its
     # background `kb sessions listen` task -- e.g. /clear, terminal closed) before doing
     # anything else, so a fresh listener starting up is also the point that cleans up after
@@ -736,16 +742,8 @@ def cmd_listen(args: argparse.Namespace) -> None:
     killed = HarnessSession.kill_detached_listeners(args.session)
     if killed:
         args.session.commit()
-        for row, pid in killed:
-            print(f"kb sessions listen: cleaned up detached listener for session {row.id} (was pid {pid})")
-    row = args.session.get(HarnessSession, to_session)
-    if row is None:
-        print(
-            f"kb sessions listen: session {to_session} is not registered -- run `kb hooks session-register` "
-            "once (covers a session that started before the SessionStart hook existed, or any other reason "
-            "registration didn't happen), then retry"
-        )
-        raise SystemExit(1)
+        for detached, pid in killed:
+            print(f"kb sessions listen: cleaned up detached listener for session {detached.harness_id} (was pid {pid})")
     if row.is_listening_live():
         # Refuse rather than try to kill the existing one -- a run_in_background shell is
         # entirely local to the harness session that started it, with no pid or handle
@@ -798,7 +796,7 @@ def cmd_listen(args: argparse.Namespace) -> None:
     sys.stdout.flush()
     try:
         while True:
-            messages = ChannelMessage.unread(args.session, to_session)
+            messages = ChannelMessage.unread(args.session, row.id)
             if messages:
                 # Deliberately not calling ChannelRead.record() here -- this print is a best-effort
                 # preview whose actual delivery into the agent's context depends on the harness
@@ -815,13 +813,13 @@ def cmd_listen(args: argparse.Namespace) -> None:
                     if len(body) > _LISTEN_PREVIEW_CHARS:
                         preview = body[:_LISTEN_PREVIEW_CHARS] + "..."
                         print(
-                            f"From {msg.from_session} at {msg.created_at.isoformat()} "
+                            f"From {msg.sender.harness_id} at {msg.created_at.isoformat()} "
                             f"({len(body)} chars):\n  {tag}{preview}\n"
                             f"  (run `kb sessions inbox` to see the full message)\n"
                         )
                     else:
                         print(
-                            f"From {msg.from_session} at {msg.created_at.isoformat()} "
+                            f"From {msg.sender.harness_id} at {msg.created_at.isoformat()} "
                             f"({len(body)} chars):\n  {tag}{body}\n"
                         )
                 # stdout is fully buffered (not line-buffered) once it's not a TTY, which is
@@ -850,7 +848,7 @@ def cmd_cleanup(args: argparse.Namespace) -> None:
         print("No stale listener flags found.")
         return
     for row in cleared:
-        print(f"Cleared stale listener flag: session {row.id} (cwd={row.cwd!r})")
+        print(f"Cleared stale listener flag: session {row.harness_id} (cwd={row.cwd!r})")
 
 
 def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:

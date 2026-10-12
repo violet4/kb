@@ -223,6 +223,17 @@ def children_of(node_id: str) -> list[SiNode]:
     return [by_id[cid] for cid in sorted(child_ids) if cid in by_id]
 
 
+def unexpanded_children(expanded_ids: set[str]) -> list[SiNode]:
+    """Every node whose parent is in expanded_ids but which is not itself expanded, in id
+    order: the next level of the tree a reader who has opened expanded_ids can reach."""
+    child_ids = {
+        e.to_id
+        for e in load_graph()
+        if e.relation == _PARENT_RELATION and e.from_id in expanded_ids and e.to_id not in expanded_ids
+    }
+    return [n for n in list_nodes() if n.id in child_ids]
+
+
 def parent_of(node_id: str) -> Optional[SiNode]:
     edges = [e for e in load_graph() if e.relation == _PARENT_RELATION and e.to_id == node_id]
     if not edges:

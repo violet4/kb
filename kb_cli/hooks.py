@@ -20,6 +20,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from sqlalchemy.orm import Session
+
 _MYPY_FAILURE_RE = re.compile(r"Found \d+ error")
 
 _MYPY_HINT = (
@@ -275,6 +277,35 @@ _TREE_REMINDER = (
     "e.g. `kb si show engineering code-level-implementation`."
 )
 
+_TREE_FRONTIER_REMINDER = (
+    "Unopened children of the Instruction-tree nodes this session has read: {titles}. "
+    "Open (`kb si show TITLE`) any that bears on what you're about to do now."
+)
+
+
+def _tree_reminder_text(session: Session) -> str:
+    """The frontier of the system instruction tree for this agent session: the titles of
+    every node whose parent the session has read with `kb si show` and which it has not read
+    itself. Titles only, since each child's trigger is already in context from its parent's
+    `show` output. Falls back to the generic reminder when no session is detectable or the
+    session has not read the root yet, and is empty once every reachable node is read."""
+    from harness import current_session_id
+    from kb_cli import si_files
+    from models import HarnessSession, Journal
+
+    harness_id = current_session_id()
+    row = HarnessSession.by_harness_id(session, harness_id) if harness_id else None
+    if row is None:
+        return _TREE_REMINDER
+    read = {f"{entity_id:04d}" for entity_id in Journal.read_ids(session, "SiNode", row.id)}
+    root = si_files.resolve("root")
+    if root is None or root.id not in read:
+        return _TREE_REMINDER
+    frontier = si_files.unexpanded_children(read)
+    if not frontier:
+        return ""
+    return _TREE_FRONTIER_REMINDER.format(titles=", ".join(node.title for node in frontier))
+
 
 _ARCHIVE_REMINDER = (
     "A web search/fetch just ran. If anything in the results actually panned out as useful or worth keeping "
@@ -298,12 +329,13 @@ _LAST_ACTIVITY_FILE = Path("/dev/shm/kb-last-activity")
 
 
 def cmd_tree_reminder(args: argparse.Namespace) -> None:
-    """Unconditional -- always prints the same short reminder, no stdin/detection needed.
-    Deterministic backstop for kb Goal #23's finding that per-node triggers don't reliably
-    fire mid-task from root's own wording alone (root is read once, at the first tool call
-    of a session, with no built-in re-entry point when a new sub-situation arises later).
-    Kept to one line by design: Goal #23's Journal explicitly rejected a longer per-topic
-    checklist as too costly to inject before every single response.
+    """Prints, on every prompt, the titles of the instruction-tree nodes this session can
+    reach but has not opened (see _tree_reminder_text), plus the current time. Deterministic
+    backstop for kb Goal #23's finding that per-node triggers don't reliably fire mid-task
+    from root's own wording alone (root is read once, at the first tool call of a session,
+    with no built-in re-entry point when a new sub-situation arises later). Listing only the
+    unopened frontier, by title, keeps it to a few hundred bytes: Goal #23's Journal rejected
+    the full per-topic checklist as too costly to inject before every single response.
 
     Also stamps _LAST_ACTIVITY_FILE with the current time on every call -- since this fires
     on every UserPromptSubmit across every session (not just one), it's the natural shared
@@ -311,7 +343,8 @@ def cmd_tree_reminder(args: argparse.Namespace) -> None:
     own."""
     _LAST_ACTIVITY_FILE.write_text(str(time.time()))
     timestamp = datetime.now().astimezone().isoformat(timespec="seconds")
-    print(f"{_TREE_REMINDER} [{timestamp}]")
+    text = _tree_reminder_text(args.session)
+    print(f"{text} [{timestamp}]" if text else f"[{timestamp}]")
 
 
 _DAILY_CHECK_LOCK = Path("/dev/shm/kb-daily-check.lock")
@@ -519,7 +552,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
 
     p_tree = sub.add_parser(
         "tree-reminder",
-        help="Unconditional one-line reminder to re-check the Instruction tree for mid-task relevance",
+        help="Remind the session of the Instruction-tree nodes it can reach but has not opened",
     )
     p_tree.set_defaults(func=cmd_tree_reminder)
 

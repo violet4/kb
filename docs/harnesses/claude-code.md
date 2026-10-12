@@ -239,9 +239,9 @@ See [`../daily-check.md`](../daily-check.md) for what this does and why (session
 
 Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/user/kb/kb`).
 
-## tree-reminder (harness-agnostic detector, unconditional)
+## tree-reminder (harness-agnostic detector, every prompt)
 
-See `kb hooks --help` / `kb_cli/hooks.py` for what this does and why (Instruction-tree re-check reminder, kb Goal #23) and [`../daily-check.md`](../daily-check.md) for its second role as the shared cross-session activity heartbeat used by `daily-check`'s sleep detection. This section is only the Claude Code wiring: takes no stdin, always prints (no detection condition), fires on every `UserPromptSubmit` (no matcher — every single prompt).
+See `kb hooks --help` / `kb_cli/hooks.py` for what this does and why (the titles of the instruction-tree nodes this session can reach but has not opened, kb Goal #23) and [`../daily-check.md`](../daily-check.md) for its second role as the shared cross-session activity heartbeat used by `daily-check`'s sleep detection. This section is only the Claude Code wiring: takes no stdin (it identifies the session from `CLAUDE_CODE_SESSION_ID`, which Claude Code sets for hook commands), fires on every `UserPromptSubmit` (no matcher — every single prompt).
 
 ```json
 {

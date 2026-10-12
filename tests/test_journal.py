@@ -25,15 +25,6 @@ def no_agent_session(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
 
 
-@pytest.fixture
-def agent_session(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> Iterator[HarnessSession]:
-    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "test-session")
-    monkeypatch.setattr(models, "_session_keys", {})
-    row = HarnessSession.register(db_session, "test-session", cwd="/", pid=1)
-    db_session.commit()
-    yield row
-
-
 def test_create_is_journaled(db_session: Session, no_agent_session: None) -> None:
     todo = make_todo(db_session, "t")
     db_session.commit()

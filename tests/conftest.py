@@ -19,7 +19,7 @@ import models_pg  # noqa: F401 -- registers PG tables on Base.metadata
 from base import Base
 
 if TYPE_CHECKING:
-    from models import Context, Daily, Todo
+    from models import Context, Daily, HarnessSession, Todo
 
 
 @pytest.fixture
@@ -32,6 +32,18 @@ def db_session() -> Iterator[Session]:
         yield session
     finally:
         session.close()
+
+
+@pytest.fixture
+def agent_session(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> Iterator["HarnessSession"]:
+    """A registered agent session that this process detects as its own."""
+    import models
+
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "test-session")
+    monkeypatch.setattr(models, "_session_keys", {})
+    row = models.HarnessSession.register(db_session, "test-session", cwd="/", pid=1)
+    db_session.commit()
+    yield row
 
 
 def inbox(session: Session) -> "Context":

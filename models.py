@@ -1854,6 +1854,19 @@ class Journal(Base):
         """Everything one agent session did to kb records, oldest first: its trajectory."""
         return session.scalars(select(cls).where(cls.session_id == session_id).order_by(cls.created_at, cls.id)).all()
 
+    @classmethod
+    def read_ids(cls, session: Session, entity_type: str, session_id: int) -> set[int]:
+        """The ids of every entity_type record one agent session has read."""
+        return set(
+            session.scalars(
+                select(cls.entity_id).where(
+                    cls.session_id == session_id,
+                    cls.entity_type == entity_type,
+                    cls.action == JournalAction.READ,
+                )
+            )
+        )
+
     def describe(self) -> str:
         """One line naming what happened, without timestamp or session."""
         if self.action is JournalAction.UPDATE and self.field:

@@ -16,7 +16,6 @@ import sqlite_vec  # type: ignore[import-untyped]  # no type stubs published for
 from sqlalchemy import (
     Boolean,
     Date,
-    DateTime,
     Enum,
     ForeignKey,
     Integer,
@@ -49,7 +48,7 @@ from sqlalchemy.engine.interfaces import DBAPIConnection
 from sqlalchemy.orm.base import NO_VALUE, NEVER_SET
 from sqlalchemy.pool import ConnectionPoolEntry
 
-from base import Base, _now
+from base import Base, UtcDateTime, _now
 from mixins import HasUniqueName, HasWeight
 
 _DB_PATH = Path(__file__).parent / "data" / "kb.db"
@@ -83,7 +82,7 @@ class ChangeLog(Base):
     field: Mapped[str] = mapped_column(String, nullable=False)
     old_value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     new_value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+    changed_at: Mapped[datetime] = mapped_column(UtcDateTime(), nullable=False, default=_now)
 
     def __repr__(self) -> str:
         return f"<ChangeLog {self.entity_table}#{self.entity_id}.{self.field}: {self.old_value!r} → {self.new_value!r}>"
@@ -683,7 +682,7 @@ class Person(Base):
         Enum(PersonTier, create_constraint=True, validate_strings=True), nullable=False, default=PersonTier.ACQUAINTANCE
     )
     closeness: Mapped[int] = tracked_column(Integer, nullable=False, default=0)
-    last_contacted: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_contacted: Mapped[Optional[datetime]] = mapped_column(UtcDateTime(), nullable=True)
     reach_out_every_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
@@ -988,7 +987,7 @@ class Todo(Base, HasContextOrTag, HasEmbedding, HasAutoLinks):
     effort: Mapped[Optional[WishlistEffort]] = mapped_column(
         Enum(WishlistEffort, create_constraint=True, validate_strings=True), nullable=True
     )
-    defer_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    defer_until: Mapped[Optional[datetime]] = mapped_column(UtcDateTime(), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     urgent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     severity: Mapped[Optional[TodoSeverity]] = mapped_column(
@@ -1391,7 +1390,7 @@ class Event(Base, HasContextOrTag, HasEmbedding):
     appointment. See kb Idea #13 for the motivating gap (these were previously shoehorned into
     Todo with an ad hoc due-date-like title).
 
-    starts_at is always a full UTC instant (see CLAUDE.md's DateTime(timezone=True) note --
+    starts_at is always a full UTC instant (see CLAUDE.md's UtcDateTime() note --
     read it back through _now()-written convention, .replace(tzinfo=utc) before use). is_all_day
     marks a date-only event (an anniversary, a release day) where starts_at's time-of-day
     component is not meaningful -- stored as midnight UTC and never displayed with a clock time,
@@ -1418,13 +1417,13 @@ class Event(Base, HasContextOrTag, HasEmbedding):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     title: Mapped[str] = mapped_column(String, nullable=False)
-    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    starts_at: Mapped[datetime] = mapped_column(UtcDateTime(), nullable=False)
     is_all_day: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     recurrence: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     context_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("context.id"), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime(), nullable=False, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(UtcDateTime(), nullable=False, default=_now, onupdate=_now)
 
     context: Mapped[Optional[Context]] = relationship("Context")
     tag: Mapped[Optional[Tag]] = relationship("Tag")
@@ -1621,7 +1620,7 @@ class Purchase(Base, HasEmbedding):
     quantity: Mapped[float] = mapped_column(Numeric(10, 3), nullable=False, default=1)
     unit_price: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
     total_price: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
-    purchased_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+    purchased_at: Mapped[datetime] = mapped_column(UtcDateTime(), nullable=False, default=_now)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     vendor_item: Mapped[VendorItem] = relationship("VendorItem")
@@ -1898,7 +1897,7 @@ class LogEntry(Base, HasEmbedding):
     __tablename__ = "log_entry"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+    occurred_at: Mapped[datetime] = mapped_column(UtcDateTime(), nullable=False, default=_now)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     domain: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     context_id: Mapped[int] = mapped_column(Integer, ForeignKey("context.id"), nullable=False)
@@ -1983,7 +1982,7 @@ class InboxItem(Base):
     category: Mapped[Optional[str]] = mapped_column(
         String, nullable=True
     )  # kind of content, e.g. "project-idea", "purchase"
-    triaged_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    triaged_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime(), nullable=True)
 
     @classmethod
     def pending(cls, session: Session, category: Optional[str] = None) -> Sequence[InboxItem]:
@@ -2059,7 +2058,7 @@ class ArchivedLink(Base, HasEmbedding):
     url: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     title: Mapped[str] = mapped_column(String, nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
-    migrated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    migrated_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime(), nullable=True)
     ab_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     push_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     push_status: Mapped[ArchivedLinkPushStatus] = mapped_column(
@@ -2067,7 +2066,7 @@ class ArchivedLink(Base, HasEmbedding):
         nullable=False,
         default=ArchivedLinkPushStatus.PENDING,
     )
-    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime(), nullable=True)
     content_status: Mapped[ArchivedLinkContentStatus] = mapped_column(
         Enum(ArchivedLinkContentStatus, create_constraint=True, validate_strings=True),
         nullable=False,
@@ -2405,7 +2404,7 @@ class Timer(Base, HasContextOrTag):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     label: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     duration_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
-    ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    ends_at: Mapped[datetime] = mapped_column(UtcDateTime(), nullable=False)
     status: Mapped[TimerStatus] = tracked_column(
         Enum(TimerStatus, create_constraint=True, validate_strings=True), nullable=False, default=TimerStatus.ACTIVE
     )
@@ -2543,8 +2542,8 @@ class HarnessSession(Base):
     )
     is_listening: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     listener_pid: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    last_active_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    last_response_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_active_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime(), nullable=True)
+    last_response_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime(), nullable=True)
 
     @classmethod
     def register(
@@ -2763,10 +2762,10 @@ class TranscriptCache(Base):
 
     session_id: Mapped[str] = mapped_column(String, primary_key=True)
     project: Mapped[str] = mapped_column(String, nullable=False)
-    file_mtime: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    file_mtime: Mapped[datetime] = mapped_column(UtcDateTime(), nullable=False)
     title: Mapped[str] = mapped_column(String, nullable=False)
     message_count: Mapped[int] = mapped_column(Integer, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(UtcDateTime(), nullable=False, default=_now)
 
     @classmethod
     def get_or_refresh(cls, session: Session, path: Path) -> Optional["TranscriptCache"]:
@@ -2780,7 +2779,7 @@ class TranscriptCache(Base):
 
         mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
         row = session.get(cls, path.stem)
-        # row.file_mtime reads back tz-naive (SQLite drops tzinfo on DateTime(timezone=True)
+        # row.file_mtime reads back tz-naive (SQLite drops tzinfo on UtcDateTime()
         # columns, see base.py's docstring / AGENTS.md) even though it was always written as
         # UTC via mtime above -- .replace(tzinfo=utc) makes this comparison apples-to-apples;
         # without it every lookup mismatches (naive != aware) and the cache never hits.
@@ -2884,7 +2883,7 @@ class ChannelSubscription(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     channel_id: Mapped[int] = mapped_column(Integer, ForeignKey("channel.id"), nullable=False)
     session_id: Mapped[str] = mapped_column(String, ForeignKey("harness_session.id"), nullable=False)
-    subscribed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+    subscribed_at: Mapped[datetime] = mapped_column(UtcDateTime(), nullable=False, default=_now)
 
     @classmethod
     def subscribe(cls, session: Session, channel_id: int, session_id: str) -> ChannelSubscription:
@@ -2991,7 +2990,7 @@ class ChannelRead(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     channel_id: Mapped[int] = mapped_column(Integer, ForeignKey("channel.id"), nullable=False)
     session_id: Mapped[str] = mapped_column(String, ForeignKey("harness_session.id"), nullable=False)
-    read_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+    read_at: Mapped[datetime] = mapped_column(UtcDateTime(), nullable=False, default=_now)
     up_to_message_id: Mapped[int] = mapped_column(Integer, ForeignKey("channel_message.id"), nullable=False)
 
     @classmethod
@@ -3061,11 +3060,11 @@ class UsageSample(Base):
     __tablename__ = "usage_sample"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    sampled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+    sampled_at: Mapped[datetime] = mapped_column(UtcDateTime(), nullable=False, default=_now)
     session_pct: Mapped[int] = mapped_column(Integer, nullable=False)
-    session_resets_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    session_resets_at: Mapped[datetime] = mapped_column(UtcDateTime(), nullable=False)
     week_pct: Mapped[int] = mapped_column(Integer, nullable=False)
-    week_resets_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    week_resets_at: Mapped[datetime] = mapped_column(UtcDateTime(), nullable=False)
 
     def __repr__(self) -> str:
         return f"<UsageSample #{self.id} session={self.session_pct}% week={self.week_pct}%>"

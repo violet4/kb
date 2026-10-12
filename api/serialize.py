@@ -1,14 +1,10 @@
 """Serialization helpers shared by the API routers."""
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
 
 def utc_iso(value: Optional[datetime]) -> Optional[str]:
-    """SQLite hands back naive datetimes; every kb timestamp is written as UTC (base.py's
-    _now()), so stamp the zone before serializing."""
-    if value is None:
-        return None
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
-    return value.isoformat()
+    """An optional UTC instant as ISO 8601 with its +00:00 offset (UtcDateTime columns are
+    always read back zone-aware, so the offset is never missing)."""
+    return value.isoformat() if value is not None else None

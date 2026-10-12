@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import PlacementControl from '../../contexts/components/PlacementControl';
 import type { Placement } from '../../contexts/types';
+import { isoDateTime } from '../../shared/isoDate';
 import { tokens } from '../../shared/tokens';
 import { entityPath } from '../navigation';
 import { useFieldEdit } from '../hooks/useFieldEdit';
@@ -359,7 +360,7 @@ function TagChips({ value }: { value: string }) {
 function formatCellValue(value: unknown, kind: ColumnSchema['kind']): string {
   if (value === null || value === undefined) return 'null';
   if (value === '') return '';
-  if (kind === 'date' && typeof value === 'string') return new Date(value).toLocaleDateString();
+  if (kind === 'utc_datetime' && typeof value === 'string') return isoDateTime(value);
   if (typeof value === 'boolean') return value ? 'yes' : 'no';
   return String(value);
 }

@@ -21,7 +21,7 @@ export default function JournalPanel({ entries }: JournalPanelProps) {
 }
 
 function JournalEntryRow({ entry }: { entry: JournalEntry }) {
-  const when = isoDateTime(entry.created_at);
+  const when = isoDateTime(entry.created_at_utc);
   return (
     <div style={{ fontSize: 13, borderLeft: `2px solid ${tokens.color.border}`, paddingLeft: 10 }}>
       <p style={{ margin: 0, color: tokens.color.textMuted }}>{when}</p>

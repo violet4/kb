@@ -6,11 +6,33 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import DateTime, MetaData
+from sqlalchemy.engine import Dialect
+from sqlalchemy.types import TypeDecorator
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+class UtcDateTime(TypeDecorator[datetime]):
+    """The one owner of kb's timestamp convention: every instant is stored as UTC. SQLite keeps
+    no zone, so this converts a zone-aware value to UTC on write (a naive one is taken as UTC
+    already) and marks every value read back as UTC -- callers always get an aware datetime,
+    and its isoformat() always carries +00:00 across an API boundary."""
+
+    impl = DateTime(timezone=True)
+    cache_ok = True
+
+    def process_bind_param(self, value: Optional[datetime], dialect: Dialect) -> Optional[datetime]:
+        if value is not None and value.tzinfo is not None:
+            return value.astimezone(timezone.utc)
+        return value
+
+    def process_result_value(self, value: Optional[datetime], dialect: Dialect) -> Optional[datetime]:
+        if value is not None and value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
 
 
 _NAMING_CONVENTION = {
@@ -25,14 +47,14 @@ _NAMING_CONVENTION = {
 class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=_NAMING_CONVENTION)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime(), nullable=False, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(UtcDateTime(), nullable=False, default=_now, onupdate=_now)
     # Soft-delete marker, on every model structurally (not a per-entity opt-in mixin) so a new
     # table can never be forgotten -- see kb si brittle-forgettable-defaults. NULL = not
     # deleted. `show`-ish commands intentionally do NOT filter on this (a deleted record is
     # still directly retrievable by id, with its deletion visible), only bulk list/search/
     # active-style queries do -- see kb_cli._util.not_deleted.
-    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime(), nullable=True)
 
     @property
     def is_deleted(self) -> bool:

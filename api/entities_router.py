@@ -20,7 +20,7 @@ from sqlalchemy import inspect, select
 from sqlalchemy.orm import Session
 
 from api.deps import get_session
-from api.serialize import utc_iso
+from base import UtcDateTime
 from context import PlacementError, place, placement_kind, placement_required
 from archivebox_compat.config import ArchiveBoxConfigError
 from kb_cli.archivebox import archivebox_url
@@ -69,7 +69,7 @@ _PLACEMENT_RELATIONSHIPS = {"context", "tag"}
 _TIMESTAMP_COLUMNS = {"created_at", "updated_at"}
 
 # Kinds a concrete frontend editor exists for today (BoolFieldToggle, EnumFieldSelect,
-# EditableFieldControl, NumberFieldControl -- see Field.tsx/EntityTable.tsx). "date" and
+# EditableFieldControl, NumberFieldControl -- see Field.tsx/EntityTable.tsx). "utc_datetime" and
 # "reference" render read-only until a matching editor is written; adding one here (and
 # in the frontend) is what extends editability to that kind everywhere at once.
 _EDITABLE_KINDS = {"bool", "enum", "text", "number"}
@@ -115,7 +115,7 @@ def _fk_to_relationship(model: type[Any]) -> dict[str, str]:
 
 class ColumnSchema(BaseModel):
     name: str
-    kind: str  # "text", "enum", "bool", "number", "date", or "reference"
+    kind: str  # "text", "enum", "bool", "number", "utc_datetime", "reference", or "placement"
     choices: Optional[list[str]] = None  # populated only when kind == "enum"
     shown: bool  # whether this type's browse table shows this column by default
     editable: bool
@@ -131,8 +131,8 @@ def _column_kind(col: Any) -> tuple[str, Optional[list[str]]]:
         return "bool", None
     if type_name in ("Integer", "Numeric", "Float"):
         return "number", None
-    if type_name == "DateTime":
-        return "date", None
+    if isinstance(col.type, UtcDateTime):
+        return "utc_datetime", None
     return "text", None
 
 
@@ -472,7 +472,7 @@ class JournalEntry(BaseModel):
     old_value: Optional[str]
     new_value: Optional[str]
     note: Optional[str]
-    created_at: str
+    created_at_utc: str
 
 
 @router.get("/{entity_type}/{entity_id}/journal", response_model=list[JournalEntry])
@@ -488,7 +488,7 @@ async def get_entity_journal(
             old_value=e.old_value,
             new_value=e.new_value,
             note=e.note,
-            created_at=utc_iso(e.created_at) or "",
+            created_at_utc=e.created_at.isoformat(),
         )
         for e in entries
     ]

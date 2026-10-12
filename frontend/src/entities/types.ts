@@ -57,7 +57,7 @@ export interface GraphNeighbor {
 // (editable, choices), and filtering (kind) all from the same introspected shape.
 export interface ColumnSchema {
   name: string;
-  kind: 'text' | 'enum' | 'bool' | 'number' | 'date' | 'reference' | 'placement';
+  kind: 'text' | 'enum' | 'bool' | 'number' | 'utc_datetime' | 'reference' | 'placement';
   choices: string[] | null;
   shown: boolean;
   editable: boolean;
@@ -70,5 +70,5 @@ export interface JournalEntry {
   old_value: string | null;
   new_value: string | null;
   note: string | null;
-  created_at: string;
+  created_at_utc: string;
 }

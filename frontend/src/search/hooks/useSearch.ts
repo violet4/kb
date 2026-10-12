@@ -4,6 +4,7 @@ import type { SearchHit } from '../types';
 
 interface UseSearchResult {
   hits: SearchHit[];
+  resultsFor: string | null; // the query `hits` answer (lags `query` while a new one runs)
   loading: boolean;
   error: string | null;
   refresh: () => void; // re-run the same query, e.g. after a hit was moved
@@ -12,6 +13,7 @@ interface UseSearchResult {
 // maxDist: the semantic distance cutoff; null uses the backend's default.
 export function useSearch(query: string, maxDist: number | null = null): UseSearchResult {
   const [hits, setHits] = useState<SearchHit[]>([]);
+  const [resultsFor, setResultsFor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [generation, setGeneration] = useState(0);
@@ -19,6 +21,7 @@ export function useSearch(query: string, maxDist: number | null = null): UseSear
   useEffect(() => {
     if (!query.trim()) {
       setHits([]);
+      setResultsFor(null);
       return;
     }
     let cancelled = false;
@@ -26,7 +29,10 @@ export function useSearch(query: string, maxDist: number | null = null): UseSear
     setError(null);
     searchAll(query, maxDist)
       .then((result) => {
-        if (!cancelled) setHits(result);
+        if (!cancelled) {
+          setHits(result);
+          setResultsFor(query);
+        }
       })
       .catch((e) => {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
@@ -39,5 +45,5 @@ export function useSearch(query: string, maxDist: number | null = null): UseSear
     };
   }, [query, maxDist, generation]);
 
-  return { hits, loading, error, refresh: () => setGeneration((g) => g + 1) };
+  return { hits, resultsFor, loading, error, refresh: () => setGeneration((g) => g + 1) };
 }

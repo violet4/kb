@@ -75,6 +75,7 @@ export default function ContextTreeNav({
   filterText,
   onFilterChange,
   onSearch,
+  onSelectContext,
   searchHits,
 }: {
   nodes: ContextNode[];
@@ -84,6 +85,7 @@ export default function ContextTreeNav({
   filterText: string;
   onFilterChange: (text: string) => void;
   onSearch: () => void;
+  onSelectContext: () => void; // a context's link was clicked (even the one already selected)
   searchHits: SearchHit[] | null; // results of the submitted search; null when none is active
 }) {
   const index = useMemo(() => buildIndex(nodes), [nodes]);
@@ -126,7 +128,11 @@ export default function ContextTreeNav({
   // A search shows contexts holding hits; otherwise a filter shows name matches. Either way,
   // ancestors stay so each match keeps its place in the tree, and everything shown is open.
   const filterVisible = useMemo(() => {
-    if (searchTotals) return new Set(searchTotals.keys());
+    // The selected context stays too, so the user can click back to it.
+    if (searchTotals) {
+      const selected = selectedId === null ? [] : [selectedId, ...ancestorIds(index, selectedId)];
+      return new Set([...searchTotals.keys(), ...selected]);
+    }
     if (!needle) return null;
     const visible = new Set<number>();
     for (const n of nodes) {
@@ -136,7 +142,7 @@ export default function ContextTreeNav({
       }
     }
     return visible;
-  }, [searchTotals, needle, nodes, index]);
+  }, [searchTotals, needle, nodes, index, selectedId]);
 
   // Shown outside a record drag: by the search/name filter, else by hide-empty.
   const isNormallyShown = (n: ContextNode) => {
@@ -336,6 +342,7 @@ export default function ContextTreeNav({
             </button>
             <Link
               to={contextLink(n.id)}
+              onClick={onSelectContext}
               draggable={false}
               style={{
                 ...tokens.link,

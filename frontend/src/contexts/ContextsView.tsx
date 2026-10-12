@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, Navigate, useLocation, useParams } from 'react-router-dom';
 import { entityPath } from '../entities/navigation';
 import SearchResults from '../search/components/SearchResults';
@@ -39,18 +39,28 @@ export default function ContextsView() {
   const [filterText, setFilterText] = useState('');
   const [submittedQuery, setSubmittedQuery] = useState('');
   const tolerance = useTolerance();
-  const { hits, loading: searching, error: searchError, refresh: refreshSearch } = useSearch(
-    submittedQuery,
-    tolerance.settled,
-  );
+  const {
+    hits,
+    resultsFor,
+    loading: searching,
+    error: searchError,
+    refresh: refreshSearch,
+  } = useSearch(submittedQuery, tolerance.settled);
   const search = submittedQuery ? { query: submittedQuery, hits, searching, error: searchError } : null;
   const changeFilter = (text: string) => {
     setFilterText(text);
     setSubmittedQuery('');
   };
-  // During a search the page shows the selected context's matches, or every match on request.
+  // During a search the page shows the selected context's matches, or every match: on
+  // request, or on its own when a search just run finds nothing here. Either stays until the
+  // user picks a context in the sidebar or "only this context".
   const [showAllHits, setShowAllHits] = useState(false);
+  const autoShowAllPending = useRef(false);
   useEffect(() => setShowAllHits(false), [selectedId, submittedQuery]);
+  const runSearch = () => {
+    autoShowAllPending.current = true;
+    setSubmittedQuery(filterText.trim());
+  };
 
   const { data: tree, error: treeError, refresh: refreshTree } = usePolling(fetchContextTree, POLL_SECONDS);
   const fetchPage = useCallback(
@@ -71,6 +81,11 @@ export default function ContextsView() {
     [tree, selectedId, includeDescendants],
   );
   const hitsHere = search ? search.hits.filter((h) => inScope(h, scopeIds)) : [];
+  useEffect(() => {
+    if (!autoShowAllPending.current || searching || resultsFor !== submittedQuery) return;
+    autoShowAllPending.current = false;
+    if (hitsHere.length === 0 && hits.length > 0) setShowAllHits(true);
+  }, [searching, resultsFor, submittedQuery, hits, hitsHere.length]);
 
   if (id !== undefined && inboxId !== null && Number(id) === inboxId) {
     return <Navigate to={`/contexts${location.search}`} replace />;
@@ -97,7 +112,8 @@ export default function ContextsView() {
               onChanged={refreshAll}
               filterText={filterText}
               onFilterChange={changeFilter}
-              onSearch={() => setSubmittedQuery(filterText.trim())}
+              onSearch={runSearch}
+              onSelectContext={() => setShowAllHits(false)}
               searchHits={search && !search.error ? search.hits : null}
             />
           )}
@@ -125,6 +141,7 @@ export default function ContextsView() {
                 includeDescendants={includeDescendants}
                 onIncludeDescendants={setIncludeDescendants}
                 hits={search ? hitsHere : null}
+                textFilter={search ? '' : filterText}
               />
             )
           )}
@@ -202,15 +219,19 @@ function ContextPageBody({
   includeDescendants,
   onIncludeDescendants,
   hits,
+  textFilter,
 }: {
   page: ContextPage;
   includeDescendants: boolean;
   onIncludeDescendants: (v: boolean) => void;
   hits: SearchHit[] | null; // search hits in this page's scope; null when no search is active
+  textFilter: string; // typed in the sidebar box: rows whose title contains it
 }) {
   const contextLink = useContextLink();
   const hitKeys = hits && new Set(hits.map((h) => hitKey(h.type, h.id)));
-  const matches = (type: string) => (row: { id: number }) => !hitKeys || hitKeys.has(hitKey(type, row.id));
+  const needle = textFilter.trim().toLowerCase();
+  const matches = (type: string) => (row: { id: number; title: string }) =>
+    (!hitKeys || hitKeys.has(hitKey(type, row.id))) && row.title.toLowerCase().includes(needle);
   const goals = page.goals.filter(matches('Goal'));
   const todos = page.todos.filter(matches('Todo'));
   const notes = page.notes.filter(matches('Note'));

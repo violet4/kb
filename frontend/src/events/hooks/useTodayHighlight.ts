@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useStoredState } from '../../shared/useStoredState';
 
 const STORAGE_KEY = 'kb-events-today-highlight';
 
@@ -23,11 +23,7 @@ interface UseTodayHighlightResult {
 }
 
 export function useTodayHighlight(): UseTodayHighlightResult {
-  const [{ rgb, alpha }, setState] = useState<StoredHighlight>(() => readStored());
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ rgb, alpha }));
-  }, [rgb, alpha]);
+  const [{ rgb, alpha }, setState] = useStoredState<StoredHighlight>(STORAGE_KEY, DEFAULTS, isStoredHighlight);
 
   return {
     rgb,
@@ -38,14 +34,9 @@ export function useTodayHighlight(): UseTodayHighlightResult {
   };
 }
 
-function readStored(): StoredHighlight {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) return { rgb: DEFAULT_RGB, alpha: DEFAULT_ALPHA };
-  try {
-    const parsed = JSON.parse(raw);
-    if (typeof parsed.rgb === 'string' && typeof parsed.alpha === 'number') return parsed;
-  } catch {
-    // fall through to default
-  }
-  return { rgb: DEFAULT_RGB, alpha: DEFAULT_ALPHA };
+const DEFAULTS: StoredHighlight = { rgb: DEFAULT_RGB, alpha: DEFAULT_ALPHA };
+
+function isStoredHighlight(value: unknown): value is StoredHighlight {
+  const v = value as Partial<StoredHighlight> | null;
+  return typeof v?.rgb === 'string' && typeof v.alpha === 'number';
 }

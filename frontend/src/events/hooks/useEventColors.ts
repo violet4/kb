@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useStoredState } from '../../shared/useStoredState';
 
 const STORAGE_KEY = 'kb-events-colors';
 
@@ -25,11 +25,7 @@ interface UseEventColorsResult {
  * sibling hook rather than folded into that one (today-highlight and event-kind color
  * are unrelated settings that happen to both be per-viewer color preferences). */
 export function useEventColors(): UseEventColorsResult {
-  const [{ recurring, oneTime }, setState] = useState<StoredColors>(() => readStored());
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ recurring, oneTime }));
-  }, [recurring, oneTime]);
+  const [{ recurring, oneTime }, setState] = useStoredState<StoredColors>(STORAGE_KEY, DEFAULTS, isStoredColors);
 
   return {
     recurringRgb: recurring,
@@ -41,14 +37,9 @@ export function useEventColors(): UseEventColorsResult {
   };
 }
 
-function readStored(): StoredColors {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) return { recurring: DEFAULT_RECURRING, oneTime: DEFAULT_ONE_TIME };
-  try {
-    const parsed = JSON.parse(raw);
-    if (typeof parsed.recurring === 'string' && typeof parsed.oneTime === 'string') return parsed;
-  } catch {
-    // fall through to default
-  }
-  return { recurring: DEFAULT_RECURRING, oneTime: DEFAULT_ONE_TIME };
+const DEFAULTS: StoredColors = { recurring: DEFAULT_RECURRING, oneTime: DEFAULT_ONE_TIME };
+
+function isStoredColors(value: unknown): value is StoredColors {
+  const v = value as Partial<StoredColors> | null;
+  return typeof v?.recurring === 'string' && typeof v.oneTime === 'string';
 }

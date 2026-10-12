@@ -1,17 +1,11 @@
-import { useEffect, useState } from 'react';
+import { isPositiveNumber, useStoredState } from '../../shared/useStoredState';
 
-const STORAGE_KEY = 'kb-channels-refresh-interval-seconds';
 export const DEFAULT_CHANNEL_REFRESH_INTERVAL_SECONDS = 5;
 
 export function useChannelListRefreshInterval(): [number, (value: number) => void] {
-  const [intervalSeconds, setIntervalSecondsState] = useState(() => {
-    const stored = Number(localStorage.getItem(STORAGE_KEY));
-    return stored > 0 ? stored : DEFAULT_CHANNEL_REFRESH_INTERVAL_SECONDS;
-  });
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, String(intervalSeconds));
-  }, [intervalSeconds]);
-
-  return [intervalSeconds, setIntervalSecondsState];
+  return useStoredState(
+    'kb-channels-refresh-interval-seconds',
+    DEFAULT_CHANNEL_REFRESH_INTERVAL_SECONDS,
+    isPositiveNumber,
+  );
 }

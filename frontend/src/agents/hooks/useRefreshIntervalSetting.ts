@@ -1,17 +1,7 @@
-import { useEffect, useState } from 'react';
+import { isPositiveNumber, useStoredState } from '../../shared/useStoredState';
 
-const STORAGE_KEY = 'kb-agents-refresh-interval-seconds';
 export const DEFAULT_REFRESH_INTERVAL_SECONDS = 1;
 
 export function useRefreshIntervalSetting(): [number, (value: number) => void] {
-  const [intervalSeconds, setIntervalSecondsState] = useState(() => {
-    const stored = Number(localStorage.getItem(STORAGE_KEY));
-    return stored > 0 ? stored : DEFAULT_REFRESH_INTERVAL_SECONDS;
-  });
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, String(intervalSeconds));
-  }, [intervalSeconds]);
-
-  return [intervalSeconds, setIntervalSecondsState];
+  return useStoredState('kb-agents-refresh-interval-seconds', DEFAULT_REFRESH_INTERVAL_SECONDS, isPositiveNumber);
 }

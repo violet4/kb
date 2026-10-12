@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { tokens } from '../shared/tokens';
+import { isBoolean, useStoredState } from '../shared/useStoredState';
 import BackgroundImagePicker from './components/BackgroundImagePicker';
 import PendingIndicator from './components/PendingIndicator';
 import RefreshControl from './components/RefreshControl';
@@ -13,15 +14,6 @@ const SESSION_PERIOD_MS = 5 * 60 * 60 * 1000;
 const WEEK_PERIOD_MS = 7 * 24 * 60 * 60 * 1000;
 const SESSION_PERIOD_HOURS = 5;
 const WEEK_PERIOD_HOURS = 7 * 24;
-const SHOW_CHART_STORAGE_KEY = 'kb-usage-show-chart';
-
-function loadShowChart(): boolean {
-  try {
-    return localStorage.getItem(SHOW_CHART_STORAGE_KEY) !== 'false';
-  } catch {
-    return true;
-  }
-}
 
 interface ChartModeToggleProps {
   cumulative: boolean;
@@ -66,20 +58,9 @@ export default function UsageView() {
   const { samples: weekHistorySamples } = useUsageHistory(WEEK_PERIOD_HOURS);
   const [sessionCumulative, setSessionCumulative] = useState(true);
   const [weekCumulative, setWeekCumulative] = useState(true);
-  const [showChart, setShowChart] = useState(loadShowChart);
+  const [showChart, setShowChart] = useStoredState('kb-usage-show-chart', true, isBoolean);
 
-  const toggleShowChart = () => {
-    setShowChart((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem(SHOW_CHART_STORAGE_KEY, String(next));
-      } catch {
-        // localStorage unavailable (private browsing, blocked site data) -- the toggle still
-        // works for this page load, it just won't persist across reloads.
-      }
-      return next;
-    });
-  };
+  const toggleShowChart = () => setShowChart((prev) => !prev);
 
   return (
     <div

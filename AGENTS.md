@@ -32,6 +32,8 @@ Cache stable-but-frequently-referenced facts locally (e.g. game mechanics, refer
 
 ## Running commands
 
+Every write to the kb database goes through the models (the `kb` CLI, `kb_repl.py`, the web API), never `sqlite3` or other raw SQL: Journal and the other flush listeners run only on that path, so a raw write goes unrecorded and skips their invariants. Read-only `sqlite3` queries are fine.
+
 `kb_repl.py` (see `kb_repl.py -h`) is the Python-expression runner, a different tool from the `kb` CLI — `kb_repl.py` is for one-off queries/scripts against models directly, `kb` is for the day-to-day subcommands (see `kb -h`).
 
 Bare `kb_repl.py` (no command, `-f`, or `-i`) errors instead of silently dropping into the REPL — always pass `-i` explicitly if you want manual-commit interactive mode.
@@ -82,7 +84,7 @@ The embedding server runs as a systemd user service (`kb.service`). `embed()` (i
 scripts/service/status | restart | is-active
 ```
 
-The web UI's backend (`server.py`, FastAPI/uvicorn) listens on port 25690; the frontend's Vite dev server (`frontend/vite.config.ts`) listens on 25691 and proxies `/api` to the backend.
+The web UI's backend (`server.py`, FastAPI/uvicorn) listens on port 25690; the frontend's Vite dev server (`frontend/vite.config.ts`) listens on 25691 and proxies `/api` to the backend, stripping the prefix: the backend's own routes have none, so query it directly as `curl localhost:25690/contexts/tree`.
 
 ## Schema changes
 

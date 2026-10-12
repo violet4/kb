@@ -110,7 +110,18 @@ def _fetch_usage_uncached() -> Usage:
             # conversation -- without it, every poll (frontend UsageBar refresh, `kb stats
             # usage`) wrote a new transcript file under ~/.claude/projects, flooding the
             # Agents UI's past-sessions list with thousands of empty-content /usage entries.
-            ["claude", "-p", "/usage", "--output-format", "json", "--no-session-persistence"],
+            # disableAllHooks: the user's hooks would otherwise run for this check too, and
+            # SessionStart's session-register would add a harness_session row per poll.
+            [
+                "claude",
+                "-p",
+                "/usage",
+                "--output-format",
+                "json",
+                "--no-session-persistence",
+                "--settings",
+                '{"disableAllHooks": true}',
+            ],
             capture_output=True,
             text=True,
             timeout=30,

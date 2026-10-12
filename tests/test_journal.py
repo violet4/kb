@@ -4,6 +4,7 @@ involvement, and every Journal row is attributed to the agent session that cause
 from typing import Iterator
 
 import pytest
+from sqlalchemy import Table, delete, update
 from sqlalchemy.orm import Session
 
 import models
@@ -94,3 +95,24 @@ def test_no_agent_session_leaves_session_empty(db_session: Session, no_agent_ses
     todo = make_todo(db_session, "t")
     db_session.commit()
     assert [e.session_id for e in Journal.for_entity(db_session, "Todo", todo.id)] == [None]
+
+
+def test_bulk_update_on_journaled_table_is_refused(db_session: Session, no_agent_session: None) -> None:
+    make_todo(db_session, "t")
+    db_session.commit()
+    with pytest.raises(RuntimeError, match="bypass Journal"):
+        db_session.execute(update(models.Todo).values(title="x"))
+    with pytest.raises(RuntimeError, match="bypass Journal"):
+        todo_table = models.Todo.__table__
+        assert isinstance(todo_table, Table)
+        db_session.execute(delete(todo_table))
+
+
+def test_bulk_write_on_unjournaled_table_is_allowed(db_session: Session) -> None:
+    db_session.execute(delete(models.ChannelRead))
+
+
+def test_every_browsable_entity_type_is_journaled() -> None:
+    from api.entities_router import ENTITY_TYPES
+
+    assert [name for name, model in ENTITY_TYPES.items() if not issubclass(model, models.HasJournal)] == []

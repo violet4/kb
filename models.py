@@ -23,7 +23,10 @@ from sqlalchemy import (
     Numeric,
     String,
     CheckConstraint,
+    Delete,
+    Table,
     Text,
+    Update,
     UniqueConstraint,
     and_,
     create_engine,
@@ -38,6 +41,7 @@ from sqlalchemy.orm import (
     MANYTOONE,
     Mapped,
     MappedColumn,
+    ORMExecuteState,
     Session,
     UOWTransaction,
     declared_attr,
@@ -1010,6 +1014,23 @@ def _journal_created_rows(session: Session, flush_context: UOWTransaction) -> No
     created, _journal_created[:] = list(_journal_created), []
     for obj in created:
         session.add(Journal(entity_type=type(obj).__name__, entity_id=obj.id, action=JournalAction.CREATE))
+
+
+@event.listens_for(Session, "do_orm_execute")
+def _refuse_unjournaled_bulk_write(state: ORMExecuteState) -> None:
+    """A bulk UPDATE/DELETE statement (session.execute(update(Todo)...)) changes rows without
+    a flush, so the HasJournal listeners never see it. Refuse it on a journaled table rather
+    than let the change go unrecorded; load the rows and change their attributes instead."""
+    statement = state.statement
+    if not isinstance(statement, (Update, Delete)) or not isinstance(statement.table, Table):
+        return
+    journaled = {m.local_table for m in Base.registry.mappers if issubclass(m.class_, HasJournal)}
+    if statement.table in journaled:
+        verb = "UPDATE" if isinstance(statement, Update) else "DELETE"
+        raise RuntimeError(
+            f"bulk {verb} on {statement.table.name} would bypass Journal; load the rows and set their attributes "
+            "(or session.delete() them) so HasJournal records the change"
+        )
 
 
 # ---------------------------------------------------------------------------

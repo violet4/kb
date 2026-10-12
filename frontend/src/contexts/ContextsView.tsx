@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { Link, Navigate, useLocation, useParams } from 'react-router-dom';
 import { entityPath } from '../entities/navigation';
 import SearchResults from '../search/components/SearchResults';
+import ToleranceSlider from '../search/components/ToleranceSlider';
 import { useSearch } from '../search/hooks/useSearch';
+import { useTolerance } from '../search/hooks/useTolerance';
 import type { SearchHit } from '../search/types';
 import { recordDragProps, type DraggedRecord } from '../shared/recordDrag';
 import { isoDate } from '../shared/isoDate';
@@ -36,7 +38,11 @@ export default function ContextsView() {
   // again drops the search, back to name filtering.
   const [filterText, setFilterText] = useState('');
   const [submittedQuery, setSubmittedQuery] = useState('');
-  const { hits, loading: searching, error: searchError, refresh: refreshSearch } = useSearch(submittedQuery);
+  const tolerance = useTolerance();
+  const { hits, loading: searching, error: searchError, refresh: refreshSearch } = useSearch(
+    submittedQuery,
+    tolerance.settled,
+  );
   const search = submittedQuery ? { query: submittedQuery, hits, searching, error: searchError } : null;
   const changeFilter = (text: string) => {
     setFilterText(text);
@@ -104,6 +110,8 @@ export default function ContextsView() {
               showAll={showAllHits}
               onShowAll={setShowAllHits}
               onClear={() => changeFilter('')}
+              tolerance={tolerance.value}
+              onTolerance={tolerance.set}
             />
           )}
           {pageError && <p style={{ color: tokens.color.danger }}>{pageError}</p>}
@@ -152,16 +160,22 @@ function SearchBanner({
   showAll,
   onShowAll,
   onClear,
+  tolerance,
+  onTolerance,
 }: {
   search: { query: string; hits: SearchHit[]; searching: boolean; error: string | null };
   shown: number;
   showAll: boolean;
   onShowAll: (value: boolean) => void;
   onClear: () => void;
+  tolerance: number | null;
+  onTolerance: (value: number) => void;
 }) {
   const linkButton = { ...tokens.link, background: 'none', border: 'none', padding: 0, cursor: 'pointer' };
   return (
-    <div style={{ display: 'flex', gap: 10, alignItems: 'baseline', fontSize: 13, marginBottom: 16, minHeight: 20 }}>
+    <div
+      style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', fontSize: 13, marginBottom: 16, minHeight: 20 }}
+    >
       {search.error ? (
         <span style={{ color: tokens.color.danger }}>{search.error}</span>
       ) : search.searching && search.hits.length === 0 ? (
@@ -178,6 +192,7 @@ function SearchBanner({
       <button onClick={onClear} style={linkButton}>
         clear search
       </button>
+      {tolerance !== null && <ToleranceSlider value={tolerance} onChange={onTolerance} />}
     </div>
   );
 }

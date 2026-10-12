@@ -1,19 +1,12 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import Popover from '../../shared/Popover';
 import { tokens } from '../../shared/tokens';
-import { fetchSearchInfo } from '../api';
-import type { SearchInfo } from '../types';
+import { useSearchInfo } from '../hooks/useSearchInfo';
 
 // A "?" explaining what kb search matches and how results are limited. The model lists and
 // limit come from the backend's /search-all/info, so this text can't drift from the code.
 export default function SearchHelp({ intro, align }: { intro?: ReactNode; align?: 'start' | 'end' }) {
-  const [info, setInfo] = useState<SearchInfo | null>(null);
-  useEffect(() => {
-    fetchSearchInfo()
-      .then(setInfo)
-      .catch(() => setInfo(null));
-  }, []);
-
+  const info = useSearchInfo();
   return (
     <Popover label="?" align={align} ariaLabel="How search works">
       <div style={{ maxWidth: 380, fontSize: 12, lineHeight: 1.5, display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -25,8 +18,9 @@ export default function SearchHelp({ intro, align }: { intro?: ReactNode; align?
               {info.substring_models.join(', ')}. Every match is kept and ranked first.
             </div>
             <div>
-              <b>Semantic</b>: up to {info.default_limit} nearest rows per model within embedding cosine distance{' '}
-              {info.max_dist} (smaller is closer), over {info.semantic_models.join(', ')}.
+              <b>Semantic</b>: up to {info.default_limit} nearest rows per model within the <b>tolerance</b>, a
+              maximum embedding cosine distance (default {info.max_dist}; higher admits looser matches), over{' '}
+              {info.semantic_models.join(', ')}.
             </div>
             <div>
               <b>Merged</b>: done/dropped rows are excluded, duplicates keep their best score, and the top{' '}

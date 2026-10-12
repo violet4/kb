@@ -9,7 +9,8 @@ interface UseSearchResult {
   refresh: () => void; // re-run the same query, e.g. after a hit was moved
 }
 
-export function useSearch(query: string): UseSearchResult {
+// maxDist: the semantic distance cutoff; null uses the backend's default.
+export function useSearch(query: string, maxDist: number | null = null): UseSearchResult {
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -23,7 +24,7 @@ export function useSearch(query: string): UseSearchResult {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    searchAll(query)
+    searchAll(query, maxDist)
       .then((result) => {
         if (!cancelled) setHits(result);
       })
@@ -36,7 +37,7 @@ export function useSearch(query: string): UseSearchResult {
     return () => {
       cancelled = true;
     };
-  }, [query, generation]);
+  }, [query, maxDist, generation]);
 
   return { hits, loading, error, refresh: () => setGeneration((g) => g + 1) };
 }

@@ -101,6 +101,12 @@ def search_info() -> SearchInfo:
 
 
 @router.get("", response_model=list[SearchHit])
-def search(q: str, limit: int = DEFAULT_LIMIT, session: Session = Depends(get_session)) -> list[SearchHit]:
+def search(
+    q: str,
+    limit: int = DEFAULT_LIMIT,
+    max_dist: float = MAX_SEMANTIC_DIST,
+    session: Session = Depends(get_session),
+) -> list[SearchHit]:
+    """`max_dist` bounds the semantic hits' cosine distance (the web UI's tolerance slider)."""
     by_tag = contexts_by_tag(session)
-    return [_to_hit(session, item, dist, by_tag) for item, dist in search_all(session, q, limit)]
+    return [_to_hit(session, item, dist, by_tag) for item, dist in search_all(session, q, limit, max_dist=max_dist)]

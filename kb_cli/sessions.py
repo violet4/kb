@@ -18,6 +18,7 @@ resulting two-layer delivery design this module's `inbox` (checked from UserProm
 import argparse
 import json
 import os
+import re
 import signal
 import sys
 import time
@@ -347,16 +348,29 @@ def list_history_projects() -> list[HistoryProjectInfo]:
     return projects
 
 
-def list_history_sessions(session: Session, project: Optional[str] = None) -> list[HistorySessionInfo]:
+def list_history_sessions(
+    session: Session,
+    project: Optional[str] = None,
+    *,
+    include_empty: bool = False,
+    max_messages: Optional[int] = None,
+    title_pattern: Optional[str] = None,
+) -> list[HistorySessionInfo]:
     """Every past session transcript under ~/.claude/projects, most recent first. `project`
     (a raw directory name under that path, e.g. "-home-violet-kb") restricts to one project;
     None (the default) returns every project's sessions -- reads every transcript's cached
     row (TranscriptCache.get_or_refresh, models.py), which only re-parses a file whose mtime
     changed since it was last cached, so this is a full directory walk but not a full
     re-parse on every call. Callers that only need the set of project names should use
-    list_history_projects() instead, which needs neither the cache nor a DB session."""
+    list_history_projects() instead, which needs neither the cache nor a DB session.
+
+    A transcript with no chat messages (no user or assistant turn) is left out unless
+    include_empty, in which case it is listed with an empty title and a message count of 0.
+    max_messages keeps transcripts with at most that many messages; title_pattern keeps those
+    whose title matches the regular expression, case-insensitively."""
     if not _PROJECTS_DIR.is_dir():
         return []
+    title_re = re.compile(title_pattern, re.IGNORECASE) if title_pattern is not None else None
 
     sessions = []
     for project_dir in _PROJECTS_DIR.iterdir():
@@ -367,22 +381,42 @@ def list_history_sessions(session: Session, project: Optional[str] = None) -> li
         for jsonl_path in project_dir.glob("*.jsonl"):
             cached = TranscriptCache.get_or_refresh(session, jsonl_path)
             if cached:
-                sessions.append(
-                    HistorySessionInfo(
-                        id=cached.session_id,
-                        project=cached.project,
-                        title=cached.title,
-                        timestamp=cached.file_mtime.isoformat(),
-                        message_count=cached.message_count,
-                    )
+                info = HistorySessionInfo(
+                    id=cached.session_id,
+                    project=cached.project,
+                    title=cached.title,
+                    timestamp=cached.file_mtime.isoformat(),
+                    message_count=cached.message_count,
                 )
+            elif include_empty:
+                mtime = datetime.fromtimestamp(jsonl_path.stat().st_mtime, tz=timezone.utc)
+                info = HistorySessionInfo(
+                    id=jsonl_path.stem,
+                    project=project_dir.name,
+                    title="",
+                    timestamp=mtime.isoformat(),
+                    message_count=0,
+                )
+            else:
+                continue
+            if max_messages is not None and info.message_count > max_messages:
+                continue
+            if title_re is not None and not title_re.search(info.title):
+                continue
+            sessions.append(info)
 
     sessions.sort(key=lambda s: s.timestamp, reverse=True)
     return sessions
 
 
 def cmd_history(args: argparse.Namespace) -> None:
-    sessions = list_history_sessions(args.session)
+    sessions = list_history_sessions(
+        args.session,
+        args.project,
+        include_empty=args.include_empty,
+        max_messages=args.max_messages,
+        title_pattern=args.title,
+    )
     args.session.commit()  # persists TranscriptCache upserts from get_or_refresh
     if not sessions:
         print("No sessions found.")
@@ -397,8 +431,8 @@ def cmd_history(args: argparse.Namespace) -> None:
         print(f"  {project}  ({count} session{'s' if count != 1 else ''})")
     print()
 
-    headers = ["Date", "Directory", "Title"]
-    rows = [[s.timestamp[:16].replace("T", " "), s.project, s.title] for s in sessions]
+    headers = ["Date", "Directory", "Msgs", "Title"]
+    rows = [[s.timestamp[:16].replace("T", " "), s.project, str(s.message_count), s.title] for s in sessions]
     print_table(headers, rows)
 
 
@@ -875,6 +909,14 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     history_parser = sub.add_parser(
         "history", help="List all historical sessions across all projects (*.jsonl transcripts)"
     )
+    history_parser.add_argument("--project", help="Only this project directory (e.g. -home-user-kb)")
+    history_parser.add_argument(
+        "--include-empty", action="store_true", help="Also list transcripts with no user or assistant messages"
+    )
+    history_parser.add_argument(
+        "--max-messages", type=int, metavar="N", help="Only transcripts with at most N messages"
+    )
+    history_parser.add_argument("--title", metavar="PATTERN", help="Only titles matching this regex (case-insensitive)")
     history_parser.set_defaults(func=cmd_history)
 
     show_parser = sub.add_parser("show", help="Show one historical session by its session_id")

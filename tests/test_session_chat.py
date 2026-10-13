@@ -1,11 +1,16 @@
 """list_chat_messages' offset contract: the session viewer polls a live transcript with the
 returned offset, so a follow-up read must return exactly the messages appended since, and a
 line the harness has not finished writing must wait for the next poll rather than being
-dropped or parsed half-written."""
+dropped or parsed half-written. Also list_history_sessions' filters: empty transcripts appear
+only on request, and the message-count and title filters keep exactly the matching ones."""
 
 import json
 from pathlib import Path
 
+import pytest
+from sqlalchemy.orm import Session
+
+from kb_cli import sessions
 from kb_cli.sessions import list_chat_messages
 
 
@@ -41,3 +46,18 @@ def test_partial_line_waits_for_completion(tmp_path: Path) -> None:
         fh.write(partial[10:])
     messages, _ = list_chat_messages(path, offset)
     assert [m.blocks[0].text for m in messages] == ["two"]
+
+
+def test_history_filters(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, db_session: Session) -> None:
+    project = tmp_path / "-proj"
+    project.mkdir()
+    (project / "talk.jsonl").write_text(_line("user", "hello there") + _line("assistant", "hi"))
+    (project / "empty.jsonl").write_text(json.dumps({"type": "summary"}) + "\n")
+    monkeypatch.setattr(sessions, "_PROJECTS_DIR", tmp_path)
+
+    assert [s.id for s in sessions.list_history_sessions(db_session)] == ["talk"]
+    with_empty = sessions.list_history_sessions(db_session, include_empty=True)
+    assert sorted(s.id for s in with_empty) == ["empty", "talk"]
+    assert [s.id for s in sessions.list_history_sessions(db_session, include_empty=True, max_messages=0)] == ["empty"]
+    assert [s.id for s in sessions.list_history_sessions(db_session, title_pattern="^HELLO")] == ["talk"]
+    assert sessions.list_history_sessions(db_session, title_pattern="nomatch") == []

@@ -119,6 +119,30 @@ See `kb hooks --help` / `kb_cli/hooks.py` for what this detects and why (a root-
 
 Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/user/kb/kb`).
 
+## commit-check (harness-agnostic detector, blocking)
+
+See `kb hooks --help` / `kb_cli/hooks.py` for what this detects and why (a `git commit` in a session that has not read the commit-messages system instruction node). This section is only the Claude Code wiring, the same deny adapter as `find-root-check`. It identifies the session from `CLAUDE_CODE_SESSION_ID`, which Claude Code sets for hook commands.
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "reason=$(jq -r '.tool_input.command' | /path/to/kb hooks commit-check 2>/dev/null); if [ -n \"$reason\" ]; then jq -n --arg r \"$reason\" '{hookSpecificOutput: {hookEventName: \"PreToolUse\", permissionDecision: \"deny\", permissionDecisionReason: $r}}'; else printf '{}'; fi"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/user/kb/kb`).
+
 ## pkill-check (harness-agnostic detector, blocking)
 
 See `kb hooks --help` / `kb_cli/hooks.py` for what this detects and why (a `pkill` invocation, which kills by name/pattern rather than a confirmed PID). This section is only the Claude Code wiring: pipes a `Bash` command's `.tool_input.command` through on `PreToolUse`. Same blocking shape as `find-root-check`.

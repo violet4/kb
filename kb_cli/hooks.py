@@ -19,6 +19,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 from sqlalchemy.orm import Session
 
@@ -283,28 +284,62 @@ _TREE_FRONTIER_REMINDER = (
 )
 
 
+def _session_si_reads(session: Session) -> Optional[set[str]]:
+    """The ids (zero-padded, as in si_files) of every system instruction node this agent
+    session has read with `kb si show`, or None when no registered agent session is
+    detectable."""
+    from harness import current_session_id
+    from models import HarnessSession, Journal
+
+    harness_id = current_session_id()
+    row = HarnessSession.by_harness_id(session, harness_id) if harness_id else None
+    if row is None:
+        return None
+    return {f"{entity_id:04d}" for entity_id in Journal.read_ids(session, "SiNode", row.id)}
+
+
 def _tree_reminder_text(session: Session) -> str:
     """The frontier of the system instruction tree for this agent session: the titles of
     every node whose parent the session has read with `kb si show` and which it has not read
     itself. Titles only, since each child's trigger is already in context from its parent's
     `show` output. Falls back to the generic reminder when no session is detectable or the
     session has not read the root yet, and is empty once every reachable node is read."""
-    from harness import current_session_id
     from kb_cli import si_files
-    from models import HarnessSession, Journal
 
-    harness_id = current_session_id()
-    row = HarnessSession.by_harness_id(session, harness_id) if harness_id else None
-    if row is None:
-        return _TREE_REMINDER
-    read = {f"{entity_id:04d}" for entity_id in Journal.read_ids(session, "SiNode", row.id)}
+    read = _session_si_reads(session)
     root = si_files.resolve("root")
-    if root is None or root.id not in read:
+    if read is None or root is None or root.id not in read:
         return _TREE_REMINDER
     frontier = si_files.unexpanded_children(read)
     if not frontier:
         return ""
     return _TREE_FRONTIER_REMINDER.format(titles=", ".join(node.title for node in frontier))
+
+
+# `git` followed by any global options (`-C DIR`, `--git-dir=...`, `-c key=value`) and then
+# the `commit` subcommand.
+_GIT_COMMIT_RE = re.compile(r"(?<![\w./-])git(?:\s+-[Cc]\s+\S+|\s+--?[\w-]+(?:=\S+)?)*\s+commit(?![\w-])")
+
+_COMMIT_CHECK_HINT = (
+    "Blocked: this session has not read the commit-message rules. Run `kb si show {title}`, "
+    "then write the message to it and commit again."
+)
+
+
+def cmd_commit_check(args: argparse.Namespace) -> None:
+    """Read a Bash command on stdin; if it runs `git commit` in an agent session that has not
+    read the commit-messages system instruction node, print a block reason to stdout. Prints
+    nothing otherwise, including outside a registered agent session, where no reads are
+    recorded to check against."""
+    from kb_cli import si_files
+
+    if not _GIT_COMMIT_RE.search(sys.stdin.read()):
+        return
+    node = si_files.resolve("commit-messages")
+    read = _session_si_reads(args.session)
+    if node is None or read is None or node.id in read:
+        return
+    print(_COMMIT_CHECK_HINT.format(title=node.title))
 
 
 _ARCHIVE_REMINDER = (
@@ -521,6 +556,12 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         help="Detect a `find /` (root-scoped) command on stdin; print a block reason if it matches",
     )
     p_find_root.set_defaults(func=cmd_find_root_check)
+
+    p_commit = sub.add_parser(
+        "commit-check",
+        help="Detect `git commit` on stdin; print a block reason if this session has not read the commit-messages node",
+    )
+    p_commit.set_defaults(func=cmd_commit_check)
 
     p_git_add_a = sub.add_parser(
         "git-add-a-check",

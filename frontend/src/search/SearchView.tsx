@@ -1,3 +1,4 @@
+import { pageTitle, useDocumentTitle } from '../shared/useDocumentTitle';
 import { useState } from 'react';
 import { tokens } from '../shared/tokens';
 import SearchHelp from './components/SearchHelp';
@@ -12,6 +13,7 @@ import { useTolerance } from './hooks/useTolerance';
 export default function SearchView() {
   const [query, setQuery] = useState('');
   const [submittedQuery, setSubmittedQuery] = useState('');
+  useDocumentTitle(pageTitle('search', submittedQuery || 'Search'));
   const tolerance = useTolerance();
   const { hits, loading, error } = useSearch(submittedQuery, tolerance.settled);
 

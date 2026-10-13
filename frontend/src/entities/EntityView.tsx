@@ -1,3 +1,4 @@
+import { useDocumentTitle } from '../shared/useDocumentTitle';
 import { useParams } from 'react-router-dom';
 import { tokens } from '../shared/tokens';
 import EntityHeader from './components/EntityHeader';
@@ -16,6 +17,7 @@ import type { EntityType } from './types';
 // and TypeSpecificView's per-field editing.
 export default function EntityView() {
   const { type, id } = useParams<{ type: string; id: string }>();
+  useDocumentTitle(`${type} ${id}`);
   const entityType = type as EntityType;
   const entityId = Number(id);
   const { entity, graph, journal, loading, error, applyFieldSave } = useEntity(entityType, entityId);

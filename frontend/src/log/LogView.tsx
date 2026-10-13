@@ -1,3 +1,4 @@
+import { pageTitle, useDocumentTitle } from '../shared/useDocumentTitle';
 import { useEffect, useState, type KeyboardEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { fetchContextTree } from '../contexts/api';
@@ -12,6 +13,7 @@ const POLL_SECONDS = 15;
 const DEFAULT_CONTEXT = 'inbox';
 
 export default function LogView() {
+  useDocumentTitle(pageTitle('log', 'Log'));
   const { data: entries, error: listError, refresh } = usePolling(fetchRecentLog, POLL_SECONDS);
   const { data: tree, error: treeError } = usePolling(fetchContextTree, 60);
 

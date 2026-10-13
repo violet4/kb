@@ -1,3 +1,4 @@
+import { pageTitle, useDocumentTitle } from '../shared/useDocumentTitle';
 import { useState } from 'react';
 import { tokens } from '../shared/tokens';
 import EventFormModal from './components/EventFormModal';
@@ -15,6 +16,7 @@ import MonthView from './MonthView';
 import WeekView from './WeekView';
 
 export default function EventsView() {
+  useDocumentTitle(pageTitle('events', 'Events'));
   const [mode, setMode] = useState<ViewMode>('month');
   const todayHighlight = useTodayHighlight();
   const eventColors = useEventColors();

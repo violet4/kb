@@ -1,3 +1,4 @@
+import { pageTitle, useDocumentTitle } from '../shared/useDocumentTitle';
 import { useMemo } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import AgentContentTabs, { type AgentContentTab } from './AgentContentTabs';
@@ -40,6 +41,7 @@ export default function AgentPage() {
   const [agentsIntervalSeconds] = useRefreshIntervalSetting();
   const { sessions: liveSessions } = useAgentSessions(agentsIntervalSeconds);
   const liveSession = liveSessions.find((s) => s.id === sessionId) ?? null;
+  useDocumentTitle(pageTitle('agents', liveSession?.title || dmChannel?.agent_title || (sessionId ?? '').slice(0, 8)));
 
   function setTab(next: AgentContentTab) {
     setSearchParams((prev) => {

@@ -1,9 +1,11 @@
+import { pageTitle, useDocumentTitle } from '../shared/useDocumentTitle';
 import { useState } from 'react';
 import { tokens } from '../shared/tokens';
 import DailiesList from './components/DailiesList';
 import { useDailies } from './hooks/useDailies';
 
 export default function DailiesView() {
+  useDocumentTitle(pageTitle('dailies', 'Dailies'));
   const [dueOnly, setDueOnly] = useState(true);
   const { dailies, loading, error, complete, catchUp } = useDailies(dueOnly);
 

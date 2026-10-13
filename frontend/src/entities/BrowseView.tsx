@@ -1,3 +1,4 @@
+import { pageTitle, useDocumentTitle } from '../shared/useDocumentTitle';
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { tokens } from '../shared/tokens';
@@ -43,6 +44,7 @@ const DEFAULT_FILTERS: Partial<Record<Tab, Record<string, string>>> = {
 // here, only DEFAULT_COLUMNS/EDITABLE_COLUMNS on the backend if it should be shown.
 export default function BrowseView() {
   const { type } = useParams<{ type: string }>();
+  useDocumentTitle(pageTitle('browse', type ?? 'Browse'));
   const [entityTypes, setEntityTypes] = useState<EntityType[]>([]);
   useEffect(() => {
     fetchEntityTypes().then(setEntityTypes);

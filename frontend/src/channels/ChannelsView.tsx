@@ -1,3 +1,4 @@
+import { pageTitle, useDocumentTitle } from '../shared/useDocumentTitle';
 import { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AgentContentTabs, { type AgentContentTab } from '../agents/AgentContentTabs';
@@ -110,6 +111,12 @@ export default function ChannelsView() {
   const contentTab: AgentContentTab = searchParams.get('tab') === 'session' ? 'session' : 'chat';
 
   const selected = useMemo(() => channels.find((c) => channelKey(c) === selectedKey) ?? null, [channels, selectedKey]);
+  useDocumentTitle(
+    pageTitle(
+      'channels',
+      selected === null ? 'Channels' : selected.kind === 'named' ? `#${selected.name}` : selected.agent_title || 'DM',
+    ),
+  );
 
   function selectChannel(key: string) {
     setSearchParams((prev) => {

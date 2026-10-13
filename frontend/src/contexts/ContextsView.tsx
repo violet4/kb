@@ -1,3 +1,4 @@
+import { pageTitle, useDocumentTitle } from '../shared/useDocumentTitle';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, Navigate, useLocation, useParams } from 'react-router-dom';
 import { entityPath } from '../entities/navigation';
@@ -100,6 +101,7 @@ export default function ContextsView() {
     [selectedId, includeDescendants],
   );
   const { data: page, error: pageError, refresh: refreshPage } = usePolling(fetchPage, pollSeconds);
+  useDocumentTitle(page && page.context.id === selectedId ? pageTitle('contexts', page.context.name) : null);
   // After a context or record moved: everything showing placements is stale.
   const refreshAll = () => {
     refreshTree();

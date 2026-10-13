@@ -1,3 +1,4 @@
+import { pageTitle, useDocumentTitle } from '../shared/useDocumentTitle';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { tokens } from '../shared/tokens';
 
@@ -13,6 +14,7 @@ function activeTab(pathname: string): AgentsTab {
 // sessions (AgentsView) and past sessions by project or by recency (AgentHistoryView). Each
 // tab is its own route, so a tab is linkable and the browser's back button moves between them.
 export default function AgentsLayout() {
+  useDocumentTitle(pageTitle('agents', 'Agents'));
   const tab = activeTab(useLocation().pathname);
   const tabStyle = (isActive: boolean): React.CSSProperties => ({
     padding: '4px 10px',

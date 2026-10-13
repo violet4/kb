@@ -1,3 +1,4 @@
+import { useDocumentTitle } from '../shared/useDocumentTitle';
 import { useState } from 'react';
 import { tokens } from '../shared/tokens';
 import { isBoolean, useStoredState } from '../shared/useStoredState';
@@ -51,6 +52,7 @@ function resolveBackgroundUrl(backgroundImage: string): string | null {
 }
 
 export default function UsageView() {
+  useDocumentTitle('Usage');
   const { usage, loading, error, lastUpdatedAt, nextRefreshAt, requestStartedAt, refresh } = useUsage();
   const { backgroundImage, setBackgroundImage } = useBackgroundImage();
   const backgroundUrl = resolveBackgroundUrl(backgroundImage);

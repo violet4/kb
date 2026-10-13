@@ -15,7 +15,6 @@ from sqlalchemy.orm import Session, sessionmaker
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import models_pg  # noqa: F401 -- registers PG tables on Base.metadata
 from base import Base
 
 if TYPE_CHECKING:

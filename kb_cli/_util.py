@@ -16,20 +16,16 @@ from base import Base, _now
 from context import find_context, place, resolve_context
 from mixins import HasUniqueName
 from models import Context, EntityLink, HasContextOrTag, Journal, Settings, Tag
-from models_pg import PgItem
 
 # SQLAlchemy declarative classes don't satisfy structural Protocol matching (their
 # class-level attributes are InstrumentedAttribute, not the Mapped[T] written in the
 # class body), so classes needing get_by_name inherit the real HasUniqueName mixin
-# (nominal typing) instead. PgItem is the one exception: it gets `.name` from Item
-# (not unique at the schema level, since multiple games can share item names), so it
-# can't use the mixin -- named explicitly here instead.
-_Named = HasUniqueName | PgItem
-T = TypeVar("T", bound=_Named)
+# (nominal typing) instead.
+T = TypeVar("T", bound=HasUniqueName)
 
 
 def get_by_name(sess: Session, cls: Type[T], name: str) -> T:
-    """Look up a unique-named row (PgNpc, PgMob, PgPlayer, PgCharacter, ...) or exit with an error."""
+    """Look up a unique-named row (Context, Tag, ...) or exit with an error."""
     obj = sess.scalars(select(cls).where(cls.name == name)).one_or_none()
     if obj is None:
         print(f"{cls.__name__} {name!r}: not found", file=sys.stderr)

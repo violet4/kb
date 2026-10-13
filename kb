@@ -36,8 +36,6 @@ Usage: kb [--as-of WHEN] <command> [subcommand ...] [args ...]
   kb search QUERY   # search Goals, Todos, and Wishlist by text, plus Notes by semantic similarity
   kb text extract SOURCE [--cache] [--show N]   # clean text paragraphs from a URL/PDF/HTML/text file/stdin
   kb text semsearch rank QUERY [FILE] | compare A B   # rank/compare paragraphs by embedding
-  kb games pg entity npc|mob|mob-drop|item|player|character|relation|skill|hangout ...
-  kb games pg quest show|add|complete ...
   kb pager FILE [--lines N] [--reset]
   kb sessions   # list Claude Code CLI sessions across all projects
   kb stats errors [--days N] [--top N]   # CLI error patterns from CliInvocation audit log
@@ -119,7 +117,6 @@ from kb_cli import (
     win,
     wishlist,
 )
-from kb_cli import games
 from kb_cli.bare_text import BARE_INSTRUCTIONS as _BARE_INSTRUCTIONS
 import schema_version
 from models import SessionFactory
@@ -188,7 +185,6 @@ vendor.add_subparser(subparsers)
 timer.add_subparser(subparsers)
 pager.add_subparser(subparsers)
 anki.add_subparser(subparsers)
-games.add_subparser(subparsers)
 search.add_subparser(subparsers)
 sessions.add_subparser(subparsers)
 settings_cmd.add_subparser(subparsers)

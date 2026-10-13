@@ -142,7 +142,6 @@ event.listen(Base, "mapper_configured", _register_tracked_listeners, propagate=T
 class Collection(enum.Enum):
     ENGINEERING = "engineering"
     PERSONAL = "personal"
-    GORGON = "gorgon"
     WORK = "work"
     INBOX = "inbox"  # default collection for a note created without an explicit one
 
@@ -1670,8 +1669,8 @@ class Event(Base, HasContextOrTag, HasEmbedding, HasJournal):
 
 
 class Item(Base, HasEmbedding):
-    """JTI base for game-specific items. Game side tables below join 1:1 via id, each composing
-    whichever mixins.py traits it actually needs (weight, grid size, stack size, ...)."""
+    """JTI base for items. Each subtype's side table joins 1:1 via id, `game` is the polymorphic
+    discriminator, and a subtype composes whichever mixins.py traits it needs."""
 
     __tablename__ = "item"
 
@@ -1717,7 +1716,7 @@ class IrlItem(Item, HasWeight):
 
 # ---------------------------------------------------------------------------
 # Vendor / VendorItem / Purchase — price/quantity history for anything
-# transactable, real or in-game. A grocery store and a PG player-shop NPC
+# transactable, real or in-game. A grocery store and an in-game shop NPC
 # are both "somewhere you buy Items from"; domain distinguishes them.
 # ---------------------------------------------------------------------------
 
@@ -2012,8 +2011,8 @@ class EntityLink(Base):
     @staticmethod
     def entity_registry() -> dict[str, type[Base]]:
         """Every mapped class, live from SQLAlchemy's own declarative registry (shared across
-        all Base subclasses) -- not a hand-maintained dict, so a new model in models.py or
-        models_pg.py becomes linkable automatically, with nothing here to remember to update."""
+        all Base subclasses) -- not a hand-maintained dict, so a new model
+        becomes linkable automatically, with nothing here to remember to update."""
         return {m.class_.__name__: m.class_ for m in Base.registry.mappers}
 
     @classmethod

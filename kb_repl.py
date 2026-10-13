@@ -14,7 +14,6 @@ from datetime import datetime
 from sqlalchemy import func, select
 
 import models
-import models_pg
 from context import resolve_context
 from models import SessionFactory
 
@@ -52,11 +51,11 @@ if args.file:
 
 sess = SessionFactory()
 
-# Every class/function actually defined in models.py/models_pg.py (models, enums,
+# Every class/function actually defined in models.py (models, enums,
 # helpers like init_db) is pre-loaded automatically -- adding a new model there
 # needs no corresponding edit here.
 ns: dict[str, object] = {}
-for module in (models, models_pg):
+for module in (models,):
     for name, obj in vars(module).items():
         if not name.startswith("_") and inspect.getmodule(obj) is module:
             ns[name] = obj

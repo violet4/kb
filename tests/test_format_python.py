@@ -3,7 +3,7 @@ files a `text sub`/`text replace` command edited."""
 
 from pathlib import Path
 
-from kb_cli.hooks import _TEXT_EDIT_PY_RE, _black_project
+from kb_cli.hooks import _TEXT_EDIT_PY_RE, _black_exclusions, _black_project
 
 
 def test_black_project_is_nearest_pyproject_with_black(tmp_path: Path) -> None:
@@ -27,3 +27,13 @@ def test_nearest_pyproject_without_black_means_no_formatting(tmp_path: Path) -> 
 def test_text_edit_targets_are_python_files_only() -> None:
     command = "text sub --file a/b.py -i --expect 1 x y && text replace --file docs/c.md -i s e n"
     assert _TEXT_EDIT_PY_RE.findall(command) == ["a/b.py"]
+
+
+def test_exclusions_come_from_the_projects_black_config(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text('[tool.black]\nextend-exclude = "alembic/versions/"\n')
+    assert _black_exclusions(tmp_path) == "(?:alembic/versions/)"
+
+
+def test_no_exclusions_configured(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text("[tool.black]\nline-length = 120\n")
+    assert _black_exclusions(tmp_path) is None

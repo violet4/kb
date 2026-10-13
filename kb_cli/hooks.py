@@ -18,6 +18,7 @@ import re
 import subprocess
 import sys
 import time
+import tomllib
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -376,6 +377,15 @@ def _black_project(path: Path) -> Optional[Path]:
     return None
 
 
+def _black_exclusions(project: Path) -> Optional[str]:
+    """The project's black exclude patterns combined into one regex, or None. black applies
+    exclude/extend-exclude only while scanning directories, so a file passed by path is
+    formatted even when excluded unless the patterns are passed again as --force-exclude."""
+    config = tomllib.loads((project / "pyproject.toml").read_text()).get("tool", {}).get("black", {})
+    patterns = [config[key] for key in ("exclude", "extend-exclude", "force-exclude") if config.get(key)]
+    return "|".join(f"(?:{p})" for p in patterns) or None
+
+
 def cmd_format_python(args: argparse.Namespace) -> None:
     """Format each Python file named on stdin with black, when its project configures black
     (a [tool.black] section in the nearest pyproject.toml), so a commit-time `black --check`
@@ -391,9 +401,11 @@ def cmd_format_python(args: argparse.Namespace) -> None:
         project = _black_project(path)
         if project is None:
             continue
-        result = subprocess.run(
-            ["uv", "run", "--project", str(project), "black", str(path)], capture_output=True, text=True
-        )
+        command = ["uv", "run", "--project", str(project), "black", str(path)]
+        exclusions = _black_exclusions(project)
+        if exclusions:
+            command += ["--force-exclude", exclusions]
+        result = subprocess.run(command, capture_output=True, text=True)
         if result.returncode == 0 and "reformatted" in result.stderr:
             print(f"black reformatted {path}")
 

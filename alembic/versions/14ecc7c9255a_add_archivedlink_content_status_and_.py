@@ -42,6 +42,11 @@ def upgrade() -> None:
     from models import ArchivedLink
 
     bind = op.get_bind()
+    # The query below goes through today's ArchivedLink model, which selects columns later
+    # migrations add; on a fresh database (nothing to re-embed) it is skipped so the chain
+    # can run from empty.
+    if not bind.execute(sa.text("SELECT 1 FROM archived_link LIMIT 1")).first():
+        return
     with Session(bind=bind) as session:
         for link in session.scalars(sa.select(ArchivedLink)).all():
             link.reembed()

@@ -121,6 +121,7 @@ from kb_cli import (
 )
 from kb_cli import games
 from kb_cli.bare_text import BARE_INSTRUCTIONS as _BARE_INSTRUCTIONS
+import schema_version
 from models import SessionFactory
 
 
@@ -237,6 +238,15 @@ if args.command is None:
     print(f"This routing guide is printed by {Path(__file__).resolve()} (bare `kb`, no subcommand).\n")
     print(_BARE_INSTRUCTIONS, end="")
     sys.exit(0)
+# A schema older than these models fails on the first query touching a newer column, with an
+# error that names the column rather than the cause; refuse up front instead.
+_pending = schema_version.pending_count()
+if _pending:
+    print(
+        f"kb: the database schema is {_pending} migration(s) behind this code. Run:\n  {schema_version.UPGRADE_HINT}",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 args.session = SessionFactory()
 
 with instrumented_run(parser, args, record=_record_invocation):

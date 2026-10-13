@@ -1,18 +1,18 @@
-import os
 import shutil
 import sys
 from datetime import datetime, timezone
 from logging.config import fileConfig
 from pathlib import Path
 
-import psutil
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # Keep loggers configured before this ran: the server runs migrations in-process at
+    # startup, and fileConfig's default would silence its loggers for the rest of its life.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 _DB_PATH = Path(__file__).parent.parent / "data" / "kb.db"
 config.set_main_option("sqlalchemy.url", f"sqlite:///{_DB_PATH}")
@@ -20,6 +20,9 @@ config.set_main_option("sqlalchemy.url", f"sqlite:///{_DB_PATH}")
 from base import Base  # noqa: E402
 import models  # noqa: E402,F401 — import needed so all Base subclasses register
 import models_pg  # noqa: E402,F401 — every domain module must be imported so its tables are known to Base.metadata
+import schema_version  # noqa: E402
+
+_DB_CLOSE_TIMEOUT_SECONDS = 30
 
 target_metadata = Base.metadata
 
@@ -35,41 +38,23 @@ def _backup_db() -> None:
     print(f"[alembic] Backed up db to {dest}")
 
 
-def _db_holders() -> list[psutil.Process]:
-    """Every other process with the database (or its WAL file) open."""
-    paths = {str(_DB_PATH.resolve()), f"{_DB_PATH.resolve()}-wal"}
-    holders = []
-    for proc in psutil.process_iter():
-        if proc.pid == os.getpid():
-            continue
-        try:
-            if any(f.path in paths for f in proc.open_files()):
-                holders.append(proc)
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            continue
-    return holders
-
-
-def _refuse_if_db_open() -> None:
-    """Refuse to change the schema while another process has the database open. SQLite
-    commits each DDL statement as it runs under Python's sqlite3 driver, so a process
-    reading during a migration can see new columns before the migration has filled them in,
-    and act on that half-migrated state."""
+def _wait_until_db_closed() -> None:
+    """Before an upgrade or downgrade, wait for other processes to close the database, and
+    exit naming them if they have not within _DB_CLOSE_TIMEOUT_SECONDS. SQLite commits each
+    DDL statement as it runs under Python's sqlite3 driver, so a process reading during a
+    migration can see new columns before the migration has filled them in, and act on that
+    half-migrated state. A call through alembic's Python API (the server's startup migration)
+    has no command-line options and counts as an upgrade."""
     cmd = getattr(config.cmd_opts, "cmd", None)
-    if not cmd or cmd[0].__name__ not in ("upgrade", "downgrade"):
+    if cmd and cmd[0].__name__ not in ("upgrade", "downgrade"):
         return
-    holders = _db_holders()
-    if not holders:
-        return
-    lines = []
-    for proc in holders:
-        try:
-            lines.append(f"  pid {proc.pid}: {' '.join(proc.cmdline())}")
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            lines.append(f"  pid {proc.pid}")
-    sys.exit(
-        f"Refusing to migrate: {_DB_PATH} is open in another process. Stop these, then rerun:\n" + "\n".join(lines)
-    )
+    holders = schema_version.wait_until_db_closed(_DB_CLOSE_TIMEOUT_SECONDS)
+    if holders:
+        sys.exit(
+            f"Refusing to migrate: {_DB_PATH} is still open in another process after "
+            f"{_DB_CLOSE_TIMEOUT_SECONDS} s. Stop these, then rerun:\n"
+            + "\n".join(f"  {schema_version.describe(proc)}" for proc in holders)
+        )
 
 
 def run_migrations_offline() -> None:
@@ -92,7 +77,7 @@ def run_migrations_online() -> None:
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
-    _refuse_if_db_open()
+    _wait_until_db_closed()
     _backup_db()
     with connectable.connect() as connection:
         context.configure(

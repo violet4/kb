@@ -17,7 +17,11 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import uvicorn
+from alembic import command as alembic_command
+from alembic.config import Config as AlembicConfig
 from fastapi import FastAPI
+
+import schema_version
 
 from api.archivebox_router import router as archivebox_router
 from api.channels_router import router as channels_router
@@ -98,7 +102,20 @@ app.include_router(channels_router)
 app.include_router(settings_router)
 
 
+def _migrate() -> None:
+    """Bring the schema up to this code's head before serving, the way a self-hosted app
+    migrates on startup: these models cannot run against an older schema. alembic/env.py waits
+    for other processes to close the database first and backs it up; a migration that cannot
+    run exits here, so the server never serves a half-migrated schema."""
+    pending = schema_version.pending_count()
+    if pending == 0:
+        return
+    print(f"kb server: applying {pending} pending migration(s) before serving", flush=True)
+    alembic_command.upgrade(AlembicConfig(str(schema_version.ALEMBIC_INI)), "head")
+
+
 def main() -> None:
+    _migrate()
     uvicorn.run(app, host="127.0.0.1", port=PORT)
 
 

@@ -41,19 +41,17 @@ from sqlalchemy import (
 from sqlalchemy.orm import (
     MANYTOONE,
     Mapped,
-    MappedColumn,
     ORMExecuteState,
     Session,
     UOWTransaction,
     declared_attr,
     mapped_column,
-    object_session,
     relationship,
     sessionmaker,
     validates,
 )
 from sqlalchemy.engine.interfaces import DBAPIConnection
-from sqlalchemy.orm.base import NO_VALUE, NEVER_SET
+from sqlalchemy.orm.base import NO_VALUE
 from sqlalchemy.pool import ConnectionPoolEntry
 
 from base import Base, UtcDateTime, _now
@@ -75,63 +73,6 @@ def _set_pragma(conn: DBAPIConnection, _: ConnectionPoolEntry) -> None:
 
 
 SessionFactory = sessionmaker(bind=_engine)
-
-
-# ---------------------------------------------------------------------------
-# Changelog + tracked_column
-# ---------------------------------------------------------------------------
-
-
-class ChangeLog(Base):
-    __tablename__ = "changelog"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    entity_table: Mapped[str] = mapped_column(String, nullable=False)
-    entity_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    field: Mapped[str] = mapped_column(String, nullable=False)
-    old_value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    new_value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    changed_at: Mapped[datetime] = mapped_column(UtcDateTime(), nullable=False, default=_now)
-
-    def __repr__(self) -> str:
-        return f"<ChangeLog {self.entity_table}#{self.entity_id}.{self.field}: {self.old_value!r} → {self.new_value!r}>"
-
-
-def tracked_column(*args: Any, **kwargs: Any) -> MappedColumn[Any]:
-    """Drop-in for mapped_column that records changes to ChangeLog on assignment."""
-    col = mapped_column(*args, **kwargs)
-    col.column.info["tracked"] = True
-    return col
-
-
-def _on_tracked_set(target: Any, value: Any, oldvalue: Any, initiator: Any) -> None:
-    if oldvalue is NO_VALUE or oldvalue is NEVER_SET:
-        return
-    if value == oldvalue:
-        return
-    session = object_session(target)
-    if session is None:
-        return
-    table = target.__tablename__
-    entity_id = target.id if target.id is not None else -1
-    entry = ChangeLog(
-        entity_table=table,
-        entity_id=entity_id,
-        field=initiator.key,
-        old_value=str(oldvalue) if oldvalue is not None else None,
-        new_value=str(value) if value is not None else None,
-    )
-    session.add(entry)
-
-
-def _register_tracked_listeners(mapper: Any, cls: Any) -> None:
-    for attr_name, col_prop in mapper.columns.items():
-        if col_prop.info.get("tracked"):
-            attr = getattr(cls, attr_name)
-            event.listen(attr, "set", _on_tracked_set)
-
-
-event.listen(Base, "mapper_configured", _register_tracked_listeners, propagate=True)
 
 
 # ---------------------------------------------------------------------------
@@ -709,7 +650,7 @@ class Person(Base):
     tier: Mapped[PersonTier] = mapped_column(
         Enum(PersonTier, create_constraint=True, validate_strings=True), nullable=False, default=PersonTier.ACQUAINTANCE
     )
-    closeness: Mapped[int] = tracked_column(Integer, nullable=False, default=0)
+    closeness: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_contacted: Mapped[Optional[datetime]] = mapped_column(UtcDateTime(), nullable=True)
     reach_out_every_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -1044,7 +985,7 @@ class Goal(Base, HasContextOrTag, HasEmbedding, HasAutoLinks, HasJournal):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     title: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    status: Mapped[GoalStatus] = tracked_column(
+    status: Mapped[GoalStatus] = mapped_column(
         Enum(GoalStatus, create_constraint=True, validate_strings=True), nullable=False, default=GoalStatus.ACTIVE
     )
     context_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("context.id"), nullable=True)
@@ -1111,7 +1052,7 @@ class Todo(Base, HasContextOrTag, HasEmbedding, HasAutoLinks, HasJournal):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     title: Mapped[str] = mapped_column(String, nullable=False)
-    status: Mapped[TodoStatus] = tracked_column(
+    status: Mapped[TodoStatus] = mapped_column(
         Enum(TodoStatus, create_constraint=True, validate_strings=True), nullable=False, default=TodoStatus.PENDING
     )
     kind: Mapped[TodoKind] = mapped_column(
@@ -2677,7 +2618,7 @@ class Timer(Base, HasContextOrTag):
     label: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     duration_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
     ends_at: Mapped[datetime] = mapped_column(UtcDateTime(), nullable=False)
-    status: Mapped[TimerStatus] = tracked_column(
+    status: Mapped[TimerStatus] = mapped_column(
         Enum(TimerStatus, create_constraint=True, validate_strings=True), nullable=False, default=TimerStatus.ACTIVE
     )
     repeat_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)

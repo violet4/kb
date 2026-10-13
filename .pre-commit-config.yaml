@@ -1,3 +1,6 @@
+# Stop at the first failing hook: a formatting failure needs a retry anyway, so running mypy
+# and pytest after it only delays the retry.
+fail_fast: true
 repos:
   - repo: local
     hooks:

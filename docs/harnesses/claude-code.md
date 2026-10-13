@@ -47,6 +47,39 @@ kb notifications volume 50         # 0-100, persisted
 
 Replace `/path/to/kb-repo` with this repo's absolute path (e.g. `/home/user/kb`). Optional env vars: `NTFY_URL` (default `http://localhost:7182/claude-code`), `NTFY_TOKEN_FILE` (default `~/.config/ntfy-token`) — read by the adapter script itself and passed through to `kb notifications send` as `--ntfy-url`/`--ntfy-token-file` so a per-invocation override still works without touching the persisted default.
 
+## format-python (harness-agnostic formatter)
+
+See `kb hooks --help` / `kb_cli/hooks.py` for what this does and why: it formats a just-edited Python file with black when the file's project configures black, so a commit-time `black --check` finds nothing to reformat. This section is only the Claude Code wiring, on `PostToolUse`: a `Write`/`Edit` target path, or a `Bash` command (its `text sub|replace --file X.py` targets, resolved from the session's `.cwd`). Its output, naming each reformatted file, is returned as `additionalContext`, so the session knows the file changed after its edit.
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "input=$(cat); cd \"$(printf '%s' \"$input\" | jq -r '.cwd')\" 2>/dev/null; hint=$(printf '%s' \"$input\" | jq -r '.tool_input.command' | /path/to/kb hooks format-python --command 2>/dev/null); if [ -n \"$hint\" ]; then jq -n --arg h \"$hint\" '{hookSpecificOutput: {hookEventName: \"PostToolUse\", additionalContext: $h}}'; else printf '{}'; fi"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hint=$(jq -r '.tool_input.file_path' | /path/to/kb hooks format-python 2>/dev/null); if [ -n \"$hint\" ]; then jq -n --arg h \"$hint\" '{hookSpecificOutput: {hookEventName: \"PostToolUse\", additionalContext: $h}}'; else printf '{}'; fi"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/user/kb/kb`).
+
 ## mypy-check (harness-agnostic detector)
 
 See `kb hooks --help` / `kb_cli/hooks.py` for what this detects and what it says (points at `kb si show type-safety`) — this section is only the Claude Code wiring: pipes a Bash command's combined stdout+stderr through on `PostToolUse`.
@@ -133,6 +166,39 @@ See `kb hooks --help` / `kb_cli/hooks.py` for what this detects and why (a `git 
           {
             "type": "command",
             "command": "reason=$(jq -r '.tool_input.command' | /path/to/kb hooks commit-check 2>/dev/null); if [ -n \"$reason\" ]; then jq -n --arg r \"$reason\" '{hookSpecificOutput: {hookEventName: \"PreToolUse\", permissionDecision: \"deny\", permissionDecisionReason: $r}}'; else printf '{}'; fi"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/user/kb/kb`).
+
+## doc-path-check, doc-command-check (harness-agnostic detectors, blocking)
+
+See `kb hooks --help` / `kb_cli/hooks.py` for what these detect and why: a markdown write, or a kb record-body write, in a session that has not read the documentation system instruction node. Both use the same deny adapter as `find-root-check`. `doc-path-check` takes a `Write`/`Edit` target path; `doc-command-check` takes a `Bash` command (`kb <noun> add|update|edit`, `text sub|replace --file X.md`, a `>`/`tee` redirect into a `.md` file).
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "reason=$(jq -r '.tool_input.command' | /path/to/kb hooks doc-command-check 2>/dev/null); if [ -n \"$reason\" ]; then jq -n --arg r \"$reason\" '{hookSpecificOutput: {hookEventName: \"PreToolUse\", permissionDecision: \"deny\", permissionDecisionReason: $r}}'; else printf '{}'; fi"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "reason=$(jq -r '.tool_input.file_path' | /path/to/kb hooks doc-path-check 2>/dev/null); if [ -n \"$reason\" ]; then jq -n --arg r \"$reason\" '{hookSpecificOutput: {hookEventName: \"PreToolUse\", permissionDecision: \"deny\", permissionDecisionReason: $r}}'; else printf '{}'; fi"
           }
         ]
       }

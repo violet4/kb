@@ -15,6 +15,7 @@ that principle applied to hook wiring instead of memory content.
 import argparse
 import os
 import re
+import subprocess
 import sys
 import time
 from datetime import datetime
@@ -320,26 +321,104 @@ def _tree_reminder_text(session: Session) -> str:
 # the `commit` subcommand.
 _GIT_COMMIT_RE = re.compile(r"(?<![\w./-])git(?:\s+-[Cc]\s+\S+|\s+--?[\w-]+(?:=\S+)?)*\s+commit(?![\w-])")
 
-_COMMIT_CHECK_HINT = (
-    "Blocked: this session has not read the commit-message rules. Run `kb si show {title}`, "
-    "then write the message to it and commit again."
-)
+_UNREAD_NODE_HINT = "Blocked: this session has not read the {purpose}. Run `kb si show {title}`, then retry."
+
+
+def _unread_node_hint(session: Session, title: str, purpose: str) -> Optional[str]:
+    """A block reason if this agent session has not read the system instruction node
+    `title`; None when it has, when no agent session is detectable (no reads are recorded to
+    check against), or when the node does not exist."""
+    from kb_cli import si_files
+
+    node = si_files.resolve(title)
+    read = _session_si_reads(session)
+    if node is None or read is None or node.id in read:
+        return None
+    return _UNREAD_NODE_HINT.format(purpose=purpose, title=node.title)
 
 
 def cmd_commit_check(args: argparse.Namespace) -> None:
     """Read a Bash command on stdin; if it runs `git commit` in an agent session that has not
-    read the commit-messages system instruction node, print a block reason to stdout. Prints
-    nothing otherwise, including outside a registered agent session, where no reads are
-    recorded to check against."""
-    from kb_cli import si_files
-
+    read the commit-messages system instruction node, print a block reason to stdout."""
     if not _GIT_COMMIT_RE.search(sys.stdin.read()):
         return
-    node = si_files.resolve("commit-messages")
-    read = _session_si_reads(args.session)
-    if node is None or read is None or node.id in read:
+    hint = _unread_node_hint(args.session, "commit-messages", "commit-message rules")
+    if hint:
+        print(hint)
+
+
+# Markdown files that are harness or scratch state rather than documentation.
+_DOC_EXEMPT_RE = re.compile(r"(?:^|/)\.claude/|^/tmp/")
+
+# A kb command that writes a record body, or a shell edit of a markdown file.
+_DOC_COMMAND_RE = re.compile(
+    r"\bkb\s+(?:notes?|todo|bug|goal|journal|win|idea|log|inbox|wishlist|si|i|instructions)\s+(?:add|update|edit)\b"
+    r"|\btext\s+(?:sub|replace)\b[^\n|;&]*--file\s+(?!/tmp/)\S+\.md\b"
+    r"|(?:>|\btee\s+(?:-a\s+)?)\s*(?!/tmp/)[^\s>|;&]+\.md\b",
+    re.IGNORECASE,
+)
+
+
+def _doc_hint(session: Session) -> Optional[str]:
+    return _unread_node_hint(session, "documentation", "documentation guidance")
+
+
+# The --file target of a `text sub`/`text replace` edit of a Python file.
+_TEXT_EDIT_PY_RE = re.compile(r"\btext\s+(?:sub|replace)\b[^\n|;&]*--file\s+(\S+\.py)\b")
+
+
+def _black_project(path: Path) -> Optional[Path]:
+    """The nearest directory above `path` whose pyproject.toml configures black, or None."""
+    for parent in path.resolve().parents:
+        pyproject = parent / "pyproject.toml"
+        if pyproject.is_file():
+            return parent if "[tool.black]" in pyproject.read_text() else None
+    return None
+
+
+def cmd_format_python(args: argparse.Namespace) -> None:
+    """Format each Python file named on stdin with black, when its project configures black
+    (a [tool.black] section in the nearest pyproject.toml), so a commit-time `black --check`
+    finds nothing to reformat. stdin holds one path per line, or with --command a Bash
+    command whose `text sub`/`text replace --file X.py` targets are formatted. Prints what it
+    reformatted; silent otherwise."""
+    text = sys.stdin.read()
+    paths = _TEXT_EDIT_PY_RE.findall(text) if args.command else text.splitlines()
+    for raw in paths:
+        path = Path(raw.strip())
+        if path.suffix != ".py" or not path.is_file():
+            continue
+        project = _black_project(path)
+        if project is None:
+            continue
+        result = subprocess.run(
+            ["uv", "run", "--project", str(project), "black", str(path)], capture_output=True, text=True
+        )
+        if result.returncode == 0 and "reformatted" in result.stderr:
+            print(f"black reformatted {path}")
+
+
+def cmd_doc_path_check(args: argparse.Namespace) -> None:
+    """Read a file path on stdin (the target of a Write/Edit call); if it is a markdown file
+    outside harness and scratch state, and this agent session has not read the
+    documentation system instruction node, print a block reason to stdout."""
+    path = sys.stdin.read().strip()
+    if not path.lower().endswith(".md") or _DOC_EXEMPT_RE.search(path):
         return
-    print(_COMMIT_CHECK_HINT.format(title=node.title))
+    hint = _doc_hint(args.session)
+    if hint:
+        print(hint)
+
+
+def cmd_doc_command_check(args: argparse.Namespace) -> None:
+    """Read a Bash command on stdin; if it writes a kb record body or edits a markdown file,
+    and this agent session has not read the documentation system instruction node, print a
+    block reason to stdout."""
+    if not _DOC_COMMAND_RE.search(sys.stdin.read()):
+        return
+    hint = _doc_hint(args.session)
+    if hint:
+        print(hint)
 
 
 _ARCHIVE_REMINDER = (
@@ -562,6 +641,29 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         help="Detect `git commit` on stdin; print a block reason if this session has not read the commit-messages node",
     )
     p_commit.set_defaults(func=cmd_commit_check)
+
+    p_format = sub.add_parser(
+        "format-python",
+        help="Format Python files named on stdin with black, when their project configures it",
+    )
+    p_format.add_argument(
+        "--command",
+        action="store_true",
+        help="stdin is a Bash command; format its `text sub|replace --file X.py` targets",
+    )
+    p_format.set_defaults(func=cmd_format_python)
+
+    p_doc_path = sub.add_parser(
+        "doc-path-check",
+        help="Detect a markdown file path on stdin; print a block reason if this session has not read the documentation node",
+    )
+    p_doc_path.set_defaults(func=cmd_doc_path_check)
+
+    p_doc_command = sub.add_parser(
+        "doc-command-check",
+        help="Detect a record-body or markdown write in a Bash command on stdin; block until the documentation node is read",
+    )
+    p_doc_command.set_defaults(func=cmd_doc_command_check)
 
     p_git_add_a = sub.add_parser(
         "git-add-a-check",

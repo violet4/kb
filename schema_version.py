@@ -7,6 +7,7 @@ ScriptDirectory, keeps the check to a few milliseconds: loading the script direc
 every migration module, about 400 ms, too slow for every `kb` command.
 """
 
+import os
 import re
 import sqlite3
 import time
@@ -15,7 +16,9 @@ from pathlib import Path
 import psutil
 
 KB_DIR = Path(__file__).parent
-DB_PATH = KB_DIR / "data" / "kb.db"
+# The one definition of where the database lives (models.py and alembic/env.py read it here).
+# KB_DB_PATH points a process at another database file, e.g. a test's throwaway copy.
+DB_PATH = Path(os.environ["KB_DB_PATH"]) if os.environ.get("KB_DB_PATH") else KB_DIR / "data" / "kb.db"
 ALEMBIC_INI = KB_DIR / "alembic.ini"
 _VERSIONS_DIR = KB_DIR / "alembic" / "versions"
 

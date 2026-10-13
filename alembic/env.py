@@ -2,7 +2,6 @@ import shutil
 import sys
 from datetime import datetime, timezone
 from logging.config import fileConfig
-from pathlib import Path
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
@@ -14,13 +13,14 @@ if config.config_file_name is not None:
     # startup, and fileConfig's default would silence its loggers for the rest of its life.
     fileConfig(config.config_file_name, disable_existing_loggers=False)
 
-_DB_PATH = Path(__file__).parent.parent / "data" / "kb.db"
+import schema_version  # noqa: E402
+
+_DB_PATH = schema_version.DB_PATH
 config.set_main_option("sqlalchemy.url", f"sqlite:///{_DB_PATH}")
 
 from base import Base  # noqa: E402
 import models  # noqa: E402,F401 — import needed so all Base subclasses register
 import models_pg  # noqa: E402,F401 — every domain module must be imported so its tables are known to Base.metadata
-import schema_version  # noqa: E402
 
 _DB_CLOSE_TIMEOUT_SECONDS = 30
 

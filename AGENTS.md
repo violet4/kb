@@ -32,7 +32,7 @@ Cache stable-but-frequently-referenced facts locally (e.g. game mechanics, refer
 
 ## Running commands
 
-Every write to the kb database goes through the models (the `kb` CLI, `kb_repl.py`, the web API), never `sqlite3` or other raw SQL: Journal and the other flush listeners run only on that path, so a raw write goes unrecorded and skips their invariants. Read-only queries are fine: `sqlite3 -readonly data/kb.db` (the database is `data/kb.db`; `sqlite3` given a path that does not exist creates an empty file there).
+Every write to the kb database goes through the models (the `kb` CLI, `kb_repl.py`, the web API), never `sqlite3` or other raw SQL: Journal and the other flush listeners run only on that path, so a raw write goes unrecorded and skips their invariants. Read-only queries are fine: `sqlite3 -readonly data/kb.db` (the database is `data/kb.db`; `sqlite3` given a path that does not exist creates an empty file there). `KB_DB_PATH` points kb, alembic, and the server at a different database file, e.g. a throwaway copy for testing.
 
 `kb_repl.py` (see `./kb_repl.py -h`, run from this repo) is the Python-expression runner for experiments and for what kb cannot do yet. When a need recurs, it becomes a `kb` subcommand rather than a saved `kb_repl.py` script; `kb_repl.py` itself never gains functionality for one-off needs.
 

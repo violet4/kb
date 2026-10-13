@@ -1,4 +1,4 @@
-"""Personal knowledge base ORM. Single SQLite database at ~/kb/data/kb.db."""
+"""Personal knowledge base ORM. Single SQLite database at schema_version.DB_PATH (data/kb.db)."""
 
 from __future__ import annotations
 
@@ -58,10 +58,10 @@ from sqlalchemy.pool import ConnectionPoolEntry
 from base import Base, UtcDateTime, _now
 from harness import current_session_id
 from mixins import HasUniqueName, HasWeight
+from schema_version import DB_PATH
 
-_DB_PATH = Path(__file__).parent / "data" / "kb.db"
-_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-_engine = create_engine(f"sqlite:///{_DB_PATH}", echo=False)
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+_engine = create_engine(f"sqlite:///{DB_PATH}", echo=False)
 
 
 @event.listens_for(_engine, "connect")

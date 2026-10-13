@@ -7,8 +7,12 @@ Create Date: 2026-08-17 00:20:05.104785
 """
 from typing import Sequence, Union
 
+import struct
+
 from alembic import op
 import sqlalchemy as sa
+
+from embed import embed, model_name
 
 
 # revision identifiers, used by Alembic.
@@ -37,20 +41,15 @@ def upgrade() -> None:
 
     # ### end Alembic commands ###
 
-    from sqlalchemy.orm import Session
-
-    from models.knowledge.archived_link import ArchivedLink
-
+    # Embed each existing link the way ArchivedLink did at this revision: its title and reason.
     bind = op.get_bind()
-    # The query below goes through today's ArchivedLink model, which selects columns later
-    # migrations add; on a fresh database (nothing to re-embed) it is skipped so the chain
-    # can run from empty.
-    if not bind.execute(sa.text("SELECT 1 FROM archived_link LIMIT 1")).first():
-        return
-    with Session(bind=bind) as session:
-        for link in session.scalars(sa.select(ArchivedLink)).all():
-            link.reembed()
-        session.commit()
+    links = bind.execute(sa.text("SELECT id, title, reason FROM archived_link")).all()
+    for link in links:
+        vec = embed(f"{link.title}\n\n{link.reason}")
+        bind.execute(
+            sa.text("UPDATE archived_link SET embedding = :embedding, embedding_model = :model WHERE id = :id"),
+            {"embedding": struct.pack(f"{len(vec)}f", *vec), "model": model_name(), "id": link.id},
+        )
 
 
 def downgrade() -> None:

@@ -11,7 +11,7 @@ import inspect
 import sys
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 import models
 import models_pg
@@ -65,6 +65,7 @@ ns.update(
     {
         "sess": sess,
         "select": select,
+        "func": func,
         "datetime": datetime,
         "context": resolve_context(sess, args.context),
     }

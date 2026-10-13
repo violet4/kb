@@ -2,7 +2,7 @@
 
 This file contains guidance on how to work on kb's own codebase. Guidance on how to drive kb day-to-day lives in the Instruction tree (`kb i show root; kb`) instead. `~/kb/CLAUDE_GLOBAL.md` (= `~/.claude/CLAUDE.md`) contains only the bootstrap that gets that tree read at session start — nothing else.
 
-Personal knowledge base. SQLite + SQLAlchemy 2.0. Run `scripts/dev/gen-api` for the full model/method surface before making any queries or updates. Every script here (including `kb_repl.py`) is directly executable from any directory — no `uv run` prefix needed, the shebang handles it.
+Personal knowledge base. SQLite + SQLAlchemy 2.0. Run `scripts/dev/gen-api` for the full model/method surface before making any queries or updates. Every script here is directly executable — no `uv run` prefix needed, the shebang handles it.
 
 `kb <command> [subcommand ...] [args]` is the global CLI entry point (`~/bin/kb` symlinks to `~/kb/kb`), usable from any directory on the filesystem, not just from inside `~/kb`. It dispatches to `kb_cli/*.py` — real importable Python modules (not standalone executables), each exposing an `add_subparser(subparsers)` hook that the top-level `kb` script wires into one argparse tree. Routing (which noun for which kind of statement) lives in bare `kb`'s own output, not here; syntax/flags for a given command live in that command's own `--help` at any nesting depth (e.g. `kb games pg entity mob --help`), always current since it's generated from the actual argparse definitions — don't duplicate either into this file. `scripts/db`, `scripts/dev`, `scripts/model`, `scripts/service` stay as plain `scripts/*` executables, kb-repo-local only, since migrating/checking schema/etc. only makes sense while actually developing kb itself — mirrors the split between `~/kb/CLAUDE.md` (this file, kb-repo-local, project architecture/why) and `kb i show root` / bare `kb` (global, routing/day-to-day usage).
 
@@ -32,9 +32,9 @@ Cache stable-but-frequently-referenced facts locally (e.g. game mechanics, refer
 
 ## Running commands
 
-Every write to the kb database goes through the models (the `kb` CLI, `kb_repl.py`, the web API), never `sqlite3` or other raw SQL: Journal and the other flush listeners run only on that path, so a raw write goes unrecorded and skips their invariants. Read-only `sqlite3` queries are fine.
+Every write to the kb database goes through the models (the `kb` CLI, `kb_repl.py`, the web API), never `sqlite3` or other raw SQL: Journal and the other flush listeners run only on that path, so a raw write goes unrecorded and skips their invariants. Read-only queries are fine: `sqlite3 -readonly data/kb.db` (the database is `data/kb.db`; `sqlite3` given a path that does not exist creates an empty file there).
 
-`kb_repl.py` (see `kb_repl.py -h`) is the Python-expression runner, a different tool from the `kb` CLI — `kb_repl.py` is for one-off queries/scripts against models directly, `kb` is for the day-to-day subcommands (see `kb -h`).
+`kb_repl.py` (see `./kb_repl.py -h`, run from this repo) is the Python-expression runner for experiments and for what kb cannot do yet. When a need recurs, it becomes a `kb` subcommand rather than a saved `kb_repl.py` script; `kb_repl.py` itself never gains functionality for one-off needs.
 
 Bare `kb_repl.py` (no command, `-f`, or `-i`) errors instead of silently dropping into the REPL — always pass `-i` explicitly if you want manual-commit interactive mode.
 

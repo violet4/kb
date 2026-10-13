@@ -1,25 +1,34 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, Navigate, useLocation, useParams } from 'react-router-dom';
 import { entityPath } from '../entities/navigation';
-import SearchResults from '../search/components/SearchResults';
+import { RecordList } from '../search/components/SearchResults';
 import ToleranceSlider from '../search/components/ToleranceSlider';
 import { useSearch } from '../search/hooks/useSearch';
 import { useTolerance } from '../search/hooks/useTolerance';
-import type { SearchHit } from '../search/types';
+import type { RecordHit, SearchHit } from '../search/types';
 import { recordDragProps, type DraggedRecord } from '../shared/recordDrag';
-import { isoDate } from '../shared/isoDate';
+import { isoDate, isoDateTime } from '../shared/isoDate';
 import { tokens } from '../shared/tokens';
 import { usePolling } from '../shared/usePolling';
-import { fetchContextPage, fetchContextTree, fetchInbox, quickCreate, type QuickCreateType } from './api';
+import { fetchContextPage, fetchContextTree, fetchInbox, fetchSessionRefs, quickCreate, type QuickCreateType } from './api';
 import ContextTreeNav from './components/ContextTreeNav';
-import type { ContextNode, ContextPage, ContextRef, NoteItem, TodoItem, WishlistItem } from './types';
-import { InboxIdContext, useContextLink, useIncludeDescendants } from './useContextLink';
+import SessionFollowPicker from './components/SessionFollowPicker';
+import type { ContextNode, ContextPage, ContextRef, NoteItem, SessionRefs, TodoItem, TouchedRecord, WishlistItem } from './types';
+import { InboxIdContext, useContextLink, useFollowedSession, useIncludeDescendants } from './useContextLink';
 
 const POLL_SECONDS = 15;
+// While following a live session, everything polls this often so its work shows up as it happens.
+const FOLLOW_POLL_SECONDS = 2;
 
 // Types the context page lists in its own sections; any other search hit in scope goes
 // under "Other matches".
-const PAGE_TYPES = new Set(['Goal', 'Todo', 'Note', 'Wishlist']);
+const PAGE_TYPE_SECTIONS = [
+  ['Goal', 'Goals'],
+  ['Todo', 'Todos'],
+  ['Note', 'Notes'],
+  ['Wishlist', 'Wishlist'],
+] as const;
+const PAGE_TYPES = new Set<string>(PAGE_TYPE_SECTIONS.map(([type]) => type));
 
 const hitKey = (type: string, id: number) => `${type}:${id}`;
 
@@ -51,23 +60,46 @@ export default function ContextsView() {
     setFilterText(text);
     setSubmittedQuery('');
   };
-  // During a search the page shows the selected context's matches, or every match: on
-  // request, or on its own when a search just run finds nothing here. Either stays until the
-  // user picks a context in the sidebar or "only this context".
-  const [showAllHits, setShowAllHits] = useState(false);
+  // Following a session narrows the page to the records it has touched; a search then
+  // narrows further, to the touched records it matches.
+  const [followedId, setFollowedId] = useFollowedSession();
+  const [changesOnly, setChangesOnly] = useState(false);
+  const fetchRefs = useCallback(
+    () => (followedId === null ? Promise.resolve(null) : fetchSessionRefs(followedId)),
+    [followedId],
+  );
+  const [refsLive, setRefsLive] = useState<boolean | null>(null);
+  const pollSeconds = followedId !== null && refsLive !== false ? FOLLOW_POLL_SECONDS : POLL_SECONDS;
+  const { data: refsData, error: refsError } = usePolling(fetchRefs, pollSeconds);
+  const refs = followedId === null ? null : refsData;
+  useEffect(() => setRefsLive(refs?.live ?? null), [refs?.live]);
+  const followed = refs ? refs.records.filter((r) => r.changed || !changesOnly) : null;
+  const followKeys = followed && new Set(followed.map((r) => hitKey(r.type, r.id)));
+  const searchKeys = search && !search.error ? new Set(search.hits.map((h) => hitKey(h.type, h.id))) : null;
+  const followedShown = followed && searchKeys ? followed.filter((r) => searchKeys.has(hitKey(r.type, r.id))) : followed;
+  const searchShown = search && followKeys ? search.hits.filter((h) => followKeys.has(hitKey(h.type, h.id))) : search?.hits;
+  // The records the page is narrowed to; null when neither filter is active.
+  const filterHits: RecordHit[] | null = followedShown ?? (search ? search.hits : null);
+
+  // While filtered, the page shows the filter's records in the selected context, or all of
+  // them: on request, while following a session (its default), or on its own when a search
+  // just run finds nothing here. Either stays until the user picks a context in the sidebar
+  // or "only this context".
+  const [showAllHits, setShowAllHits] = useState(followedId !== null);
   const autoShowAllPending = useRef(false);
-  useEffect(() => setShowAllHits(false), [selectedId, submittedQuery]);
+  useEffect(() => setShowAllHits(followedId !== null), [submittedQuery, followedId]);
   const runSearch = () => {
     autoShowAllPending.current = true;
     setSubmittedQuery(filterText.trim());
   };
 
-  const { data: tree, error: treeError, refresh: refreshTree } = usePolling(fetchContextTree, POLL_SECONDS);
+  const fetchTree = useCallback(() => fetchContextTree(), []);
+  const { data: tree, error: treeError, refresh: refreshTree } = usePolling(fetchTree, pollSeconds);
   const fetchPage = useCallback(
     () => (selectedId === null ? Promise.resolve(null) : fetchContextPage(selectedId, includeDescendants)),
     [selectedId, includeDescendants],
   );
-  const { data: page, error: pageError, refresh: refreshPage } = usePolling(fetchPage, POLL_SECONDS);
+  const { data: page, error: pageError, refresh: refreshPage } = usePolling(fetchPage, pollSeconds);
   // After a context or record moved: everything showing placements is stale.
   const refreshAll = () => {
     refreshTree();
@@ -75,17 +107,18 @@ export default function ContextsView() {
     if (submittedQuery) refreshSearch();
   };
 
-  // The page's scope (this context, plus descendants when included), to place search hits in it.
+  // The page's scope (this context, plus descendants when included), to place filtered records in it.
   const scopeIds = useMemo(
     () => (selectedId === null || !tree ? new Set<number>() : scopeOf(tree, selectedId, includeDescendants)),
     [tree, selectedId, includeDescendants],
   );
-  const hitsHere = search ? search.hits.filter((h) => inScope(h, scopeIds)) : [];
+  const hitsHere = filterHits ? filterHits.filter((h) => inScope(h, scopeIds)) : [];
+  const shownTotal = filterHits?.length ?? 0;
   useEffect(() => {
     if (!autoShowAllPending.current || searching || resultsFor !== submittedQuery) return;
     autoShowAllPending.current = false;
-    if (hitsHere.length === 0 && hits.length > 0) setShowAllHits(true);
-  }, [searching, resultsFor, submittedQuery, hits, hitsHere.length]);
+    if (hitsHere.length === 0 && shownTotal > 0) setShowAllHits(true);
+  }, [searching, resultsFor, submittedQuery, shownTotal, hitsHere.length]);
 
   if (id !== undefined && inboxId !== null && Number(id) === inboxId) {
     return <Navigate to={`/contexts${location.search}`} replace />;
@@ -101,8 +134,17 @@ export default function ContextsView() {
             overflowY: 'auto',
             padding: 16,
             borderRight: `1px solid ${tokens.color.border}`,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
           }}
         >
+          <SessionFollowPicker
+            followedId={followedId}
+            followedTitle={refs?.title ?? null}
+            followedLive={refs?.live ?? null}
+            onFollow={setFollowedId}
+          />
           {treeError && <p style={{ color: tokens.color.danger, fontSize: 12 }}>{treeError}</p>}
           {tree && (
             <ContextTreeNav
@@ -114,25 +156,43 @@ export default function ContextsView() {
               onFilterChange={changeFilter}
               onSearch={runSearch}
               onSelectContext={() => setShowAllHits(false)}
-              searchHits={search && !search.error ? search.hits : null}
+              recordHits={followedShown ?? (search && !search.error ? search.hits : null)}
             />
           )}
         </aside>
         <main style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '16px 24px' }}>
+          {followedId !== null && (
+            <FollowBanner
+              refs={refs}
+              error={refsError}
+              shown={showAllHits ? shownTotal : hitsHere.length}
+              total={shownTotal}
+              showAll={showAllHits}
+              onShowAll={setShowAllHits}
+              changesOnly={changesOnly}
+              onChangesOnly={setChangesOnly}
+              onStop={() => setFollowedId(null)}
+            />
+          )}
           {search && (
             <SearchBanner
               search={search}
-              shown={showAllHits ? search.hits.length : hitsHere.length}
+              total={searchShown?.length ?? 0}
+              shown={showAllHits ? (searchShown?.length ?? 0) : hitsHere.length}
               showAll={showAllHits}
-              onShowAll={setShowAllHits}
+              onShowAll={followedId === null ? setShowAllHits : null}
               onClear={() => changeFilter('')}
               tolerance={tolerance.value}
               onTolerance={tolerance.set}
             />
           )}
           {pageError && <p style={{ color: tokens.color.danger }}>{pageError}</p>}
-          {search && showAllHits ? (
-            <SearchResults hits={search.hits} />
+          {filterHits && showAllHits ? (
+            followedId !== null ? (
+              <RecordsByType hits={filterHits} />
+            ) : (
+              <RecordList hits={filterHits} describe={describeRecord} />
+            )
           ) : (
             page &&
             page.context.id === selectedId && (
@@ -140,7 +200,7 @@ export default function ContextsView() {
                 page={page}
                 includeDescendants={includeDescendants}
                 onIncludeDescendants={setIncludeDescendants}
-                hits={search ? hitsHere : null}
+                hits={filterHits ? hitsHere : null}
                 textFilter={search ? '' : filterText}
                 onCreated={refreshAll}
               />
@@ -168,13 +228,92 @@ function scopeOf(tree: ContextNode[], rootId: number, includeDescendants: boolea
   return scope;
 }
 
-function inScope(hit: SearchHit, scopeIds: Set<number>): boolean {
+function inScope(hit: RecordHit, scopeIds: Set<number>): boolean {
   return hit.context_ids.some((c) => scopeIds.has(c));
+}
+
+const linkButton = { ...tokens.link, background: 'none', border: 'none', padding: 0, cursor: 'pointer' } as const;
+const bannerStyle = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 10,
+  alignItems: 'center',
+  fontSize: 13,
+  marginBottom: 16,
+  minHeight: 20,
+} as const;
+
+// A row's TYPE:ID line: how a search matched it, or what a followed session did to it.
+function describeRecord(hit: RecordHit): string {
+  if (isTouched(hit)) return `${hit.changed ? 'changed' : 'read'} ${isoDateTime(hit.last_at_utc)}`;
+  if (isSearchHit(hit)) return hit.is_substring ? 'substring' : `dist=${hit.dist.toFixed(3)}`;
+  return '';
+}
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+const isTouched = (hit: RecordHit): hit is TouchedRecord => 'changed' in hit;
+const isSearchHit = (hit: RecordHit): hit is SearchHit => 'dist' in hit;
+
+function FollowBanner({
+  refs,
+  error,
+  shown,
+  total,
+  showAll,
+  onShowAll,
+  changesOnly,
+  onChangesOnly,
+  onStop,
+}: {
+  refs: SessionRefs | null; // null until the first load
+  error: string | null;
+  shown: number;
+  total: number;
+  showAll: boolean;
+  onShowAll: (value: boolean) => void;
+  changesOnly: boolean;
+  onChangesOnly: (value: boolean) => void;
+  onStop: () => void;
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 16 }}>
+      <div style={{ ...bannerStyle, marginBottom: 0 }}>
+        {error ? (
+          <span style={{ color: tokens.color.danger }}>{error}</span>
+        ) : !refs ? (
+          <span style={{ color: tokens.color.textMuted }}>Loading the session's records…</span>
+        ) : (
+          <span>
+            {showAll ? plural(total, 'record') : `${shown} of ${plural(total, 'record')} here`} touched by{' '}
+            <strong>{refs.title || 'untitled session'}</strong>
+          </span>
+        )}
+        {refs && <Chip color={refs.live ? tokens.color.accent : undefined}>{refs.live ? 'live' : 'ended'}</Chip>}
+        <button onClick={() => onShowAll(!showAll)} style={linkButton}>
+          {showAll ? 'only this context' : 'show all'}
+        </button>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <input type="checkbox" checked={changesOnly} onChange={(e) => onChangesOnly(e.target.checked)} />
+          changes only
+        </label>
+        <button onClick={onStop} style={linkButton}>
+          stop following
+        </button>
+      </div>
+      {refs && refs.si_nodes.length > 0 && (
+        <p style={{ margin: 0, fontSize: 12, color: tokens.color.textMuted }}>
+          si nodes read: {refs.si_nodes.map((n) => n.title).join(', ')}
+        </p>
+      )}
+    </div>
+  );
 }
 
 function SearchBanner({
   search,
   shown,
+  total,
   showAll,
   onShowAll,
   onClear,
@@ -183,30 +322,29 @@ function SearchBanner({
 }: {
   search: { query: string; hits: SearchHit[]; searching: boolean; error: string | null };
   shown: number;
+  total: number; // matches the page can show: every hit, or those a followed session touched
   showAll: boolean;
-  onShowAll: (value: boolean) => void;
+  onShowAll: ((value: boolean) => void) | null; // null while FollowBanner owns the toggle
   onClear: () => void;
   tolerance: number | null;
   onTolerance: (value: number) => void;
 }) {
-  const linkButton = { ...tokens.link, background: 'none', border: 'none', padding: 0, cursor: 'pointer' };
   return (
-    <div
-      style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', fontSize: 13, marginBottom: 16, minHeight: 20 }}
-    >
+    <div style={bannerStyle}>
       {search.error ? (
         <span style={{ color: tokens.color.danger }}>{search.error}</span>
       ) : search.searching && search.hits.length === 0 ? (
         <span style={{ color: tokens.color.textMuted }}>Searching kb for “{search.query}”…</span>
       ) : (
         <span>
-          {showAll ? `${search.hits.length} matches` : `${shown} of ${search.hits.length} matches here`} for “
-          {search.query}”
+          {showAll ? plural(total, 'match', 'matches') : `${shown} of ${plural(total, 'match', 'matches')} here`} for “{search.query}”
         </span>
       )}
-      <button onClick={() => onShowAll(!showAll)} style={linkButton}>
-        {showAll ? 'only this context' : 'show all'}
-      </button>
+      {onShowAll && (
+        <button onClick={() => onShowAll(!showAll)} style={linkButton}>
+          {showAll ? 'only this context' : 'show all'}
+        </button>
+      )}
       <button onClick={onClear} style={linkButton}>
         clear search
       </button>
@@ -226,7 +364,7 @@ function ContextPageBody({
   page: ContextPage;
   includeDescendants: boolean;
   onIncludeDescendants: (v: boolean) => void;
-  hits: SearchHit[] | null; // search hits in this page's scope; null when no search is active
+  hits: RecordHit[] | null; // the filter's records in this page's scope; null when no filter is active
   textFilter: string; // typed in the sidebar box: rows whose title contains it
   onCreated: () => void;
 }) {
@@ -327,7 +465,7 @@ function ContextPageBody({
 
       {hits && (
         <Section title="Other matches" count={otherHits.length}>
-          <SearchResults hits={otherHits} />
+          <RecordList hits={otherHits} describe={describeRecord} />
         </Section>
       )}
     </div>
@@ -563,5 +701,24 @@ function WishlistRow({ item, here }: { item: WishlistItem; here: number }) {
       {item.priority !== null && <Chip>priority {item.priority}</Chip>}
       <Where context={item.context} viaTag={null} here={here} />
     </Row>
+  );
+}
+
+// Records grouped into the page's own sections, in its order, then one section per other
+// type present; each section keeps the records' incoming order.
+function RecordsByType({ hits }: { hits: RecordHit[] }) {
+  const otherTypes = [...new Set(hits.map((h) => h.type).filter((t) => !PAGE_TYPES.has(t)))].sort();
+  const sections: (readonly [string, string])[] = [...PAGE_TYPE_SECTIONS, ...otherTypes.map((t) => [t, t] as const)];
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 960 }}>
+      {sections.map(([type, title]) => {
+        const ofType = hits.filter((h) => h.type === type);
+        return (
+          <Section key={type} title={title} count={ofType.length}>
+            <RecordList hits={ofType} describe={describeRecord} />
+          </Section>
+        );
+      })}
+    </div>
   );
 }

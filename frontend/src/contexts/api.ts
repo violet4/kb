@@ -1,5 +1,5 @@
 import { checked, sendJson } from '../shared/http';
-import type { ContextNode, ContextPage, ContextRef, Placement, PlacementChoice } from './types';
+import type { ContextNode, ContextPage, ContextRef, Placement, PlacementChoice, SessionRefs } from './types';
 
 async function getJson<T>(path: string): Promise<T> {
   return checked(await fetch(`/api${path}`), path);
@@ -39,4 +39,8 @@ export type QuickCreateType = 'Goal' | 'Todo' | 'Note' | 'Wishlist';
 // A new record with only a title, filed in the given context; the entity page sets the rest.
 export function quickCreate(type: QuickCreateType, title: string, contextId: number): Promise<{ id: number }> {
   return sendJson('POST', `/entities/${type}`, { title, context_id: contextId });
+}
+
+export function fetchSessionRefs(harnessId: string): Promise<SessionRefs> {
+  return getJson(`/sessions/${encodeURIComponent(harnessId)}/refs`);
 }

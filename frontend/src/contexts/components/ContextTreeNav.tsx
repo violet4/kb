@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent } from 'react';
 import { Link } from 'react-router-dom';
 import SearchHelp from '../../search/components/SearchHelp';
-import type { SearchHit } from '../../search/types';
+import type { RecordHit } from '../../search/types';
 import { tokens } from '../../shared/tokens';
 import { isBoolean, useStoredState } from '../../shared/useStoredState';
 import { draggedRecord, isRecordDrag, isRecordDragEvent, type DraggedRecord } from '../../shared/recordDrag';
@@ -50,9 +50,9 @@ function subtreeIds(index: TreeIndex, id: number): number[] {
   return result;
 }
 
-// Per-node count of search hits in its subtree; a tag-addressed hit living in several
+// Per-node count of filtered records in its subtree; a tag-addressed hit living in several
 // contexts counts once on each node above any of them.
-function hitTotals(index: TreeIndex, hits: SearchHit[]): Map<number, number> {
+function hitTotals(index: TreeIndex, hits: RecordHit[]): Map<number, number> {
   const totals = new Map<number, number>();
   for (const hit of hits) {
     const nodes = new Set(hit.context_ids.flatMap((cid) => [cid, ...ancestorIds(index, cid)]));
@@ -77,7 +77,7 @@ export default function ContextTreeNav({
   onFilterChange,
   onSearch,
   onSelectContext,
-  searchHits,
+  recordHits,
 }: {
   nodes: ContextNode[];
   selectedId: number | null;
@@ -87,7 +87,9 @@ export default function ContextTreeNav({
   onFilterChange: (text: string) => void;
   onSearch: () => void;
   onSelectContext: () => void; // a context's link was clicked (even the one already selected)
-  searchHits: SearchHit[] | null; // results of the submitted search; null when none is active
+  // The active record filter: the submitted search's hits, a followed session's records, or
+  // the records in both; null when neither is active.
+  recordHits: RecordHit[] | null;
 }) {
   const index = useMemo(() => buildIndex(nodes), [nodes]);
   const contextLink = useContextLink();
@@ -127,15 +129,15 @@ export default function ContextTreeNav({
     setExpanded((prev) => new Set([...prev, ...ancestorIds(index, selectedId)]));
   }, [selectedId, index]);
 
-  const searchTotals = useMemo(() => (searchHits ? hitTotals(index, searchHits) : null), [index, searchHits]);
+  const recordTotals = useMemo(() => (recordHits ? hitTotals(index, recordHits) : null), [index, recordHits]);
   const needle = filterText.trim().toLowerCase();
-  // A search shows contexts holding hits; otherwise a filter shows name matches. Either way,
+  // A record filter shows contexts holding its records; otherwise a filter shows name matches. Either way,
   // ancestors stay so each match keeps its place in the tree, and everything shown is open.
   const filterVisible = useMemo(() => {
     // The selected context stays too, so the user can click back to it.
-    if (searchTotals) {
+    if (recordTotals) {
       const selected = selectedId === null ? [] : [selectedId, ...ancestorIds(index, selectedId)];
-      return new Set([...searchTotals.keys(), ...selected]);
+      return new Set([...recordTotals.keys(), ...selected]);
     }
     if (!needle) return null;
     const visible = new Set<number>();
@@ -146,7 +148,7 @@ export default function ContextTreeNav({
       }
     }
     return visible;
-  }, [searchTotals, needle, nodes, index, selectedId]);
+  }, [recordTotals, needle, nodes, index, selectedId]);
 
   // Shown outside a record drag: by the search/name filter, else by hide-empty.
   const isNormallyShown = (n: ContextNode) => {
@@ -276,10 +278,10 @@ export default function ContextTreeNav({
   // so collapsing never hides that there is something inside.
   const displayCount = (n: ContextNode, collapsedWithKids: boolean): { count: number; rolledUp: boolean } => {
     const subtree = includeDescendants || collapsedWithKids;
-    if (searchHits) {
+    if (recordHits) {
       const count = subtree
-        ? (searchTotals?.get(n.id) ?? 0)
-        : searchHits.filter((h) => h.context_ids.includes(n.id)).length;
+        ? (recordTotals?.get(n.id) ?? 0)
+        : recordHits.filter((h) => h.context_ids.includes(n.id)).length;
       return { count, rolledUp: subtree && !includeDescendants };
     }
     if (subtree) return { count: index.subtreeTotal.get(n.id) ?? 0, rolledUp: !includeDescendants };

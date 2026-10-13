@@ -10,9 +10,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from api.context_homes import contexts_by_tag
 from api.deps import get_session
+from api.record_hit import RecordHit, record_hit_fields
 from harness import find_session_transcript_path
+from kb_cli import si_files
 from kb_cli.sessions import list_chat_messages, list_history_projects, list_history_sessions, list_live_sessions
+from models import EntityLink, HarnessSession, Journal
 
 router = APIRouter(prefix="/sessions")
 
@@ -107,3 +111,51 @@ async def get_session_chat(session_id: str, offset: int = Query(0, ge=0)) -> Cha
         ],
         next_offset=next_offset,
     )
+
+
+class TouchedRecordOut(RecordHit):
+    changed: bool  # False when the session only read it
+    last_at_utc: str
+
+
+class SiNodeOut(BaseModel):
+    id: int
+    title: str
+
+
+class SessionRefsOut(BaseModel):
+    title: Optional[str]
+    live: bool
+    records: list[TouchedRecordOut]  # most recently touched first
+    si_nodes: list[SiNodeOut]  # least recently read first, so a new read lands at the end
+
+
+@router.get("/{session_id}/refs", response_model=SessionRefsOut)
+async def get_session_refs(session_id: str, session: Session = Depends(get_session)) -> SessionRefsOut:
+    """Every kb record one agent session has touched, from its Journal rows: what the Contexts
+    page filters to while following the session. A deleted record is left out, since there
+    is nothing left to show or link to; an si node is listed apart, having no context."""
+    row = HarnessSession.by_harness_id(session, session_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"No kb session {session_id!r}")
+    by_tag = contexts_by_tag(session)
+    records: list[TouchedRecordOut] = []
+    si_nodes: list[SiNodeOut] = []
+    for touched in Journal.touched_by(session, row.id):
+        if touched.entity_type == "SiNode":
+            node = si_files.resolve(str(touched.entity_id))
+            if node is not None:
+                si_nodes.append(SiNodeOut(id=touched.entity_id, title=node.title))
+            continue
+        item = EntityLink.resolve(session, touched.entity_type, touched.entity_id)
+        if item is None or getattr(item, "deleted_at", None) is not None:
+            continue
+        records.append(
+            TouchedRecordOut(
+                **record_hit_fields(session, item, by_tag),
+                changed=touched.changed,
+                last_at_utc=touched.last_at.isoformat(),
+            )
+        )
+    si_nodes.reverse()
+    return SessionRefsOut(title=row.title, live=row.ended_at is None, records=records, si_nodes=si_nodes)

@@ -1,3 +1,5 @@
+import type { RecordHit } from '../search/types';
+
 // Mirrors api/contexts_router.py's response models.
 
 export interface ContextRef {
@@ -86,3 +88,16 @@ export interface Placement {
 
 // What a placement picker chooses: a context, a tag, or neither (clears an optional placement).
 export type PlacementChoice = { context_id: number } | { tag_id: number } | Record<string, never>;
+
+// Mirrors api/sessions_router.py's SessionRefsOut: the records one agent session touched.
+export interface TouchedRecord extends RecordHit {
+  changed: boolean; // false when the session only read it
+  last_at_utc: string;
+}
+
+export interface SessionRefs {
+  title: string | null;
+  live: boolean;
+  records: TouchedRecord[]; // most recently touched first
+  si_nodes: { id: number; title: string }[]; // least recently read first
+}

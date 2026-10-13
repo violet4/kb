@@ -82,6 +82,20 @@ def test_rows_are_stamped_with_the_agent_session(db_session: Session, agent_sess
     assert todo.id is not None
 
 
+def test_touched_by_merges_each_records_events(db_session: Session, agent_session: HarnessSession) -> None:
+    changed = make_todo(db_session, "changed")
+    db_session.commit()
+    Journal.record_read(db_session, "Todo", changed.id)
+    Journal.record_read(db_session, "SiNode", 13)
+    Journal.record_read(db_session, "SiNode", 13)
+    db_session.commit()
+    touched = Journal.touched_by(db_session, agent_session.id)
+    assert [(t.entity_type, t.entity_id, t.changed) for t in touched] == [
+        ("SiNode", 13, False),
+        ("Todo", changed.id, True),
+    ]
+
+
 def test_no_agent_session_leaves_session_empty(db_session: Session, no_agent_session: None) -> None:
     todo = make_todo(db_session, "t")
     db_session.commit()

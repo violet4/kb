@@ -3,25 +3,28 @@ import { entityPath } from '../../entities/navigation';
 import type { EntityType } from '../../entities/types';
 import { recordDragProps } from '../../shared/recordDrag';
 import { tokens } from '../../shared/tokens';
-import type { SearchHit } from '../types';
+import type { RecordHit, SearchHit } from '../types';
 
-interface SearchResultsProps {
-  hits: SearchHit[];
+export default function SearchResults({ hits }: { hits: SearchHit[] }) {
+  return (
+    <RecordList hits={hits} describe={(hit) => (hit.is_substring ? 'substring' : `dist=${hit.dist.toFixed(3)}`)} />
+  );
 }
 
-export default function SearchResults({ hits }: SearchResultsProps) {
+// Mixed-type records, one linked row each; describe adds to the row's TYPE:ID line.
+export function RecordList<T extends RecordHit>({ hits, describe }: { hits: T[]; describe: (hit: T) => string }) {
   if (hits.length === 0) return null;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       {hits.map((hit) => (
-        <SearchResultRow key={`${hit.type}:${hit.id}`} hit={hit} />
+        <RecordRow key={`${hit.type}:${hit.id}`} hit={hit} detail={describe(hit)} />
       ))}
     </div>
   );
 }
 
-function SearchResultRow({ hit }: { hit: SearchHit }) {
-  const meta = `${hit.type}:${hit.id} · ${hit.is_substring ? 'substring' : `dist=${hit.dist.toFixed(3)}`}`;
+function RecordRow({ hit, detail }: { hit: RecordHit; detail: string }) {
+  const meta = `${hit.type}:${hit.id} · ${detail}`;
   const content = (
     <>
       <p style={{ margin: 0 }}>{hit.label}</p>

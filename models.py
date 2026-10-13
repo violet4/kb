@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, ClassVar, Optional, Sequence
+from typing import Any, ClassVar, NamedTuple, Optional, Sequence
 
 import psutil
 import sqlite_vec  # type: ignore[import-untyped]  # no type stubs published for this package
@@ -29,6 +29,7 @@ from sqlalchemy import (
     Update,
     UniqueConstraint,
     and_,
+    case,
     create_engine,
     delete,
     event,
@@ -1807,6 +1808,15 @@ class JournalAction(enum.Enum):
     NOTE = "note"
 
 
+class TouchedRecord(NamedTuple):
+    """One record as a session touched it: changed is False when the session only read it."""
+
+    entity_type: str
+    entity_id: int
+    changed: bool
+    last_at: datetime
+
+
 class Journal(Base):
     """One event in an entity's history: its creation, a field change (field/old_value/
     new_value), a deletion, a read, or a free-text note. session_id names the agent session
@@ -1866,6 +1876,19 @@ class Journal(Base):
                 )
             )
         )
+
+    @classmethod
+    def touched_by(cls, session: Session, session_id: int) -> list[TouchedRecord]:
+        """Every distinct record one agent session has touched, most recently touched first."""
+        last_at = func.max(cls.created_at)
+        changes = func.sum(case((cls.action == JournalAction.READ, 0), else_=1))
+        rows = session.execute(
+            select(cls.entity_type, cls.entity_id, changes, last_at)
+            .where(cls.session_id == session_id)
+            .group_by(cls.entity_type, cls.entity_id)
+            .order_by(last_at.desc())
+        )
+        return [TouchedRecord(t, i, bool(n), at) for t, i, n, at in rows]
 
     def describe(self) -> str:
         """One line naming what happened, without timestamp or session."""

@@ -78,6 +78,13 @@ export default function AgentPage() {
             age {formatSeconds(liveSession.age_seconds)}
           </span>
         )}
+        <Link
+          to={`/contexts?session=${encodeURIComponent(sessionId)}`}
+          title="The Contexts page, narrowed to the kb records this session has read or changed"
+          style={{ ...tokens.link, fontSize: 13 }}
+        >
+          contexts
+        </Link>
       </div>
       <AgentContentTabs
         agentSessionId={sessionId}

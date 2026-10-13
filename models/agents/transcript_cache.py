@@ -9,6 +9,7 @@ from typing import Optional
 from sqlalchemy import Integer, String
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
+from harness import read_transcript_summary
 from models.base import Base, UtcDateTime, _now
 
 
@@ -48,18 +49,15 @@ class TranscriptCache(Base):
     def get_or_refresh(cls, session: Session, path: Path) -> Optional["TranscriptCache"]:
         """Returns the cached row for `path`'s session id, re-parsing and upserting it first
         if the row is missing or its stored file_mtime doesn't match the file's current
-        mtime. None if the transcript is empty/unreadable (nothing worth caching) --
-        matches kb_cli.sessions._session_info's own None-on-empty contract, which this
-        method wraps rather than replaces (parsing logic has exactly one owner, there;
-        imported locally to avoid a models.py <-> kb_cli.sessions import cycle)."""
-        from kb_cli.sessions import _session_info
+        mtime. None if the transcript has nothing worth caching, the same contract as
+        harness.read_transcript_summary, which owns the parsing."""
 
         mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
         row = session.get(cls, path.stem)
         if row is not None and row.file_mtime == mtime:
             return row
 
-        info = _session_info(path)
+        info = read_transcript_summary(path)
         if info is None:
             if row is not None:
                 session.delete(row)
@@ -70,8 +68,8 @@ class TranscriptCache(Base):
             session.add(row)
         row.project = path.parent.name
         row.file_mtime = mtime
-        row.title = info["title"]
-        row.message_count = info["message_count"]
+        row.title = info.title
+        row.message_count = info.message_count
         row.updated_at = _now()
         session.flush()
         return row

@@ -81,64 +81,6 @@ def _last_message_at(session: Session, session_id: int) -> Optional[datetime]:
     return session.scalar(select(func.max(ChannelMessage.created_at)).where(ChannelMessage.channel_id.in_(channel_ids)))
 
 
-def _session_info(path: Path) -> Optional[dict[str, Any]]:
-    """Return {'title', 'message_count'} for a session transcript in one read, or None if
-    empty/unreadable. This is the one place that actually opens and parses a transcript file
-    for these two fields -- every caller should go through TranscriptCache.get_or_refresh
-    (models/agents/transcript_cache.py) instead of calling this directly, so a transcript already parsed with an
-    unchanged mtime is never re-read; this function has no cache awareness of its own; it's
-    the pure "parse this file" step TranscriptCache wraps.
-
-    message_count is the number of real chat turns (type "user" or "assistant", the same
-    definition list_chat_messages uses for what counts as a message) -- not the raw line
-    count, which is dominated by bookkeeping events (attachment, mode, permission-mode, ...)
-    unrelated to conversation content and would be a misleading size proxy."""
-    title = None
-    custom_title = None
-    first_user_text = None
-    message_count = 0
-    with path.open() as fh:
-        for line in fh:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                d = json.loads(line)
-            except ValueError:
-                continue
-
-            t = d.get("type")
-            if t in ("user", "assistant"):
-                message_count += 1
-            if t == "ai-title":
-                title = d.get("aiTitle")
-            elif t == "custom-title":
-                custom_title = d.get("customTitle")
-            elif t == "user" and first_user_text is None and not d.get("isMeta"):
-                content = d.get("message", {}).get("content")
-                if isinstance(content, str):
-                    first_user_text = content
-                elif isinstance(content, list):
-                    for c in content:
-                        if isinstance(c, dict) and c.get("type") == "text":
-                            first_user_text = c["text"]
-                            break
-
-    resolved_title = custom_title or title
-    if resolved_title is None:
-        resolved_title = first_user_text
-        if resolved_title is not None:
-            resolved_title = " ".join(resolved_title.split())
-            if len(resolved_title) > 70:
-                resolved_title = resolved_title[:67] + "..."
-    else:
-        resolved_title = " ".join(resolved_title.split())
-
-    if resolved_title is None:
-        return None
-    return {"title": resolved_title, "message_count": message_count}
-
-
 def _require_self(session: Session) -> HarnessSession:
     """This process's own registered session row, or exit with the reason there is none."""
     harness_id = current_session_id()

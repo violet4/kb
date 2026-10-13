@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from models import Context
+from models.context import Context
 
 
 def contexts_by_tag(session: Session) -> dict[int, list[int]]:

@@ -140,7 +140,7 @@ function initialFieldsFor(initialDate: Date, existing: Event | null): InitialFie
   return {
     title: existing.title,
     // An all-day starts_at is UTC midnight on the intended calendar date (see
-    // models.py's Event docstring) -- read it back with UTC getters, not local ones,
+    // models/work/event.py's Event docstring) -- read it back with UTC getters, not local ones,
     // or a viewer whose local zone is offset from UTC sees the previous/next day
     // (the exact bug this comment documents: re-saving an all-day event, or toggling
     // an existing timed event to all-day, shifted its date by one).
@@ -173,7 +173,7 @@ function parseDateInput(value: string): Date {
   return new Date(year, month - 1, day);
 }
 
-/** For an all-day event, UTC midnight on `date`'s calendar date (see models.py's Event
+/** For an all-day event, UTC midnight on `date`'s calendar date (see models/work/event.py's Event
  * docstring -- the same convention kb_cli/event.py's _parse_starts_at applies for
  * --all-day). For a timed event, `date` combined with the picked local time,
  * converted to UTC. */

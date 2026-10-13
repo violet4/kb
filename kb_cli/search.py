@@ -14,29 +14,22 @@ from typing import Any, Optional, Sequence
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from models import (
-    ArchivedLink,
-    Collection,
-    Context,
-    Daily,
-    Event,
-    Goal,
-    GoalStatus,
-    HasContextOrTag,
-    HasEmbedding,
-    Idea,
-    IdeaStatus,
-    Instruction,
-    Item,
-    LogEntry,
-    Note,
-    Purchase,
-    Todo,
-    TodoStatus,
-    Vendor,
-    Wishlist,
-    WishlistStatus,
-)
+from models.behaviors.embedding import HasEmbedding
+from models.behaviors.placement import HasContextOrTag
+from models.commerce.item import Item
+from models.commerce.purchase import Purchase
+from models.commerce.vendor import Vendor
+from models.context import Context
+from models.knowledge.archived_link import ArchivedLink
+from models.knowledge.instruction import Instruction
+from models.knowledge.log_entry import LogEntry
+from models.knowledge.note import Collection, Note
+from models.work.daily import Daily
+from models.work.event import Event
+from models.work.goal import Goal, GoalStatus
+from models.work.idea import Idea, IdeaStatus
+from models.work.todo import Todo, TodoStatus
+from models.work.wishlist import Wishlist, WishlistStatus
 
 from context import resolve_context
 from kb_cli._util import add_context_filter_argument
@@ -73,7 +66,7 @@ def parse_since(value: str) -> datetime:
     """Parse a `--since` CLI value into a UTC-aware datetime. Accepts a bare date
     (`2026-07-28`, midnight UTC) or a full ISO timestamp (`2026-07-28T18:00:00`).
     A naive result is assumed UTC, matching every timestamp column in this project
-    (see `_now()` in base.py -- everything is written in UTC)."""
+    (see `_now()` in models/base.py -- everything is written in UTC)."""
     dt = datetime.fromisoformat(value)
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)

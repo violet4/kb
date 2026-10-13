@@ -4,7 +4,7 @@ drilldown views, the same way dailies_router.py backs the Dailies view but gener
 across entity types instead of one hardcoded model. Deliberately scoped to the entity
 types the UI actually renders rather than every mapped class -- add a type to
 ENTITY_TYPES when a new type needs a table/drilldown view, not preemptively for
-every model in models.py.
+every model in the models package.
 
 Columns are introspected live from each model's SQLAlchemy mapper (see
 _introspect_columns), not hand-listed -- a new column on an existing type (or a new
@@ -20,28 +20,24 @@ from sqlalchemy import inspect, select
 from sqlalchemy.orm import Session
 
 from api.deps import get_session
-from base import UtcDateTime
+from models.base import UtcDateTime
 from context import PlacementError, place, placement_kind, placement_required
 from archivebox_compat.config import ArchiveBoxConfigError
 from kb_cli.archivebox import archivebox_url
-from models import (
-    ArchivedLink,
-    Context,
-    Daily,
-    EntityLink,
-    Event,
-    Goal,
-    HasJournal,
-    Idea,
-    Instruction,
-    Journal,
-    JournalAction,
-    LogEntry,
-    Note,
-    Tag,
-    Todo,
-    Wishlist,
-)
+from models.context import Context, Tag
+from models.journal.journal import Journal, JournalAction
+from models.journal.tracking import HasJournal
+from models.knowledge.archived_link import ArchivedLink
+from models.knowledge.instruction import Instruction
+from models.knowledge.log_entry import LogEntry
+from models.knowledge.note import Note
+from models.links.entity_link import EntityLink
+from models.work.daily import Daily
+from models.work.event import Event
+from models.work.goal import Goal
+from models.work.idea import Idea
+from models.work.todo import Todo
+from models.work.wishlist import Wishlist
 
 router = APIRouter(prefix="/entities")
 
@@ -66,7 +62,7 @@ _HIDDEN_COLUMNS = {"embedding", "embedding_model"}
 _PLACEMENT_RELATIONSHIPS = {"context", "tag"}
 
 # Column names carrying record-lifecycle metadata rather than user-editable content --
-# structural (every model writes these via base.py's _now(), see CLAUDE.md), not a
+# structural (every model writes these via models/base.py's _now(), see CLAUDE.md), not a
 # per-type editorial choice, so a new model needs no entry here to get this right.
 _TIMESTAMP_COLUMNS = {"created_at", "updated_at"}
 

@@ -1,7 +1,7 @@
 """kb ab: local capture (ArchivedLink) plus a push to the live ArchiveBox instance, queued on
 kb.service's own background task so `kb ab add` returns immediately instead of blocking on
 ArchiveBox's ~15-20s synchronous add (see kb Note #105) -- see ArchivedLink's docstring in
-models.py, and kb Todo #70 for the fuller history.
+models/knowledge/archived_link.py, and kb Todo #70 for the fuller history.
 
 kb owns auth end-to-end: credentials live in the OS keyring (kb_cli.secrets), never in
 archivebox_compat's own env-var path, and the ArchiveBox hostname lives in Settings, never
@@ -24,11 +24,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from archivebox_compat import ArchiveBoxConfig, ArchiveBoxConfigError, ArchiveMethodResult, Snapshot, get_client
-from base import _now
+from models.base import _now
 from kb_cli._util import journal_read, print_links, resolve_text_arg
 from kb_cli.text import extract_paragraphs
 from kb_cli.secrets import CredentialUnavailableError, get_credential, set_credential
-from models import ArchivedLink, ArchivedLinkContentStatus, ArchivedLinkPushStatus, Settings
+from models.knowledge.archived_link import ArchivedLink, ArchivedLinkContentStatus, ArchivedLinkPushStatus
+from models.settings import Settings
 
 _CREDENTIAL_SERVICE = "kb-archivebox"
 _SERVER_BASE_URL = "http://127.0.0.1:25690"
@@ -137,7 +138,7 @@ def fetch_and_embed_content(session: Session, link: ArchivedLink) -> None:
     automatically once a push resolves to SUCCESS, api/archivebox_router.py) and `kb ab
     backfill-content` (the on-demand/manual path for rows that missed the automatic one, e.g.
     a kb.service restart mid-flight). Never persists the fetched text itself -- only the
-    resulting vector -- see ArchivedLink._pending_content's docstring in models.py. Always ends
+    resulting vector -- see ArchivedLink._pending_content's docstring in models/knowledge/archived_link.py. Always ends
     with content_status set to EMBEDDED or FETCH_FAILED; never leaves a row at NOT_ATTEMPTED
     once this has been called on it, so a broken snapshot is recorded once and skipped by every
     later `needing_content_backfill()` call rather than re-attempted forever."""

@@ -10,10 +10,11 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
-from models import (
-    Collection, GoalStatus, PersonTier, TodoStatus, WishlistEffort,
-    WishlistStatus,
-)
+from models.knowledge.note import Collection
+from models.knowledge.person import PersonTier
+from models.work.goal import GoalStatus
+from models.work.todo import TodoStatus
+from models.work.wishlist import WishlistEffort, WishlistStatus
 
 
 # revision identifiers, used by Alembic.

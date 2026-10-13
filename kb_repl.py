@@ -7,7 +7,6 @@
 import argparse
 import ast
 import code
-import inspect
 import sys
 from datetime import datetime
 
@@ -15,7 +14,7 @@ from sqlalchemy import func, select
 
 import models
 from context import resolve_context
-from models import SessionFactory
+from models.db import SessionFactory
 
 parser = argparse.ArgumentParser(description="KB runner")
 parser.add_argument("command", nargs="?", help="Python expression to execute")
@@ -51,14 +50,9 @@ if args.file:
 
 sess = SessionFactory()
 
-# Every class/function actually defined in models.py (models, enums,
-# helpers like init_db) is pre-loaded automatically -- adding a new model there
-# needs no corresponding edit here.
-ns: dict[str, object] = {}
-for module in (models,):
-    for name, obj in vars(module).items():
-        if not name.startswith("_") and inspect.getmodule(obj) is module:
-            ns[name] = obj
+# Every class/function defined in the models package (models, enums, helpers like
+# init_db) is pre-loaded automatically -- adding a new model needs no edit here.
+ns: dict[str, object] = {**models.defined_names(), "SessionFactory": SessionFactory}
 
 ns.update(
     {

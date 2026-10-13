@@ -12,7 +12,7 @@ import psutil
 import sqlalchemy as sa
 from alembic import op
 
-import base
+from models.base import UtcDateTime
 
 # revision identifiers, used by Alembic.
 revision: str = '9f09f1658d4f'
@@ -26,10 +26,10 @@ harness_session = sa.table(
     sa.column("id", sa.Integer),
     sa.column("pid", sa.Integer),
     sa.column("kind", sa.String),
-    sa.column("created_at", base.UtcDateTime()),
-    sa.column("last_active_at", base.UtcDateTime()),
-    sa.column("process_started_at", base.UtcDateTime()),
-    sa.column("ended_at", base.UtcDateTime()),
+    sa.column("created_at", UtcDateTime()),
+    sa.column("last_active_at", UtcDateTime()),
+    sa.column("process_started_at", UtcDateTime()),
+    sa.column("ended_at", UtcDateTime()),
 )
 
 
@@ -43,8 +43,8 @@ def _started_at(pid: int) -> datetime | None:
 def upgrade() -> None:
     """Upgrade schema."""
     with op.batch_alter_table('harness_session', schema=None) as batch_op:
-        batch_op.add_column(sa.Column('process_started_at', base.UtcDateTime(), nullable=True))
-        batch_op.add_column(sa.Column('ended_at', base.UtcDateTime(), nullable=True))
+        batch_op.add_column(sa.Column('process_started_at', UtcDateTime(), nullable=True))
+        batch_op.add_column(sa.Column('ended_at', UtcDateTime(), nullable=True))
 
     # Classify every existing AGENT row against the process table now. A row stays open only
     # if a process holds its pid and started no later than the row's last sign of life

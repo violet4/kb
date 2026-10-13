@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from conftest import make_daily
-from models import Daily
+from models.work.daily import Daily
 
 
 def test_fixture_gives_isolated_empty_db(db_session: Session) -> None:

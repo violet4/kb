@@ -14,7 +14,7 @@ from typing import Any, Callable, Sequence
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from models import Context
+from models.context import Context
 
 
 def render_context_tree(

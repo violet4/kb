@@ -9,7 +9,7 @@ import argparse
 import subprocess
 from pathlib import Path
 
-from models import Settings
+from models.settings import Settings
 
 _DEFAULT_NTFY_URL = "http://localhost:7182/claude-code"
 _DEFAULT_NTFY_TOKEN_FILE = Path.home() / ".config" / "ntfy-token"

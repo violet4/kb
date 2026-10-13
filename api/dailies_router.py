@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from api.deps import get_session
-from models import Daily
+from models.work.daily import Daily
 
 router = APIRouter(prefix="/dailies")
 

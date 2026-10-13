@@ -10,7 +10,8 @@ from api.context_homes import home_context_ids
 from archivebox_compat.config import ArchiveBoxConfigError
 from context import placement_kind
 from kb_cli.archivebox import archivebox_url
-from models import ArchivedLink, Context
+from models.context import Context
+from models.knowledge.archived_link import ArchivedLink
 
 # Type names entities_router.ENTITY_TYPES also knows how to render -- a hit of one of these
 # gets a drilldown link into /entities/{type}/{id}; others (Context, Vendor, Item, LogEntry)

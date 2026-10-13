@@ -1,6 +1,6 @@
 """Channel/message endpoints backing the web UI's Slack-like chat view -- reuses the same
 Channel/ChannelSubscription/ChannelMessage/HarnessSession primitives `kb sessions
-send`/`broadcast`/`inbox` already use (see models.py's HarnessSession + Channel messaging
+send`/`broadcast`/`inbox` already use (see models/agents/harness_session.py and models/agents/channel.py
 section), so a message sent from the UI and one sent via the CLI are indistinguishable to
 every reader on either side.
 
@@ -20,7 +20,8 @@ from sqlalchemy.orm import Session
 
 from api.deps import get_session
 from kb_cli.sessions import refresh_agent_title
-from models import Channel, ChannelMessage, ChannelSubscription, HarnessSession
+from models.agents.channel import Channel, ChannelMessage, ChannelSubscription
+from models.agents.harness_session import HarnessSession
 
 router = APIRouter(prefix="/channels")
 

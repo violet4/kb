@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 from context import resolve_placement
 from context_tree import render_context_tree
-from models import Timer, TimerStatus
+from models.work.timer import Timer, TimerStatus
 
 from kb_cli._util import add_placement_argument, apply_purge, apply_restore, apply_soft_delete
 

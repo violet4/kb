@@ -11,7 +11,8 @@ from sqlalchemy.orm import Session
 
 from api.deps import get_session
 from api.serialize import utc_iso
-from models import Context, LogEntry
+from models.context import Context
+from models.knowledge.log_entry import LogEntry
 
 router = APIRouter(prefix="/log")
 

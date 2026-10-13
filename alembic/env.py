@@ -18,7 +18,7 @@ import schema_version  # noqa: E402
 _DB_PATH = schema_version.DB_PATH
 config.set_main_option("sqlalchemy.url", f"sqlite:///{_DB_PATH}")
 
-from base import Base  # noqa: E402
+from models.base import Base  # noqa: E402
 import models  # noqa: E402,F401 — import needed so all Base subclasses register
 
 _DB_CLOSE_TIMEOUT_SECONDS = 30

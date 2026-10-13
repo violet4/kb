@@ -12,7 +12,8 @@ from sqlalchemy.orm import Session
 
 from api.deps import get_session
 from embed import _local_embed as embed, model_name
-from models import Collection, Context, Note
+from models.context import Context
+from models.knowledge.note import Collection, Note
 
 router = APIRouter()
 

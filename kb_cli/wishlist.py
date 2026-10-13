@@ -5,7 +5,7 @@ import sys
 from typing import Iterable
 
 from context import find_context, place, resolve_context_only
-from models import Wishlist, WishlistEffort, WishlistStatus
+from models.work.wishlist import Wishlist, WishlistEffort, WishlistStatus
 from kb_cli._util import (
     add_placement_argument,
     apply_purge,

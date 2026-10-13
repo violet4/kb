@@ -9,7 +9,14 @@ from sqlalchemy.orm import Session
 
 from context import resolve_context
 from kb_cli._util import add_context_filter_argument
-from models import Context, Daily, DailyTier, Goal, Idea, InboxItem, Person, Todo, Wishlist
+from models.context import Context
+from models.knowledge.inbox import InboxItem
+from models.knowledge.person import Person
+from models.work.daily import Daily, DailyTier
+from models.work.goal import Goal
+from models.work.idea import Idea
+from models.work.todo import Todo
+from models.work.wishlist import Wishlist
 
 
 def anki_section(session: Session) -> str | None:

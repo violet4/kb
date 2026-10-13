@@ -7,8 +7,8 @@ from typing import Optional
 
 from sqlalchemy import DateTime, MetaData
 from sqlalchemy.engine import Dialect
-from sqlalchemy.types import TypeDecorator
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.types import TypeDecorator
 
 
 def _now() -> datetime:

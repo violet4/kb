@@ -4,7 +4,7 @@ import argparse
 from datetime import datetime, timezone
 
 from context import find_context, place, resolve_context, resolve_context_only
-from models import LogEntry
+from models.knowledge.log_entry import LogEntry
 
 from kb_cli._util import add_placement_argument, apply_updates, resolve_text_arg
 from kb_cli.search import cmd_search_deprecated

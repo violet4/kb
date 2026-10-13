@@ -8,7 +8,7 @@ from typing import Sequence
 from sqlalchemy import select
 
 from context import resolve_placement
-from models import Daily, DailyTier
+from models.work.daily import Daily, DailyTier
 
 from kb_cli._util import (
     journal_read,

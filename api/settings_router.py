@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from api.deps import get_session
-from models import Settings
+from models.settings import Settings
 
 router = APIRouter(prefix="/settings")
 

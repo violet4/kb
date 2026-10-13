@@ -7,7 +7,7 @@ import sys
 
 from sqlalchemy import select
 
-from models import Tag
+from models.context import Tag
 
 
 def cmd_add(args: argparse.Namespace) -> None:

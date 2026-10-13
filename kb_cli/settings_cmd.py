@@ -5,7 +5,7 @@ a new Settings field needs a command; add it here only when no more specific mod
 
 import argparse
 
-from models import Settings
+from models.settings import Settings
 
 
 def cmd_hard_delete(args: argparse.Namespace) -> None:

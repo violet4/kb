@@ -19,7 +19,11 @@ from api.context_homes import contexts_by_tag, home_context_ids
 from api.deps import get_session
 from api.serialize import utc_iso
 from context import get_inbox_context
-from models import Context, Goal, Note, Tag, Todo, Wishlist
+from models.context import Context, Tag
+from models.knowledge.note import Note
+from models.work.goal import Goal
+from models.work.todo import Todo
+from models.work.wishlist import Wishlist
 
 router = APIRouter(prefix="/contexts")
 

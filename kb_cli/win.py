@@ -11,7 +11,7 @@ import argparse
 from datetime import datetime, timedelta, timezone
 
 from context import resolve_context, resolve_placement
-from models import Todo, TodoStatus
+from models.work.todo import Todo, TodoStatus
 
 from kb_cli._util import add_placement_argument, resolve_text_arg
 

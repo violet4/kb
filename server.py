@@ -37,7 +37,8 @@ from api.settings_router import router as settings_router
 from api.usage_router import router as usage_router
 from embed import _local_embed as embed, mark_warm_in_process, model_name
 from kb_cli.archivebox import resolve_or_push
-from models import ArchivedLink, SessionFactory
+from models.db import SessionFactory
+from models.knowledge.archived_link import ArchivedLink
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("kb.server")

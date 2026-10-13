@@ -7,7 +7,7 @@ HarnessSession.register (called from a SessionStart hook) and filtered to pid-al
 parsed from *.jsonl transcripts. That parsing still exists, moved to `history`, for browsing
 past sessions by title/timestamp the way this module always did.
 
-Every message lives in a Channel (models.py) -- a DM is a nameless two-subscriber channel
+Every message lives in a Channel (models/agents/channel.py) -- a DM is a nameless two-subscriber channel
 (Channel.find_or_create_dm), broadcast is the channel named "broadcast" every session
 auto-subscribes to at registration. See Note #157 for why FileChanged (a filesystem-watch
 hook) doesn't give true idle-session async delivery in Claude Code, and Goal #46 for the
@@ -31,7 +31,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from harness import current_session_id, find_session_transcript_path
-from models import Channel, ChannelMessage, ChannelRead, ChannelSubscription, HarnessSession, TranscriptCache
+from models.agents.channel import Channel, ChannelMessage, ChannelRead, ChannelSubscription
+from models.agents.harness_session import HarnessSession
+from models.agents.transcript_cache import TranscriptCache
 
 from kb_cli._util import print_table, resolve_text_arg
 
@@ -51,7 +53,7 @@ _LISTEN_PREVIEW_CHARS = 200
 
 def _humanize_age(delta_seconds: float) -> str:
     """Renders a duration as e.g. "3m", "2h", "5d" -- coarsest unit that keeps at least one
-    significant digit, matching age_marker's own d/w granularity style (base.py) but finer
+    significant digit, matching age_marker's own d/w granularity style (models/base.py) but finer
     since session ages/message gaps are commonly under a day, unlike record age."""
     seconds = int(delta_seconds)
     if seconds < 60:
@@ -83,7 +85,7 @@ def _session_info(path: Path) -> Optional[dict[str, Any]]:
     """Return {'title', 'message_count'} for a session transcript in one read, or None if
     empty/unreadable. This is the one place that actually opens and parses a transcript file
     for these two fields -- every caller should go through TranscriptCache.get_or_refresh
-    (models.py) instead of calling this directly, so a transcript already parsed with an
+    (models/agents/transcript_cache.py) instead of calling this directly, so a transcript already parsed with an
     unchanged mtime is never re-read; this function has no cache awareness of its own; it's
     the pure "parse this file" step TranscriptCache wraps.
 
@@ -200,7 +202,7 @@ def refresh_agent_title(session: Session, agent: HarnessSession) -> None:
     it on its own -- this keeps it current on every live-session read rather than adding a
     second write path for the CLI-side rename event.
 
-    Reads through TranscriptCache.get_or_refresh (models.py), not a direct
+    Reads through TranscriptCache.get_or_refresh (models/agents/transcript_cache.py), not a direct
     session_transcript_title(path) call -- this runs on every live-session poll (both
     `kb sessions list` and the frontend's continuously-polled Agents view read every live
     agent's identity per call), so re-parsing a multi-thousand-line transcript from scratch
@@ -359,7 +361,7 @@ def list_history_sessions(
     """Every past session transcript under ~/.claude/projects, most recent first. `project`
     (a raw directory name under that path, e.g. "-home-violet-kb") restricts to one project;
     None (the default) returns every project's sessions -- reads every transcript's cached
-    row (TranscriptCache.get_or_refresh, models.py), which only re-parses a file whose mtime
+    row (TranscriptCache.get_or_refresh, models/agents/transcript_cache.py), which only re-parses a file whose mtime
     changed since it was last cached, so this is a full directory walk but not a full
     re-parse on every call. Callers that only need the set of project names should use
     list_history_projects() instead, which needs neither the cache nor a DB session.

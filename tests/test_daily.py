@@ -11,7 +11,8 @@ import time_machine
 from sqlalchemy.orm import Session
 
 from conftest import make_daily
-from models import Daily, DailyTier, Settings
+from models.settings import Settings
+from models.work.daily import Daily, DailyTier
 
 
 def _set_utc_boundary(session: Session, hour: int = 4) -> None:

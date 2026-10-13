@@ -20,7 +20,8 @@ import sys
 from sqlalchemy.orm import Session
 
 from harness import current_session_id
-from models import HarnessSession, Instruction
+from models.agents.harness_session import HarnessSession
+from models.knowledge.instruction import Instruction
 
 
 def _orphans(session: Session) -> list[Instruction]:

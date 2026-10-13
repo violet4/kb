@@ -15,10 +15,13 @@ from sqlalchemy.orm import Session, sessionmaker
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from base import Base
+from models.base import Base
 
 if TYPE_CHECKING:
-    from models import Context, Daily, HarnessSession, Todo
+    from models.agents.harness_session import HarnessSession
+    from models.context import Context
+    from models.work.daily import Daily
+    from models.work.todo import Todo
 
 
 @pytest.fixture
@@ -36,31 +39,32 @@ def db_session() -> Iterator[Session]:
 @pytest.fixture
 def agent_session(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> Iterator["HarnessSession"]:
     """A registered agent session that this process detects as its own."""
-    import models
+    import models.journal.journal
+    from models.agents.harness_session import HarnessSession
 
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "test-session")
-    monkeypatch.setattr(models, "_session_keys", {})
-    row = models.HarnessSession.register(db_session, "test-session", cwd="/", pid=1)
+    monkeypatch.setattr(models.journal.journal, "_session_keys", {})
+    row = HarnessSession.register(db_session, "test-session", cwd="/", pid=1)
     db_session.commit()
     yield row
 
 
 def inbox(session: Session) -> "Context":
     """Every Todo/Daily/Note/... must be placed in a context; tests that don't care use `inbox`."""
-    from models import Context
+    from models.context import Context
 
     return Context.get_or_create(session, "inbox")
 
 
 def make_daily(session: Session, *args: Any, **kwargs: Any) -> "Daily":
-    from models import Daily
+    from models.work.daily import Daily
 
     kwargs.setdefault("context", inbox(session))
     return Daily.create(session, *args, **kwargs)
 
 
 def make_todo(session: Session, *args: Any, **kwargs: Any) -> "Todo":
-    from models import Todo
+    from models.work.todo import Todo
 
     kwargs.setdefault("context", inbox(session))
     return Todo.create(session, *args, **kwargs)

@@ -1,7 +1,7 @@
 #!/bin/sh
 ''''exec uv run --project "$(dirname "$(readlink -f "$0")")" python3 "$0" "$@" # '''
-"""Print the API surface for models.py — concise, no implementation. Run any time; not cached
-to a file, so it's always current with models.py.
+"""Print the API surface of the models package — concise, no implementation, each class with the
+module to import it from. Run any time; not cached to a file, so it's always current.
 
     uv run scripts/dev/gen-api            # everything
     uv run scripts/dev/gen-api Note Goal   # only these class(es)
@@ -18,8 +18,11 @@ import sqlalchemy
 from sqlalchemy.orm import RelationshipProperty
 
 import models
+from models.base import Base
 
-parser = argparse.ArgumentParser(description="Print the models.py API surface")
+NAMES = models.defined_names()
+
+parser = argparse.ArgumentParser(description="Print the models package API surface")
 parser.add_argument("classes", nargs="*", help="Only show these class names (default: all)")
 args = parser.parse_args()
 
@@ -33,8 +36,8 @@ SKIP_CLASSES = {"Base"}
 
 MODEL_CLASSES = sorted(
     {
-        obj for name, obj in inspect.getmembers(models, inspect.isclass)
-        if issubclass(obj, models.Base) and name not in SKIP_CLASSES
+        obj for name, obj in NAMES.items()
+        if isinstance(obj, type) and issubclass(obj, Base) and name not in SKIP_CLASSES
         and (not args.classes or name in args.classes)
     },
     key=lambda c: c.__name__,
@@ -77,21 +80,21 @@ lines = []
 if not args.classes:
     lines += [
         "# API surface — REFERENCE ONLY, not an importable module.",
-        "# Import from models.py instead: `from models import Note, sess, ...`",
+        "# Import each name from the module beside it, e.g. `from models.knowledge.note import Note`",
         "",
         "# Session",
         "sess  # scoped_session — pre-loaded in kb_repl.py and scripts",
         "",
         "# Enums",
     ]
-    for name, obj in inspect.getmembers(models, inspect.isclass):
-        if issubclass(obj, enum.Enum) and obj.__module__ == "models":
+    for name, obj in sorted(NAMES.items()):
+        if isinstance(obj, type) and issubclass(obj, enum.Enum):
             values = " | ".join(m.name for m in obj)
-            lines.append(f"{name}: {values}")
+            lines.append(f"{name}: {values}  # {obj.__module__}")
     lines.append("")
 
 for cls in MODEL_CLASSES:
-    lines.append(cls.__name__)
+    lines.append(f"{cls.__name__}  # {cls.__module__}")
 
     try:
         mapper = sqlalchemy.inspect(cls)

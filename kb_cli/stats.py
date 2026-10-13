@@ -1,4 +1,4 @@
-"""Report on kb's own CLI usage/errors -- see CliInvocation in models.py. Makes CLI friction
+"""Report on kb's own CLI usage/errors -- see CliInvocation in models/agents/usage.py. Makes CLI friction
 (a confusing error, a command that keeps failing the same way) queryable on demand instead of
 depending on it being reported by hand each time it's hit."""
 
@@ -25,8 +25,9 @@ except ImportError:
     # itself is unavailable, with a clear message instead of an ImportError at startup.
     _HAVE_CLI_INSTRUMENTATION = False
 
-from base import _now
-from models import CliInvocation, SessionFactory
+from models.base import _now
+from models.agents.usage import CliInvocation
+from models.db import SessionFactory
 
 from kb_cli import instruction
 from kb_cli.bare_text import BARE_INSTRUCTIONS

@@ -119,7 +119,7 @@ from kb_cli import (
 )
 from kb_cli.bare_text import BARE_INSTRUCTIONS as _BARE_INSTRUCTIONS
 import schema_version
-from models import SessionFactory
+from models.db import SessionFactory
 
 
 def _parse_as_of(raw: str) -> datetime:
@@ -195,14 +195,14 @@ si.add_subparser(subparsers)
 
 
 def _record_invocation(payload: dict[str, Any]) -> None:
-    """Write one CliInvocation row (see models.py) via a fresh, short-lived session, since a
+    """Write one CliInvocation row (see models/agents/usage.py) via a fresh, short-lived session, since a
     failed command may have left args.session's transaction in a state that shouldn't be
     reused for this. cli_instrumentation already guarantees this is never allowed to raise
     into the wrapped command, so no try/except is needed here. should_record/invocation_kwargs
     both live in kb_cli.cli_instrumentation_sink, independently testable against
     tests/conftest.py's in-memory db_session fixture."""
     from kb_cli.cli_instrumentation_sink import invocation_kwargs, should_record
-    from models import CliInvocation
+    from models.agents.usage import CliInvocation
 
     if not should_record(payload):
         return

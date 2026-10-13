@@ -9,7 +9,7 @@ from dateutil.parser import parse as parse_datetime
 from sqlalchemy import select
 
 from context import resolve_placement
-from models import Event
+from models.work.event import Event
 
 from kb_cli._util import (
     journal_read,

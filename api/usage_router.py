@@ -10,7 +10,8 @@ from pydantic import BaseModel
 from sqlalchemy import select
 
 from kb_cli.usage import UsageFetchError, fetch_usage
-from models import SessionFactory, UsageSample
+from models.agents.usage import UsageSample
+from models.db import SessionFactory
 
 router = APIRouter(prefix="/usage")
 

@@ -21,7 +21,7 @@ from kb_cli._util import (
     resolve_text_arg,
 )
 from kb_cli.search import cmd_search_deprecated
-from models import Collection, Note
+from models.knowledge.note import Collection, Note
 
 
 def cmd_show(args: argparse.Namespace) -> None:

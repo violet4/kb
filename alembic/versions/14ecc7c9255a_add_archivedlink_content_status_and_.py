@@ -39,7 +39,7 @@ def upgrade() -> None:
 
     from sqlalchemy.orm import Session
 
-    from models import ArchivedLink
+    from models.knowledge.archived_link import ArchivedLink
 
     bind = op.get_bind()
     # The query below goes through today's ArchivedLink model, which selects columns later

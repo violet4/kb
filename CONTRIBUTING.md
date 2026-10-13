@@ -12,7 +12,7 @@ See the README's Setup section for installing dependencies and running kb locall
 
 ```bash
 scripts/dev/format .        # black
-scripts/dev/check-schema    # if models.py changed
+scripts/dev/check-schema    # if anything under models/ changed
 uv run pytest               # tests, with coverage
 .venv/bin/mypy .            # strict type checking
 ```

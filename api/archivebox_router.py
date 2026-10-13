@@ -13,7 +13,8 @@ from sqlalchemy.orm import Session
 
 from api.deps import get_session
 from kb_cli.archivebox import fetch_and_embed_content, resolve_or_push
-from models import ArchivedLink, ArchivedLinkPushStatus, SessionFactory
+from models.db import SessionFactory
+from models.knowledge.archived_link import ArchivedLink, ArchivedLinkPushStatus
 
 router = APIRouter(prefix="/ab")
 

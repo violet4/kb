@@ -6,7 +6,7 @@ ever changes in a way cli_instrumentation's _resolved_subcommand heuristic can't
 
 Does not shell out to `./kb` as a subprocess: the `kb` script itself is not importable
 (no .py extension, and importing it would execute top-level argument parsing against the
-real on-disk database at models.py's hardcoded _DB_PATH, which has no test-time override).
+real on-disk database at schema_version.DB_PATH).
 """
 
 import argparse
@@ -26,7 +26,7 @@ instrumented_run = cli_instrumentation.instrumented_run
 
 from kb_cli import stats, todo
 from kb_cli.cli_instrumentation_sink import invocation_kwargs, should_record
-from models import CliInvocation
+from models.agents.usage import CliInvocation
 
 
 def test_should_record_excludes_successful_hooks_invocations() -> None:

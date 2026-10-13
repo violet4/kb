@@ -173,7 +173,8 @@ def _record_sample(usage: Usage) -> None:
     assert usage.session_pct is not None and usage.session_resets_at is not None
     assert usage.week_pct is not None and usage.week_resets_at is not None
     try:
-        from models import SessionFactory, UsageSample
+        from models.agents.usage import UsageSample
+        from models.db import SessionFactory
 
         session = SessionFactory()
         try:
@@ -275,7 +276,8 @@ Last 7d · 7996 requests · 78 sessions
 
 def cmd_usage(args: argparse.Namespace) -> None:
     if args.history is not None:
-        from models import SessionFactory, UsageSample
+        from models.agents.usage import UsageSample
+        from models.db import SessionFactory
 
         since = datetime.now(timezone.utc) - timedelta(hours=args.history)
         session = SessionFactory()

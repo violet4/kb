@@ -50,7 +50,7 @@ function formatWhen(event: Event): string {
   const instant = event.next_occurrence ?? event.starts_at;
   const date = new Date(instant);
   if (event.is_all_day) {
-    // An all-day Event is stored as UTC midnight on its calendar date (see models.py's
+    // An all-day Event is stored as UTC midnight on its calendar date (see models/work/event.py's
     // Event docstring) -- formatting with the *local* timezone (toLocaleDateString's
     // default) would roll the date back a day for any viewer west of UTC, since local
     // midnight-of-that-date is earlier than the stored UTC instant. timeZone: 'UTC'

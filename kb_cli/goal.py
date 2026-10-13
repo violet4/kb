@@ -8,7 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from context import resolve_placement
-from models import Goal, GoalStatus, Journal
+from models.journal.journal import Journal
+from models.work.goal import Goal, GoalStatus
 
 from kb_cli._util import (
     journal_read,

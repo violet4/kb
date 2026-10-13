@@ -133,7 +133,7 @@ SQL `vec_distance_cosine` query with only equality `filters` (e.g.
 context/tag scoping `matches_contexts` needs at the SQL layer. Revisited given kb is
 still under active development and the point of this exercise is smoothing out real UX
 friction, not stopping at "the substring half is fixed, good enough." Fixed by adding
-an optional `context` param to `HasEmbedding.search` (`models.py`): when given, it
+an optional `context` param to `HasEmbedding.search` (`models/behaviors/embedding.py`): when given, it
 widens the SQL candidate set (10x limit, capped at 200) so scoping doesn't just leave
 fewer than `limit` results, resolves the context's subtree via
 `Context.self_and_descendants`, and re-filters in Python using the same

@@ -5,7 +5,8 @@ import sys
 
 from harness import current_session_id
 from kb_cli._util import journal_lines, resolve_text_arg
-from models import HarnessSession, Journal
+from models.agents.harness_session import HarnessSession
+from models.journal.journal import Journal
 
 
 def cmd_add(args: argparse.Namespace) -> None:

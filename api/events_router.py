@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from api.deps import get_session
-from models import Event
+from models.work.event import Event
 
 router = APIRouter(prefix="/events")
 

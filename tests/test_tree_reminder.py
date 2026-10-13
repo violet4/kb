@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from kb_cli import si_files
 from kb_cli._util import journal_read
 from kb_cli.hooks import _TREE_FRONTIER_REMINDER, _TREE_REMINDER, _tree_reminder_text
-from models import HarnessSession
+from models.agents.harness_session import HarnessSession
 
 _PREFIX, _SUFFIX = _TREE_FRONTIER_REMINDER.split("{titles}")
 

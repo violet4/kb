@@ -56,7 +56,7 @@ export function isSameMonth(a: Date, b: Date): boolean {
  * the same instant can land on different grid days for viewers in different zones,
  * which is correct, matching what a clock on the wall in that viewer's zone would say.
  * An all-day occurrence is bucketed by its UTC calendar date instead: it's stored as
- * UTC midnight on the intended date (see models.py's Event docstring) specifically so
+ * UTC midnight on the intended date (see the Event docstring in models/work/event.py) specifically so
  * every viewer sees the same date regardless of their own zone -- comparing it via
  * local date components would reintroduce exactly the day-off bug that storage
  * convention exists to prevent (a UTC midnight instant reads back as the previous

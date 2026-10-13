@@ -15,7 +15,7 @@ def should_record(payload: dict[str, Any]) -> bool:
     own tool-hook machinery firing constantly (thousands/day) with near-zero variation
     when it works, so its successes are storage spent for no analytical value (see kb
     Instruction root's proactive-friction-surfacing rationale in CliInvocation's own
-    docstring in models.py). A FAILING `kb hooks ...` invocation is still recorded --
+    docstring in models/agents/usage.py). A FAILING `kb hooks ...` invocation is still recorded --
     e.g. a detector blocking a dangerous command, or a real bug in a hook's own code
     (see kb Note on SessionMessage.mark_read()'s missing-args TypeError, found via this
     table) -- failures are exactly the rare, worth-keeping signal this exists to catch.

@@ -10,10 +10,11 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from api.contexts_router import router
-from base import Base
+from models.base import Base
 from api.deps import get_session
 from context import PlacementError, place
-from models import Context, LogEntry, Tag
+from models.context import Context, Tag
+from models.knowledge.log_entry import LogEntry
 from conftest import make_todo
 
 

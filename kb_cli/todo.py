@@ -7,7 +7,10 @@ from typing import Optional
 
 from context import resolve_placement
 from kb_cli.context_cmd import render_tree
-from models import Journal, Tag, Todo, TodoKind, TodoResolutionDistance, TodoSeverity, TodoStatus, WishlistEffort
+from models.context import Tag
+from models.journal.journal import Journal
+from models.work.todo import Todo, TodoKind, TodoResolutionDistance, TodoSeverity, TodoStatus
+from models.work.wishlist import WishlistEffort
 
 from kb_cli._util import (
     journal_read,

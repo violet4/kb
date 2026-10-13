@@ -17,11 +17,11 @@ const KNOWN_TYPES = new Set<EntityType>([
   'LogEntry',
 ]);
 
-// Short display-prefix -> real type aliases -- kept in sync with models.py's
+// Short display-prefix -> real type aliases -- kept in sync with models/links/auto_links.py's
 // _ENTITY_REF_ALIASES by hand, same caveat as KNOWN_TYPES above.
 const REF_ALIASES: Record<string, EntityType> = { AB: 'ArchivedLink' };
 
-// Mirrors models.py's _entity_ref_re/_parse_entity_refs: every prose spelling of an entity
+// Mirrors models/links/auto_links.py's _entity_ref_re/_parse_entity_refs: every prose spelling of an entity
 // reference actually in use across kb, not just the TYPE:ID form `kb link add` takes --
 // "Note #343"/"Goal #14" (kb's own CLI output, and this assistant's own prose) are as real
 // as "Note:343", and "AB23" is ArchivedLink's own established display-prefix spelling (no

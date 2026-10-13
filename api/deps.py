@@ -5,7 +5,7 @@ from collections.abc import Iterator
 
 from sqlalchemy.orm import Session
 
-from models import SessionFactory
+from models.db import SessionFactory
 
 
 def get_session() -> Iterator[Session]:

@@ -12,10 +12,14 @@ from typing import Any, Callable, Iterable, Optional, Sequence, Type, TypeVar
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from base import Base, _now
+from models.base import Base, _now
 from context import find_context, place, resolve_context
-from mixins import HasUniqueName
-from models import Context, EntityLink, HasContextOrTag, Journal, Settings, Tag
+from models.columns import HasUniqueName
+from models.behaviors.placement import HasContextOrTag
+from models.context import Context, Tag
+from models.journal.journal import Journal
+from models.links.entity_link import EntityLink
+from models.settings import Settings
 
 # SQLAlchemy declarative classes don't satisfy structural Protocol matching (their
 # class-level attributes are InstrumentedAttribute, not the Mapped[T] written in the
@@ -224,7 +228,7 @@ def apply_updates(session: Session, model: Type[E], entity_id: int, entity_label
 
 def not_deleted(q: Any, model: Type[Any]) -> Any:
     """Filter a select(model) query to exclude soft-deleted rows -- every bulk list/search/
-    active-style query must route through this (see base.py's `deleted_at` comment: it's on
+    active-style query must route through this (see models/base.py's `deleted_at` comment: it's on
     every model structurally, but the exclusion itself is only applied where callers ask for
     it, at each such query site). `show`/get-by-id lookups deliberately do NOT use this --
     a deleted record must still be directly retrievable by id, with its deletion visible

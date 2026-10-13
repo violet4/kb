@@ -16,7 +16,7 @@ from pathlib import Path
 import psutil
 
 KB_DIR = Path(__file__).parent
-# The one definition of where the database lives (models.py and alembic/env.py read it here).
+# The one definition of where the database lives (models/db.py and alembic/env.py read it here).
 # KB_DB_PATH points a process at another database file, e.g. a test's throwaway copy.
 DB_PATH = Path(os.environ["KB_DB_PATH"]) if os.environ.get("KB_DB_PATH") else KB_DIR / "data" / "kb.db"
 ALEMBIC_INI = KB_DIR / "alembic.ini"

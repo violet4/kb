@@ -11,7 +11,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from kb_cli.hooks import cmd_session_inbox_check
-from models import HarnessSession
+from models.agents.harness_session import HarnessSession
 
 PID = os.getpid()
 

@@ -215,7 +215,9 @@ def cmd_dependency_install_check(args: argparse.Namespace) -> None:
         print(_DEPENDENCY_INSTALL_BLOCK)
         return
 
-    from models import EntityLink, LogEntry, Note
+    from models.knowledge.log_entry import LogEntry
+    from models.knowledge.note import Note
+    from models.links.entity_link import EntityLink
 
     token = audited_match.group(1)
     note_match = re.fullmatch(r"note(\d+)", token, re.IGNORECASE)
@@ -291,7 +293,8 @@ def _session_si_reads(session: Session) -> Optional[set[str]]:
     session has read with `kb si show`, or None when no registered agent session is
     detectable."""
     from harness import current_session_id
-    from models import HarnessSession, Journal
+    from models.agents.harness_session import HarnessSession
+    from models.journal.journal import Journal
 
     harness_id = current_session_id()
     row = HarnessSession.by_harness_id(session, harness_id) if harness_id else None
@@ -539,12 +542,12 @@ def cmd_daily_check(args: argparse.Namespace) -> None:
 def cmd_session_register(args: argparse.Namespace) -> None:
     """Read a session ID on stdin (SessionStart's own JSON envelope's .session_id, matching
     daily-check's convention), falling back to current_session_id() for manual testing.
-    Registers/refreshes this session as live -- see HarnessSession.register (models.py) and
+    Registers/refreshes this session as live -- see HarnessSession.register (models/agents/harness_session.py) and
     kb Goal #46 for the full cross-session-messaging design this feeds. Title is left unset
     here (SessionStart's envelope doesn't carry a resolved title yet); `kb sessions list`
     reads whatever HarnessSession.title holds, empty until something else backfills it."""
     from harness import current_session_id
-    from models import HarnessSession
+    from models.agents.harness_session import HarnessSession
 
     from kb_cli.sessions import _find_claude_ancestor_pid
 
@@ -567,9 +570,10 @@ def cmd_session_inbox_check(args: argparse.Namespace) -> None:
     which is an acceptable degraded mode, not an error state to nag about.
 
     Also reopens this session if it is marked ended: see the comment at that step."""
-    from base import _now
+    from models.base import _now
     from harness import current_session_id
-    from models import ChannelMessage, ChannelRead, HarnessSession, HarnessSessionStatus
+    from models.agents.channel import ChannelMessage, ChannelRead
+    from models.agents.harness_session import HarnessSession, HarnessSessionStatus
 
     from kb_cli.sessions import _find_claude_ancestor_pid
 
@@ -602,9 +606,9 @@ def cmd_session_stop(args: argparse.Namespace) -> None:
     """Called from the Stop hook -- marks this session IDLE and bumps last_response_at.
     Silent always (no stdout), this only updates HarnessSession bookkeeping for kb sessions
     list to show honest live-status info, per kb Goal #46's design discussion."""
-    from base import _now
+    from models.base import _now
     from harness import current_session_id
-    from models import HarnessSession, HarnessSessionStatus
+    from models.agents.harness_session import HarnessSession, HarnessSessionStatus
 
     session_id = current_session_id()
     if not session_id:

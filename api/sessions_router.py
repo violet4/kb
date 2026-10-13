@@ -16,7 +16,9 @@ from api.record_hit import RecordHit, record_hit_fields
 from harness import find_session_transcript_path
 from kb_cli import si_files
 from kb_cli.sessions import list_chat_messages, list_history_projects, list_history_sessions, list_live_sessions
-from models import EntityLink, HarnessSession, Journal
+from models.agents.harness_session import HarnessSession
+from models.journal.journal import Journal
+from models.links.entity_link import EntityLink
 
 router = APIRouter(prefix="/sessions")
 
@@ -69,7 +71,7 @@ async def get_history_sessions(
 ) -> list[HistorySessionOut]:
     """Past session transcripts, most recent first. `project` restricts to one project
     (a value from get_history_projects); omitted means every project. Reads through
-    TranscriptCache (models.py), so a transcript whose mtime hasn't changed since it was
+    TranscriptCache (models/agents/transcript_cache.py), so a transcript whose mtime hasn't changed since it was
     last cached is a stat, not a full re-parse -- see TranscriptCache's own docstring."""
     sessions = list_history_sessions(session, project)
     session.commit()  # persists TranscriptCache upserts from list_history_sessions

@@ -4,7 +4,7 @@ import argparse
 import sys
 
 from kb_cli._util import resolve_text_arg
-from models import InboxItem
+from models.knowledge.inbox import InboxItem
 
 
 def cmd_add(args: argparse.Namespace) -> None:

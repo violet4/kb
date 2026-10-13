@@ -6,21 +6,18 @@ from typing import Any, Optional
 
 from sqlalchemy import func, select
 
-from models import (
-    Context,
-    Daily,
-    EntityLink,
-    Goal,
-    Idea,
-    Item,
-    LogEntry,
-    Reference,
-    Tag,
-    Timer,
-    Todo,
-    WorkingMemory,
-    Wishlist,
-)
+from models.commerce.item import Item
+from models.context import Context, Tag
+from models.knowledge.log_entry import LogEntry
+from models.knowledge.reference import Reference
+from models.knowledge.working_memory import WorkingMemory
+from models.links.entity_link import EntityLink
+from models.work.daily import Daily
+from models.work.goal import Goal
+from models.work.idea import Idea
+from models.work.timer import Timer
+from models.work.todo import Todo
+from models.work.wishlist import Wishlist
 
 from context import find_context, resolve_context
 from kb_cli._util import get_by_name, resolve_text_arg

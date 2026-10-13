@@ -7,10 +7,14 @@ import pytest
 from sqlalchemy import Table, delete, update
 from sqlalchemy.orm import Session
 
-import models
-from base import _now
 from conftest import make_todo
-from models import Context, HarnessSession, Journal, JournalAction
+from models.agents.channel import ChannelRead
+from models.agents.harness_session import HarnessSession
+from models.base import _now
+from models.context import Context
+from models.journal.journal import Journal, JournalAction
+from models.journal.tracking import HasJournal
+from models.work.todo import Todo
 
 
 def _actions(session: Session, todo_id: int) -> list[tuple[JournalAction, str | None, str | None, str | None]]:
@@ -45,7 +49,7 @@ def test_relationship_change_records_foreign_key(db_session: Session, no_agent_s
     db_session.commit()
     old_id = todo.context_id
     db_session.expire_all()  # the old context is no longer loaded, as in a fresh CLI process
-    reloaded = db_session.get(models.Todo, todo.id)
+    reloaded = db_session.get(Todo, todo.id)
     assert reloaded is not None
     reloaded.context = other
     db_session.commit()
@@ -106,18 +110,18 @@ def test_bulk_update_on_journaled_table_is_refused(db_session: Session, no_agent
     make_todo(db_session, "t")
     db_session.commit()
     with pytest.raises(RuntimeError, match="bypass Journal"):
-        db_session.execute(update(models.Todo).values(title="x"))
+        db_session.execute(update(Todo).values(title="x"))
     with pytest.raises(RuntimeError, match="bypass Journal"):
-        todo_table = models.Todo.__table__
+        todo_table = Todo.__table__
         assert isinstance(todo_table, Table)
         db_session.execute(delete(todo_table))
 
 
 def test_bulk_write_on_unjournaled_table_is_allowed(db_session: Session) -> None:
-    db_session.execute(delete(models.ChannelRead))
+    db_session.execute(delete(ChannelRead))
 
 
 def test_every_browsable_entity_type_is_journaled() -> None:
     from api.entities_router import ENTITY_TYPES
 
-    assert [name for name, model in ENTITY_TYPES.items() if not issubclass(model, models.HasJournal)] == []
+    assert [name for name, model in ENTITY_TYPES.items() if not issubclass(model, HasJournal)] == []

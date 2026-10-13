@@ -1,4 +1,4 @@
-"""Instruction tree operations -- see Instruction's docstring in models.py and kb Goal #23
+"""Instruction tree operations -- see Instruction's docstring in models/knowledge/instruction.py and kb Goal #23
 for the full design. Four commands, mirroring real usage: `show` for walking the tree
 (cheap, read-heavy, the common case -- `show root` is the entry point, with no separate
 `root` subcommand, so there's exactly one verb to reach for), `add`/`set-parent`/`edit`
@@ -21,7 +21,8 @@ from typing import Callable, Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from models import EntityLink, Instruction
+from models.knowledge.instruction import Instruction
+from models.links.entity_link import EntityLink
 
 from context import resolve_context
 from kb_cli._util import (

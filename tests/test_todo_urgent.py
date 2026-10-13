@@ -8,7 +8,8 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 
 from conftest import make_todo
-from models import Context, Todo, TodoStatus
+from models.context import Context
+from models.work.todo import Todo, TodoStatus
 
 
 def test_urgent_pending_excludes_non_urgent(db_session: Session) -> None:

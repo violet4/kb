@@ -1,4 +1,4 @@
-"""Idea operations (GTD Someday/Maybe) -- see Idea's docstring in models.py."""
+"""Idea operations (GTD Someday/Maybe) -- see Idea's docstring in models/work/idea.py."""
 
 import argparse
 import sys
@@ -6,7 +6,8 @@ import sys
 from sqlalchemy import select
 
 from context import resolve_placement
-from models import Idea, IdeaStatus, Journal
+from models.journal.journal import Journal
+from models.work.idea import Idea, IdeaStatus
 
 from kb_cli._util import (
     journal_read,

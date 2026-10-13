@@ -1,4 +1,4 @@
-"""Generic entity-link (knowledge graph) operations -- see EntityLink's docstring in models.py.
+"""Generic entity-link (knowledge graph) operations -- see EntityLink's docstring in models/links/entity_link.py.
 
 Every entity is addressed as TYPE:ID (e.g. Goal:34, Todo:102) -- the same entity_type string
 Journal already uses (a mapped class's own __name__), since most kb entities have no unique
@@ -13,7 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from kb_cli._util import describe_entity_ref as describe
-from models import EntityLink
+from models.links.entity_link import EntityLink
 
 REF_HELP = "Entity reference in TYPE:ID form, e.g. Goal:34 or Todo:102"
 

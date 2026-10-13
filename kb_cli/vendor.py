@@ -1,5 +1,5 @@
 """Vendor / Item / Purchase operations -- price and quantity history for anything
-transactable, real or in-game (see models.py's Vendor/VendorItem/Purchase docstrings).
+transactable, real or in-game (see the docstrings in models/commerce/).
 
 Three separate top-level nouns (`kb vendor`, `kb item`, `kb purchase`) rather than one
 combined command, matching every other kb entity's own noun -- `add`/`list`/`search` per
@@ -13,7 +13,9 @@ import sys
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from models import IrlItem, Item, Purchase, Vendor, VendorItem
+from models.commerce.item import IrlItem, Item
+from models.commerce.purchase import Purchase
+from models.commerce.vendor import Vendor, VendorItem
 from kb_cli._util import apply_purge, apply_restore, apply_soft_delete, resolve_text_arg
 from kb_cli.search import cmd_search_deprecated
 

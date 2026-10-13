@@ -25,7 +25,8 @@ from typing import Optional, Sequence, Type, TypeVar, Union
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, class_mapper
 
-from models import Context, HasContextOrTag, Tag
+from models.behaviors.placement import HasContextOrTag
+from models.context import Context, Tag
 
 INBOX_CONTEXT_NAME = "inbox"
 

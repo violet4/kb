@@ -67,7 +67,8 @@ class HarnessSession(Base):
 
     status/last_active_at/last_response_at are populated only by hooks that actually observe
     those transitions (UserPromptSubmit -> INFERRING + bump last_active_at, Stop -> IDLE +
-    bump last_response_at) -- don't add a field here that no hook can honestly populate.
+    bump last_response_at, PermissionRequest -> awaiting_permission) -- don't add a field here
+    that no hook can honestly populate.
     is_listening is set/cleared by `kb sessions listen` itself on start and on exit (including
     a SIGTERM trap so a normally-killed listener doesn't leave it stuck true) -- but a SIGKILL,
     an OOM kill, or a harness that reaps the process without ever delivering SIGTERM all skip
@@ -96,6 +97,12 @@ class HarnessSession(Base):
         nullable=False,
         default=HarnessSessionStatus.IDLE,
     )
+    # True from a PermissionRequest hook (which runs before Claude Code shows a permission
+    # dialog) until the turn ends, the next prompt arrives, or an Esc is sent. No hook fires
+    # when a dialog closes, so the flag can outlive its dialog for the rest of the turn; the
+    # one thing it must never do is read False while a dialog is open, because a prompt
+    # submitted then would answer the dialog.
+    awaiting_permission: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     is_listening: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     listener_pid: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     last_active_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime(), nullable=True)

@@ -136,7 +136,3 @@ Read the newest engineering note on `batch_alter_table` column renames before re
 ## Browser automation
 
 See kb Instruction #90 (chrome-devtools MCP vs. Playwright) -- kb's own dev servers: backend on 25690, frontend (Vite) on 25691.
-
-## Commits
-
-Use `with:<model>` instead of `Co-Authored-By:`.

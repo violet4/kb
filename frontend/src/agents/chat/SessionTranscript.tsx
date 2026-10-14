@@ -369,6 +369,17 @@ export default function SessionTranscript({ sessionId }: SessionTranscriptProps)
     const pane = paneRef.current;
     if (pane && followRef.current) pane.scrollTop = pane.scrollHeight;
   }, [entries]);
+  // A pane that shrinks (e.g. under a growing message composer) fires no scroll event and keeps
+  // its scrollTop, which would slide the newest message out of view; keep it pinned instead.
+  useLayoutEffect(() => {
+    const pane = paneRef.current;
+    if (!pane) return;
+    const observer = new ResizeObserver(() => {
+      if (followRef.current) pane.scrollTop = pane.scrollHeight;
+    });
+    observer.observe(pane);
+    return () => observer.disconnect();
+  }, []);
 
   const toggleFilterValue = useCallback((key: string, value: string) => {
     setFilter((prev) => {

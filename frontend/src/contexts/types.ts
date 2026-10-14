@@ -20,6 +20,7 @@ export interface ContextNode {
   parent_id: number | null;
   tags: string[];
   counts: Counts; // items filed directly on this node, not its descendants
+  pinned: boolean; // shown first at the top of the tree, never hidden by a filter (the inbox)
 }
 
 export interface GoalItem {

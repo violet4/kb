@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from api.context_homes import contexts_by_tag, home_context_ids
 from api.deps import get_session
 from api.serialize import utc_iso
-from context import get_inbox_context
+from context import INBOX_CONTEXT_NAME, get_inbox_context
 from models.context import Context, Tag
 from models.knowledge.note import Note
 from models.work.goal import Goal
@@ -46,6 +46,7 @@ class ContextNode(BaseModel):
     parent_id: Optional[int]
     tags: list[str]
     counts: Counts  # items filed directly here (tag-addressed ones included), not in descendants
+    pinned: bool = False  # shown at the top of the tree, never filtered out (the inbox)
 
 
 def _live_contexts(session: Session) -> Sequence[Context]:
@@ -70,7 +71,14 @@ def context_tree(session: Session = Depends(get_session)) -> list[ContextNode]:
         counts[item.context_id].wishlist += 1
 
     return [
-        ContextNode(id=c.id, name=c.name, parent_id=c.parent_id, tags=[t.name for t in c.tags], counts=counts[c.id])
+        ContextNode(
+            id=c.id,
+            name=c.name,
+            parent_id=c.parent_id,
+            tags=[t.name for t in c.tags],
+            counts=counts[c.id],
+            pinned=c.name == INBOX_CONTEXT_NAME,
+        )
         for c in contexts
     ]
 
@@ -112,6 +120,7 @@ def _node(context: Context) -> ContextNode:
         parent_id=context.parent_id,
         tags=[t.name for t in context.tags],
         counts=Counts(),
+        pinned=context.name == INBOX_CONTEXT_NAME,
     )
 
 

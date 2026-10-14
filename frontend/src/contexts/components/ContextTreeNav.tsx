@@ -156,7 +156,15 @@ export default function ContextTreeNav({
     const empty = (index.subtreeTotal.get(n.id) ?? 0) === 0;
     return !hideEmpty || !empty || n.id === selectedId || n.id === creatingUnder || justCreated.has(n.id);
   };
-  const isShown = (n: ContextNode) => recordDragging || isNormallyShown(n);
+  // A pinned context (the inbox) is always shown, whatever the filters or followed session.
+  const isShown = (n: ContextNode) => n.pinned || recordDragging || isNormallyShown(n);
+
+  // A level's rows: pinned contexts come first at the top level, wherever they sit in the tree,
+  // and nowhere else.
+  const levelNodes = (parent: number | null): ContextNode[] => {
+    const children = (index.childrenOf.get(parent) ?? []).filter((n) => !n.pinned);
+    return parent === null ? [...nodes.filter((n) => n.pinned), ...children] : children;
+  };
 
   // Ctrl-click collapses or expands the whole subtree, following the clicked node's new state.
   const toggle = (id: number, e: MouseEvent) =>
@@ -289,8 +297,8 @@ export default function ContextTreeNav({
   };
 
   const renderLevel = (parent: number | null, depth: number) =>
-    (index.childrenOf.get(parent) ?? []).filter(isShown).map((n) => {
-      const kids = (index.childrenOf.get(n.id) ?? []).filter(isShown);
+    levelNodes(parent).filter(isShown).map((n) => {
+      const kids = levelNodes(n.id).filter(isShown);
       const creatingHere = creatingUnder === n.id;
       // A drag keeps every row that was already open open, so visible targets stay put.
       const open = (filterVisible?.has(n.id) ?? false) || expanded.has(n.id);

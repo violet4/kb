@@ -103,6 +103,12 @@ class HarnessSession(Base):
     # one thing it must never do is read False while a dialog is open, because a prompt
     # submitted then would answer the dialog.
     awaiting_permission: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    # Whether this session's harness runs that PermissionRequest hook. Hooks are read when a
+    # session starts, so a session started before the hook was configured never sets
+    # awaiting_permission; its False means nothing, and only a session that reports prompts may
+    # be sent a prompt mid-turn. Set at registration by the SessionStart hook configured
+    # alongside the PermissionRequest one.
+    reports_permission_prompts: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     is_listening: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     listener_pid: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     last_active_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime(), nullable=True)
@@ -118,14 +124,20 @@ class HarnessSession(Base):
 
     @classmethod
     def register(
-        cls, session: Session, harness_id: str, cwd: str, pid: int, title: Optional[str] = None
+        cls,
+        session: Session,
+        harness_id: str,
+        cwd: str,
+        pid: int,
+        title: Optional[str] = None,
+        reports_permission_prompts: Optional[bool] = None,
     ) -> HarnessSession:
         """Called from a SessionStart hook, which fires on startup, resume, and `/clear`.
         Upserts -- a resumed session reuses the same harness session id, so this updates
         cwd/pid/title in place and reopens it rather than erroring on a duplicate key. Ends
         every other open AGENT row for the same pid: the process now hosts this session, so
         any earlier session in it is over, and a row from an earlier process that held the
-        same pid is over too."""
+        same pid is over too. reports_permission_prompts left None keeps the row's value."""
         now = _now()
         row = cls.by_harness_id(session, harness_id)
         if row is None:
@@ -138,6 +150,8 @@ class HarnessSession(Base):
                 row.title = title
         row.process_started_at = process_started_at(pid)
         row.ended_at = None
+        if reports_permission_prompts is not None:
+            row.reports_permission_prompts = reports_permission_prompts
         session.flush()
         for other in session.scalars(
             select(cls).where(

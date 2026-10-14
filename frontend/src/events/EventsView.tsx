@@ -16,7 +16,7 @@ import MonthView from './MonthView';
 import WeekView from './WeekView';
 
 export default function EventsView() {
-  useDocumentTitle(pageTitle('events', 'Events'));
+  useDocumentTitle(pageTitle('events', 'Calendar'));
   const [mode, setMode] = useState<ViewMode>('month');
   const todayHighlight = useTodayHighlight();
   const eventColors = useEventColors();
@@ -69,7 +69,7 @@ function EventsHeader({
 }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '8px 8px 0' }}>
-      <h1 style={{ margin: 0, fontSize: 20 }}>Events</h1>
+      <h1 style={{ margin: 0, fontSize: 20 }}>Calendar</h1>
       <TodayHighlightSettings
         rgb={todayHighlight.rgb}
         alpha={todayHighlight.alpha}

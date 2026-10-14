@@ -11,7 +11,7 @@ const GROUPS: { to: string; label: string }[][] = [
   ],
   [
     { to: '/', label: 'Dailies' },
-    { to: '/events', label: 'Events' },
+    { to: '/events', label: 'Calendar' },
     { to: '/log', label: 'Log' },
   ],
   [

@@ -4,7 +4,7 @@ import { tokens } from '../../shared/tokens';
 import { useRefreshIntervalSetting } from '../hooks/useRefreshIntervalSetting';
 import type { AddressedBlock } from './blockAddress';
 import type { FacetFilter } from './facets';
-import { useCollapseState } from './hooks/useCollapseState';
+import { defaultCollapsed, useCollapseState } from './hooks/useCollapseState';
 import { useSessionChat, type TranscriptEntry } from './hooks/useSessionChat';
 import LegendPanel, { filterBlocks } from './LegendPanel';
 import type { ChatBlock, ChatMessage } from './types';
@@ -275,6 +275,46 @@ function isHumanText(message: ChatMessage): boolean {
   return message.blocks.some((b) => b.kind === 'text' && b.tags.isMeta !== 'true');
 }
 
+// A card folds into a run when every block it shows starts collapsed, so by default it shows
+// nothing but headers. The default, not the current state, decides: expanding one card inside
+// an open run leaves the run whole. A Bash call never folds: its command shows even while collapsed. A card the filter
+// hides entirely shows nothing and does not break a run. Fewer than RUN_MIN cards stay as is.
+const RUN_MIN = 2;
+
+type Segment = { kind: 'entry'; index: number } | { kind: 'run'; start: number; indices: number[] };
+
+function segmentEntries(entries: TranscriptEntry[], filter: FacetFilter): Segment[] {
+  const segments: Segment[] = [];
+  let run: number[] = [];
+  const flush = () => {
+    if (run.length >= RUN_MIN) segments.push({ kind: 'run', start: run[0], indices: run });
+    else segments.push(...run.map((index): Segment => ({ kind: 'entry', index })));
+    run = [];
+  };
+  entries.forEach((entry, index) => {
+    const shown = filterBlocks(entry.blocks, filter);
+    if (shown.length === 0) return;
+    if (shown.every((a) => defaultCollapsed(a) && !bashInput(a.block))) run.push(index);
+    else {
+      flush();
+      segments.push({ kind: 'entry', index });
+    }
+  });
+  flush();
+  return segments;
+}
+
+const runToggleStyle = {
+  alignSelf: 'flex-start',
+  padding: '4px 10px',
+  border: `1px dashed ${tokens.color.border}`,
+  borderRadius: 8,
+  background: 'transparent',
+  color: tokens.color.textMuted,
+  fontSize: 12,
+  cursor: 'pointer',
+} as const;
+
 // Distance from the bottom, in pixels, within which the message pane counts as scrolled to
 // the bottom and keeps following new messages.
 const FOLLOW_THRESHOLD_PX = 40;
@@ -299,6 +339,17 @@ export default function SessionTranscript({ sessionId }: SessionTranscriptProps)
   const allBlocks = useMemo(() => entries.flatMap((entry) => entry.blocks), [entries]);
   const visibleBlocks = useMemo(() => filterBlocks(allBlocks, filter), [allBlocks, filter]);
   const { isCollapsed, toggle, collapseMatching, expandMatching } = useCollapseState();
+  const segments = useMemo(() => segmentEntries(entries, filter), [entries, filter]);
+  // Runs the user opened, by the index of their first entry: stable while a live transcript
+  // appends, since new entries only extend the last run.
+  const [openRuns, setOpenRuns] = useState<Set<number>>(new Set());
+  const toggleRun = useCallback((start: number) => {
+    setOpenRuns((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(start)) next.add(start);
+      return next;
+    });
+  }, []);
 
   // Whether the pane was at the bottom before the latest render, updated on every scroll.
   // Read in the layout effect below, after new rows are in the DOM but before paint, so a
@@ -347,15 +398,21 @@ export default function SessionTranscript({ sessionId }: SessionTranscriptProps)
       <div style={{ display: 'flex', gap: legendOpen ? 16 : 0, flex: 1, minHeight: 0, position: 'relative' }}>
         <div ref={paneRef} onScroll={onPaneScroll} style={{ flex: 1, minWidth: 0, height: '100%', overflowY: 'auto' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {entries.map((entry, i) => (
-              <MessageRow
-                key={i}
-                entry={entry}
-                filter={filter}
-                isCollapsed={isCollapsed}
-                onToggle={toggle}
-              />
-            ))}
+            {segments.map((segment) => {
+              const row = (i: number) => (
+                <MessageRow key={i} entry={entries[i]} filter={filter} isCollapsed={isCollapsed} onToggle={toggle} />
+              );
+              if (segment.kind === 'entry') return row(segment.index);
+              const open = openRuns.has(segment.start);
+              return (
+                <div key={`run-${segment.start}`} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <button type="button" onClick={() => toggleRun(segment.start)} style={runToggleStyle}>
+                    {open ? '▾' : '▸'} {segment.indices.length} collapsed cards
+                  </button>
+                  {open && segment.indices.map(row)}
+                </div>
+              );
+            })}
           </div>
         </div>
         {allBlocks.length > 0 && legendOpen && (

@@ -13,7 +13,7 @@ interface UseCollapseStateResult {
 // unrecognized block kind) starts collapsed as the bulky, skim-later part.
 const EXPANDED_KINDS: ReadonlySet<string> = new Set(['text', 'thinking']);
 
-function defaultCollapsed(block: AddressedBlock): boolean {
+export function defaultCollapsed(block: AddressedBlock): boolean {
   return !EXPANDED_KINDS.has(block.block.kind);
 }
 

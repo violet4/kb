@@ -1,13 +1,46 @@
 """Log operations."""
 
 import argparse
+import sys
 from datetime import datetime, timezone
 
 from context import find_context, place, resolve_context, resolve_context_only
 from models.knowledge.log_entry import LogEntry
 
-from kb_cli._util import add_placement_argument, apply_updates, resolve_text_arg
+from kb_cli._util import (
+    add_ids_argument,
+    add_placement_argument,
+    apply_updates,
+    print_links,
+    print_timestamps,
+    resolve_text_arg,
+    show_each,
+)
 from kb_cli.search import cmd_search_deprecated
+
+
+def _body(raw: str) -> str:
+    """A log entry's body from its argument ('-' reads stdin), refusing an empty one: an empty
+    body records nothing, and it is what a failed `$(...)` or an empty pipe produces."""
+    body = resolve_text_arg(raw)
+    if not body.strip():
+        print("log entry body is empty; nothing written", file=sys.stderr)
+        sys.exit(1)
+    return body
+
+
+def cmd_show(args: argparse.Namespace) -> None:
+    def print_one(entry: LogEntry) -> None:
+        print(f"id: {entry.id}")
+        print(f"occurred_at: {entry.occurred_at.isoformat()}")
+        print(f"context: {entry.context.name}")
+        if entry.domain:
+            print(f"domain: {entry.domain}")
+        print_timestamps(entry)
+        print(f"body: {entry.body}")
+        print_links(args.session, "LogEntry", entry.id)
+
+    show_each(args.session, LogEntry, args.ids, print_one)
 
 
 def cmd_add(args: argparse.Namespace) -> None:
@@ -17,7 +50,7 @@ def cmd_add(args: argparse.Namespace) -> None:
     context = resolve_context_only(args.session, args.place)
     entry = LogEntry.create(
         args.session,
-        body=resolve_text_arg(args.body),
+        body=_body(args.body),
         domain=args.domain,
         context=context,
         occurred_at=occurred_at,
@@ -27,7 +60,7 @@ def cmd_add(args: argparse.Namespace) -> None:
 
 
 def cmd_update(args: argparse.Namespace) -> None:
-    body = resolve_text_arg(args.body) if args.body is not None else None
+    body = _body(args.body) if args.body is not None else None
     entry = apply_updates(args.session, LogEntry, args.id, "LogEntry", {"body": body, "domain": args.domain})
     if args.new_context is not None:
         place(entry, context=find_context(args.session, args.new_context))
@@ -83,6 +116,10 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_add.add_argument("--domain", help="Loose category label, e.g. 'health', 'cat', 'work'")
     p_add.add_argument("--date", metavar="YYYY-MM-DD", help="Backdate the entry (default: now)")
     p_add.set_defaults(func=cmd_add)
+
+    p_show = sub.add_parser("show", help="Show log entries by id")
+    add_ids_argument(p_show)
+    p_show.set_defaults(func=cmd_show)
 
     p_update = sub.add_parser("update", help="Edit a log entry")
     p_update.add_argument("id", type=int)

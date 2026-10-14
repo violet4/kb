@@ -7,7 +7,7 @@ import type { FacetFilter } from './facets';
 import { useCollapseState } from './hooks/useCollapseState';
 import { useSessionChat, type TranscriptEntry } from './hooks/useSessionChat';
 import LegendPanel, { filterBlocks } from './LegendPanel';
-import type { ChatMessage } from './types';
+import type { ChatBlock, ChatMessage } from './types';
 
 function TagList({ tags }: { tags: Record<string, string> }) {
   return (
@@ -27,6 +27,56 @@ function TagList({ tags }: { tags: Record<string, string> }) {
   );
 }
 
+// A Bash tool call's command, shown as a command rather than inside its JSON input; whatever
+// else the input carries (timeout, run_in_background, ...) stays as JSON, when there is any.
+function bashInput(
+  block: ChatBlock,
+): { command: string; description: string | null; rest: Record<string, unknown> | null } | null {
+  const input = block.tool_input;
+  if (block.kind !== 'tool_use' || block.tool_name !== 'Bash' || typeof input?.command !== 'string') return null;
+  const { command, description, ...rest } = input;
+  return {
+    command,
+    description: typeof description === 'string' ? description : null,
+    rest: Object.keys(rest).length > 0 ? rest : null,
+  };
+}
+
+// Collapsed blocks still show the command, clipped to its first lines, since a session is read
+// mostly by what it ran; expanding shows all of it.
+const BASH_PREVIEW_LINES = 6;
+
+function BashCommand({ command, description, full }: { command: string; description: string | null; full: boolean }) {
+  const lines = command.split('\n');
+  const hidden = full ? 0 : Math.max(0, lines.length - BASH_PREVIEW_LINES);
+  const shown = hidden ? lines.slice(0, BASH_PREVIEW_LINES).join('\n') : command;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      {description && <span style={{ fontSize: 12, color: tokens.color.textMuted }}>{description}</span>}
+      <pre
+        style={{
+          margin: 0,
+          padding: '6px 8px',
+          fontSize: 12,
+          whiteSpace: 'pre-wrap',
+          overflowWrap: 'anywhere',
+          background: tokens.color.background,
+          border: `1px solid ${tokens.color.border}`,
+          borderRadius: 4,
+          color: tokens.color.text,
+        }}
+      >
+        {shown}
+      </pre>
+      {hidden > 0 && (
+        <span style={{ fontSize: 11, color: tokens.color.textMuted }}>
+          … {hidden} more line{hidden === 1 ? '' : 's'} (expand to see all)
+        </span>
+      )}
+    </div>
+  );
+}
+
 function BlockRow({
   addressed,
   collapsed,
@@ -37,6 +87,7 @@ function BlockRow({
   onToggle: () => void;
 }) {
   const { block } = addressed;
+  const bash = bashInput(block);
   const summary =
     block.kind === 'tool_use'
       ? `tool_use: ${block.tool_name}`
@@ -69,13 +120,14 @@ function BlockRow({
         <span>{collapsed ? '▸' : '▾'}</span>
         <span>{summary}</span>
       </button>
+      {bash && <BashCommand command={bash.command} description={bash.description} full={!collapsed} />}
       {!collapsed && (
         <>
           {block.kind === 'text' && <Markdown text={block.text ?? ''} />}
           {block.kind === 'thinking' && (
             <Markdown text={block.text ?? ''} color={tokens.color.thinking} />
           )}
-          {block.kind === 'tool_use' && (
+          {block.kind === 'tool_use' && (!bash || bash.rest) && (
             <pre
               style={{
                 margin: 0,
@@ -85,7 +137,7 @@ function BlockRow({
                 color: tokens.color.textMuted,
               }}
             >
-              {JSON.stringify(block.tool_input, null, 2)}
+              {JSON.stringify(bash ? bash.rest : block.tool_input, null, 2)}
             </pre>
           )}
           {block.kind === 'tool_result' && (
@@ -115,6 +167,12 @@ function blockToMarkdown(addressed: AddressedBlock): string {
   const { block } = addressed;
   if (block.kind === 'text') return block.text ?? '';
   if (block.kind === 'thinking') return `**thinking**\n\n${block.text ?? ''}`;
+  const bash = bashInput(block);
+  if (bash) {
+    const description = bash.description ? `\n${bash.description}` : '';
+    const rest = bash.rest ? `\n\`\`\`json\n${JSON.stringify(bash.rest, null, 2)}\n\`\`\`` : '';
+    return `**tool_use: Bash**${description}\n\`\`\`bash\n${bash.command}\n\`\`\`${rest}`;
+  }
   if (block.kind === 'tool_use') {
     return `**tool_use: ${block.tool_name}**\n\`\`\`json\n${JSON.stringify(block.tool_input, null, 2)}\n\`\`\``;
   }

@@ -382,9 +382,9 @@ See `kb hooks --help` / `kb_cli/hooks.py` for what this does and why (nudge to s
 
 Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/user/kb/kb`). If a `PostToolUse`/`Bash` entry already exists for `mypy-check`, this is a separate matcher (`WebSearch|WebFetch` vs `Bash`) so it needs its own entry in the `PostToolUse` array, not merged into that one.
 
-## session-register, session-inbox-check, session-stop (session tracking)
+## session-register, session-inbox-check, session-stop, permission-request (session tracking)
 
-`kb hooks session-register` records the session in `harness_session`. Every Journal row a session writes points at that row, so without this hook a session's creates, changes, and reads are journaled with no session and are missing from `kb journal session`; `kb health` reports an unregistered session. It also subscribes the session to cross-session messaging. It runs on every `SessionStart` with no matcher: `/clear` starts a new session id that needs its own row, and a resumed session's re-registration is an upsert. `session-inbox-check` marks the session as working and prints unread messages on each prompt; `session-stop` marks it idle when a turn ends. `kb hooks --help` describes each.
+`kb hooks session-register` records the session in `harness_session`. Every Journal row a session writes points at that row, so without this hook a session's creates, changes, and reads are journaled with no session and are missing from `kb journal session`; `kb health` reports an unregistered session. It also subscribes the session to cross-session messaging. It runs on every `SessionStart` with no matcher: `/clear` starts a new session id that needs its own row, and a resumed session's re-registration is an upsert. `session-inbox-check` marks the session as working and prints unread messages on each prompt; `session-stop` marks it idle when a turn ends. `permission-request` runs before Claude Code shows a permission dialog and records that one may be open, so the web UI's agent page holds a mid-turn prompt that would otherwise answer the dialog; the prompt and stop hooks clear it. It must print nothing, so the dialog proceeds as usual. Configure it together with `session-register --reports-permission-prompts`: the flag tells kb this session runs the hook, and a session without it is never sent a prompt mid-turn. Claude Code reads hooks when a session starts, so a session already running when they are added needs a restart (`kb claude --resume ID`). `kb hooks --help` describes each.
 
 ```json
 {
@@ -394,7 +394,7 @@ Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/
         "hooks": [
           {
             "type": "command",
-            "command": "jq -r '.session_id' | /path/to/kb hooks session-register 2>/dev/null; printf '{}'"
+            "command": "jq -r '.session_id' | /path/to/kb hooks session-register --reports-permission-prompts 2>/dev/null; printf '{}'"
           }
         ]
       }
@@ -415,6 +415,16 @@ Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/
           {
             "type": "command",
             "command": "/path/to/kb hooks session-stop 2>/dev/null; true"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/path/to/kb hooks permission-request 2>/dev/null; true"
           }
         ]
       }

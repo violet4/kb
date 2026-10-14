@@ -555,7 +555,13 @@ def cmd_session_register(args: argparse.Namespace) -> None:
         session_id = current_session_id() or ""
     if not session_id:
         return
-    HarnessSession.register(args.session, session_id, cwd=os.getcwd(), pid=_find_claude_ancestor_pid())
+    HarnessSession.register(
+        args.session,
+        session_id,
+        cwd=os.getcwd(),
+        pid=_find_claude_ancestor_pid(),
+        reports_permission_prompts=args.reports_permission_prompts,
+    )
     args.session.commit()
 
 
@@ -588,6 +594,8 @@ def cmd_session_inbox_check(args: argparse.Namespace) -> None:
         row = HarnessSession.register(args.session, session_id, cwd=os.getcwd(), pid=_find_claude_ancestor_pid())
     row.status = HarnessSessionStatus.INFERRING
     row.last_active_at = _now()
+    # A prompt is delivered only between tool calls, never while a permission dialog is open.
+    row.awaiting_permission = False
     args.session.commit()
     messages = ChannelMessage.unread(args.session, row.id)
     lines = [f"New message from session {msg.sender.harness_id}:\n  {msg.body}" for msg in messages]
@@ -617,6 +625,24 @@ def cmd_session_stop(args: argparse.Namespace) -> None:
         return
     row.status = HarnessSessionStatus.IDLE
     row.last_response_at = _now()
+    row.awaiting_permission = False
+    args.session.commit()
+
+
+def cmd_permission_request(args: argparse.Namespace) -> None:
+    """Called from the PermissionRequest hook, which runs before Claude Code shows a permission
+    dialog: marks this session as possibly showing one, so the web UI does not submit a prompt
+    into it. Silent, so the dialog proceeds as usual. See HarnessSession.awaiting_permission."""
+    from harness import current_session_id
+    from models.agents.harness_session import HarnessSession
+
+    session_id = current_session_id()
+    if not session_id:
+        return
+    row = HarnessSession.by_harness_id(args.session, session_id)
+    if row is None:
+        return
+    row.awaiting_permission = True
     args.session.commit()
 
 
@@ -748,6 +774,11 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         "session-register",
         help="Register/refresh this session as live (session ID read on stdin, or current_session_id() if stdin is empty) -- see kb Goal #46",
     )
+    p_session_register.add_argument(
+        "--reports-permission-prompts",
+        action="store_true",
+        help="This harness also runs `kb hooks permission-request`, so the web UI may send prompts mid-turn",
+    )
     p_session_register.set_defaults(func=cmd_session_register)
 
     p_session_inbox = sub.add_parser(
@@ -761,3 +792,9 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         help="Mark this session IDLE and bump last_response_at -- see kb Goal #46",
     )
     p_session_stop.set_defaults(func=cmd_session_stop)
+
+    p_permission_request = sub.add_parser(
+        "permission-request",
+        help="Mark this session as possibly showing a permission dialog, so the web UI holds prompts",
+    )
+    p_permission_request.set_defaults(func=cmd_permission_request)

@@ -30,6 +30,7 @@ import psutil
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+import harness_input
 from harness import current_session_id, find_session_transcript_path
 from models.agents.channel import Channel, ChannelMessage, ChannelRead, ChannelSubscription
 from models.agents.harness_session import HarnessSession
@@ -174,6 +175,7 @@ class LiveSessionInfo(NamedTuple):
     last_message_seconds: Optional[float]
     cwd: str
     title: str
+    accepts_input: bool  # started with `kb claude`, so the web UI can send it prompts
 
 
 def list_live_sessions(session: Session) -> tuple[list[LiveSessionInfo], int]:
@@ -213,6 +215,7 @@ def list_live_sessions(session: Session) -> tuple[list[LiveSessionInfo], int]:
                 last_message_seconds=last_message_seconds,
                 cwd=row.cwd,
                 title=row.title or "",
+                accepts_input=harness_input.accepts_input(row.pid),
             )
         )
     return infos, len(cleared)

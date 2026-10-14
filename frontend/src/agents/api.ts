@@ -1,3 +1,4 @@
+import { sendJson } from '../shared/http';
 import type { AgentSession, HistoryProject, HistorySession } from './types';
 
 const API_BASE = '/api';
@@ -21,4 +22,8 @@ export async function fetchHistorySessions(project: string | null): Promise<Hist
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Failed to load sessions: ${response.status} ${await response.text()}`);
   return response.json();
+}
+
+export async function sendSessionInput(sessionId: string, text: string): Promise<void> {
+  await sendJson('POST', `/sessions/${encodeURIComponent(sessionId)}/input`, { text });
 }

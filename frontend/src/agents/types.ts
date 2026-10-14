@@ -8,6 +8,7 @@ export interface AgentSession {
   last_message_seconds: number | null;
   cwd: string;
   title: string;
+  accepts_input: boolean;
 }
 
 // Mirrors api/sessions_router.py's HistorySessionOut Pydantic model.

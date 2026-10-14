@@ -13,10 +13,11 @@ from sqlalchemy.orm import Session
 from api.context_homes import contexts_by_tag
 from api.deps import get_session
 from api.record_hit import RecordHit, record_hit_fields
+import harness_input
 from harness import find_session_transcript_path
 from kb_cli import si_files
 from kb_cli.sessions import list_chat_messages, list_history_projects, list_history_sessions, list_live_sessions
-from models.agents.harness_session import HarnessSession
+from models.agents.harness_session import HarnessSession, HarnessSessionStatus
 from models.journal.journal import Journal
 from models.links.entity_link import EntityLink
 
@@ -32,6 +33,7 @@ class SessionOut(BaseModel):
     last_message_seconds: float | None
     cwd: str
     title: str
+    accepts_input: bool
 
 
 @router.get("", response_model=list[SessionOut])
@@ -39,6 +41,35 @@ async def get_live_sessions(session: Session = Depends(get_session)) -> list[Ses
     infos, _cleared_count = list_live_sessions(session)
     session.commit()  # persists list_live_sessions' stale-listener cleanup + TranscriptCache upserts
     return [SessionOut(**info._asdict()) for info in infos]
+
+
+class SessionInputIn(BaseModel):
+    text: str
+
+
+@router.post("/{session_id}/input")
+def post_session_input(
+    session_id: str, body: SessionInputIn, session: Session = Depends(get_session)
+) -> dict[str, bool]:
+    """Submit `text` as a user prompt to a live session started with `kb claude`. Refused
+    while the session is mid-turn: a permission dialog may be open then, and the Enter that
+    submits the message would answer it."""
+    row = HarnessSession.by_harness_id(session, session_id)
+    if row is None or not row.is_alive():
+        raise HTTPException(status_code=404, detail=f"No live session {session_id!r}")
+    if row.status != HarnessSessionStatus.IDLE:
+        raise HTTPException(status_code=409, detail="Session is busy; send once its turn ends")
+    if not harness_input.clean(body.text):
+        raise HTTPException(status_code=422, detail="Message is empty")
+    try:
+        harness_input.send(row.pid, body.text)
+    except harness_input.InputError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    # The session's prompt hook marks it busy too, but only once the prompt reaches it;
+    # marking it here refuses a second send in the meantime.
+    row.status = HarnessSessionStatus.INFERRING
+    session.commit()
+    return {"ok": True}
 
 
 class HistorySessionOut(BaseModel):

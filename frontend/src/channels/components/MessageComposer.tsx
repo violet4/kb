@@ -4,16 +4,25 @@ import { tokens } from '../../shared/tokens';
 interface MessageComposerProps {
   onSend: (body: string) => Promise<void>;
   placeholder: string;
+  // Ctrl/Cmd+Enter sends, leaving plain Enter for newlines in a multi-line message.
+  sendOnModEnter?: boolean;
+  // Present while sending is not possible; shown in place of the error and disables Send.
+  disabledReason?: string | null;
 }
 
-export default function MessageComposer({ onSend, placeholder }: MessageComposerProps) {
+export default function MessageComposer({
+  onSend,
+  placeholder,
+  sendOnModEnter = false,
+  disabledReason = null,
+}: MessageComposerProps) {
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSend() {
     const trimmed = body.trim();
-    if (!trimmed || sending) return;
+    if (!trimmed || sending || disabledReason) return;
     setSending(true);
     setError(null);
     try {
@@ -28,13 +37,24 @@ export default function MessageComposer({ onSend, placeholder }: MessageComposer
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingTop: 8, borderTop: `1px solid ${tokens.color.border}` }}>
-      {error && <p style={{ margin: 0, fontSize: 12, color: tokens.color.danger }}>{error}</p>}
+      {/* Always rendered, with its line reserved, so a status appearing never moves the textarea. */}
+      <p
+        style={{
+          margin: 0,
+          minHeight: 16,
+          fontSize: 12,
+          color: disabledReason ? tokens.color.textMuted : tokens.color.danger,
+        }}
+      >
+        {disabledReason ?? error}
+      </p>
       <div style={{ display: 'flex', gap: 8 }}>
         <textarea
           value={body}
           onChange={(e) => setBody(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+            const isSendKey = sendOnModEnter ? e.ctrlKey || e.metaKey : !e.shiftKey;
+            if (e.key === 'Enter' && isSendKey) {
               e.preventDefault();
               handleSend();
             }
@@ -56,7 +76,7 @@ export default function MessageComposer({ onSend, placeholder }: MessageComposer
         <button
           type="button"
           onClick={handleSend}
-          disabled={sending || !body.trim()}
+          disabled={sending || !body.trim() || !!disabledReason}
           style={{
             alignSelf: 'flex-end',
             padding: '8px 16px',
@@ -65,8 +85,8 @@ export default function MessageComposer({ onSend, placeholder }: MessageComposer
             background: tokens.color.accent,
             color: tokens.color.background,
             fontSize: 13,
-            cursor: sending || !body.trim() ? 'default' : 'pointer',
-            opacity: sending || !body.trim() ? 0.5 : 1,
+            cursor: sending || !body.trim() || !!disabledReason ? 'default' : 'pointer',
+            opacity: sending || !body.trim() || !!disabledReason ? 0.5 : 1,
           }}
         >
           Send

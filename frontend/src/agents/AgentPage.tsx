@@ -2,6 +2,9 @@ import { pageTitle, useDocumentTitle } from '../shared/useDocumentTitle';
 import { useMemo } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import AgentContentTabs, { type AgentContentTab } from './AgentContentTabs';
+import { sendSessionInput } from './api';
+import type { AgentSession } from './types';
+import MessageComposer from '../channels/components/MessageComposer';
 import { formatSeconds } from './formatSeconds';
 import { useAgentSessions } from './hooks/useAgentSessions';
 import { useRefreshIntervalSetting } from './hooks/useRefreshIntervalSetting';
@@ -96,6 +99,22 @@ export default function AgentPage() {
         onChangeTab={setTab}
         onSent={refreshChannels}
       />
+      {tab === 'session' && liveSession && (
+        <MessageComposer
+          onSend={(text) => sendSessionInput(sessionId, text)}
+          placeholder="Prompt this session (Ctrl+Enter to send)"
+          sendOnModEnter
+          disabledReason={sessionInputBlocker(liveSession)}
+        />
+      )}
     </div>
   );
+}
+
+// Why the session can't take a prompt from here right now, or null when it can. A busy session
+// is refused because Enter would answer a permission dialog if one is open.
+function sessionInputBlocker(session: AgentSession): string | null {
+  if (!session.accepts_input) return `Started without \`kb claude\`; resume it with \`kb claude --resume ${session.id}\` to send from here.`;
+  if (session.status !== 'idle') return 'Busy: send once this turn ends.';
+  return null;
 }

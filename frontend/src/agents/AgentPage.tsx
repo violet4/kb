@@ -34,6 +34,7 @@ export default function AgentPage() {
 
   const [displayName] = useDisplayName();
   const [showTags, setShowTags] = useStoredState('kb-agents-transcript-show-tags', false, isBoolean);
+  const [showThinking, setShowThinking] = useStoredState('kb-agents-transcript-show-thinking', true, isBoolean);
   const [intervalSeconds] = useChannelListRefreshInterval();
   const { channels, refresh: refreshChannels } = useChannelList(displayName, intervalSeconds);
   const dmChannel = useMemo(
@@ -119,16 +120,23 @@ export default function AgentPage() {
         {tab === 'session' && (
           // A popover, not a modal, so the transcript stays visible while a setting changes it.
           <Popover label="⚙" align="end" ariaLabel="Transcript display settings" title="Transcript display settings">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, whiteSpace: 'nowrap' }}>
-              <input type="checkbox" checked={showTags} onChange={(e) => setShowTags(e.target.checked)} />
-              Show transcript fields
-            </label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <label style={settingStyle}>
+                <input type="checkbox" checked={showThinking} onChange={(e) => setShowThinking(e.target.checked)} />
+                Show thinking
+              </label>
+              <label style={settingStyle}>
+                <input type="checkbox" checked={showTags} onChange={(e) => setShowTags(e.target.checked)} />
+                Show transcript fields
+              </label>
+            </div>
           </Popover>
         )}
       </div>
       <AgentContentTabs
         hideTabBar
         showTags={showTags}
+        showThinking={showThinking}
         agentSessionId={sessionId}
         channelId={channelId}
         displayName={displayName}
@@ -156,3 +164,5 @@ function sessionInputBlocker(session: AgentSession): string | null {
   if (session.status !== 'idle') return 'Busy: send once this turn ends.';
   return null;
 }
+
+const settingStyle = { display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, whiteSpace: 'nowrap' } as const;

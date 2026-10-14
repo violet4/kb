@@ -310,7 +310,7 @@ const RUN_MIN = 2;
 
 type Segment = { kind: 'entry'; index: number } | { kind: 'run'; start: number; indices: number[] };
 
-function segmentEntries(entries: TranscriptEntry[]): Segment[] {
+function segmentEntries(entries: TranscriptEntry[], showThinking: boolean): Segment[] {
   const segments: Segment[] = [];
   let run: number[] = [];
   const flush = () => {
@@ -321,7 +321,7 @@ function segmentEntries(entries: TranscriptEntry[]): Segment[] {
   entries.forEach((entry, index) => {
     const shown = entry.blocks;
     if (shown.length === 0) return;
-    if (shown.every((a) => defaultCollapsed(a) && !bashInput(a.block))) run.push(index);
+    if (shown.every((a) => defaultCollapsed(a, showThinking) && !bashInput(a.block))) run.push(index);
     else {
       flush();
       segments.push({ kind: 'entry', index });
@@ -352,6 +352,8 @@ interface SessionTranscriptProps {
   startAtBottom?: boolean;
   // Each block's raw transcript fields (kind, isSidechain, model, ...) under its content.
   showTags?: boolean;
+  // Off: thinking blocks start collapsed like tool calls, so they fold into collapsed runs.
+  showThinking?: boolean;
 }
 
 // The raw Claude Code JSONL transcript for one session -- every user/assistant message,
@@ -365,11 +367,12 @@ export default function SessionTranscript({
   sessionId,
   startAtBottom = false,
   showTags = false,
+  showThinking = true,
 }: SessionTranscriptProps) {
   const [intervalSeconds] = useRefreshIntervalSetting();
   const { entries, loading, error } = useSessionChat(sessionId, intervalSeconds);
-  const { isCollapsed, toggle } = useCollapseState();
-  const segments = useMemo(() => segmentEntries(entries), [entries]);
+  const { isCollapsed, toggle } = useCollapseState(showThinking);
+  const segments = useMemo(() => segmentEntries(entries, showThinking), [entries, showThinking]);
   // Runs the user opened, by the index of their first entry: stable while a live transcript
   // appends, since new entries only extend the last run.
   const [openRuns, setOpenRuns] = useState<Set<number>>(new Set());

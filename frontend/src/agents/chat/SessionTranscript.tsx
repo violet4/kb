@@ -392,6 +392,7 @@ export default function SessionTranscript({
   // appends, since new entries only extend the last run.
   const [openRuns, setOpenRuns] = useState<Set<number>>(new Set());
   const toggleRun = useCallback((start: number) => {
+    stopFollowing();
     setOpenRuns((prev) => {
       const next = new Set(prev);
       if (!next.delete(start)) next.add(start);
@@ -405,6 +406,19 @@ export default function SessionTranscript({
   const paneRef = useRef<HTMLDivElement>(null);
   const followRef = useRef(false);
   const seenCountRef = useRef(0);
+  // Opening or closing a card means reading, not following: without this, a card expanded at the
+  // bottom would grow the content and the follow pin would scroll its start out of view.
+  // Scrolling back to the bottom resumes following.
+  function stopFollowing() {
+    followRef.current = false;
+  }
+  const toggleCard = useCallback(
+    (block: AddressedBlock) => {
+      stopFollowing();
+      toggle(block);
+    },
+    [toggle],
+  );
   const onPaneScroll = useCallback(() => {
     const pane = paneRef.current;
     if (pane) followRef.current = pane.scrollHeight - pane.scrollTop - pane.clientHeight <= FOLLOW_THRESHOLD_PX;
@@ -427,15 +441,19 @@ export default function SessionTranscript({
     }
     if (entries.length > previousCount && followRef.current) pane.scrollTop = pane.scrollHeight;
   }, [entries, startAtBottom]);
-  // A pane that shrinks (e.g. under a growing message composer) fires no scroll event and keeps
-  // its scrollTop, which would slide the newest message out of view; keep it pinned instead.
+  // Neither a pane that shrinks (under a growing message composer) nor content that grows after
+  // it is laid out (markdown and fonts finishing after the first scroll to the bottom) fires a
+  // scroll event, and either would leave the newest message partly out of view; keep it pinned.
+  const contentRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const pane = paneRef.current;
-    if (!pane) return;
+    const content = contentRef.current;
+    if (!pane || !content) return;
     const observer = new ResizeObserver(() => {
       if (followRef.current) pane.scrollTop = pane.scrollHeight;
     });
     observer.observe(pane);
+    observer.observe(content);
     return () => observer.disconnect();
   }, []);
 
@@ -448,14 +466,14 @@ export default function SessionTranscript({
       )}
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         <div ref={paneRef} onScroll={onPaneScroll} style={{ flex: 1, minWidth: 0, height: '100%', overflowY: 'auto' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div ref={contentRef} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {segments.map((segment) => {
               const row = (i: number) => (
                 <MessageRow
                   key={i}
                   entry={entries[i]}
                   isCollapsed={isCollapsed}
-                  onToggle={toggle}
+                  onToggle={toggleCard}
                   showTags={showTags}
                 />
               );

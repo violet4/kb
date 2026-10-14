@@ -125,10 +125,17 @@ class Journal(Base):
         )
         return [TouchedRecord(t, i, bool(n), at) for t, i, n, at in rows]
 
-    def describe(self) -> str:
-        """One line naming what happened, without timestamp or session."""
+    def describe(self, clip: Optional[int] = None) -> str:
+        """One line naming what happened, without timestamp or session. clip shortens each old and
+        new value to that many characters, for a listing that only needs to show what changed."""
+
+        def shown(value: Optional[str]) -> str:
+            if clip is not None and value is not None and len(value) > clip:
+                return repr(value[:clip]) + f"…(+{len(value) - clip} chars)"
+            return repr(value)
+
         if self.action is JournalAction.UPDATE and self.field:
-            text = f"{self.field}: {self.old_value!r} -> {self.new_value!r}"
+            text = f"{self.field}: {shown(self.old_value)} -> {shown(self.new_value)}"
         elif self.action is JournalAction.NOTE:
             text = self.note or ""
         else:

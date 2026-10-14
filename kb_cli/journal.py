@@ -37,7 +37,16 @@ def cmd_session(args: argparse.Namespace) -> None:
     if not entries:
         print("No journal entries.")
         return
-    for line in journal_lines(entries, with_entity=True):
+    for line in journal_lines(entries, records_from=args.session):
+        print(line)
+
+
+def cmd_recent(args: argparse.Namespace) -> None:
+    """Every record's history together, newest first: what changed across kb lately (the CLI
+    side of the web UI's Journal page)."""
+    entries = Journal.recent(args.session, args.limit, include_reads=args.reads)
+    # A timeline shows that a field changed; `journal show TYPE ID` has the full values.
+    for line in journal_lines(entries, records_from=args.session, clip=60):
         print(line)
 
 
@@ -50,6 +59,11 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_add.add_argument("entity_id", type=int)
     p_add.add_argument("note")
     p_add.set_defaults(func=cmd_add)
+
+    p_recent = sub.add_parser("recent", help="Show the latest history across every record, newest first")
+    p_recent.add_argument("-n", "--limit", type=int, default=20, help="How many entries (default 20)")
+    p_recent.add_argument("--reads", action="store_true", help="Include reads, not only changes and notes")
+    p_recent.set_defaults(func=cmd_recent)
 
     p_show = sub.add_parser("show", help="Show journal history for an entity")
     p_show.add_argument("entity_type")

@@ -20,6 +20,7 @@ from models.context import Context, Tag
 from models.journal.journal import Journal
 from models.links.entity_link import EntityLink
 from models.settings import Settings
+from kb_cli import si_files
 
 # SQLAlchemy declarative classes don't satisfy structural Protocol matching (their
 # class-level attributes are InstrumentedAttribute, not the Mapped[T] written in the
@@ -457,14 +458,39 @@ def print_table(headers: Sequence[str], rows: Sequence[Sequence[str]]) -> None:
         print(fmt(row))
 
 
-def journal_lines(entries: Sequence[Journal], with_entity: bool = False) -> list[str]:
-    """One line per Journal entry: when, what happened, and which session did it."""
+def _entry_labels(session: Session, entries: Sequence[Journal]) -> dict[tuple[str, int], str]:
+    """The current title of each record the entries are about: an si node's from its file, any
+    other record's from its row. A purged record, or a type with neither, has no label."""
+    si_titles = {int(n.id): n.title for n in si_files.list_nodes()}
+    labels: dict[tuple[str, int], str] = {}
+    for key in {(e.entity_type, e.entity_id) for e in entries}:
+        if key[0] == "SiNode":
+            title = si_titles.get(key[1])
+        else:
+            row = EntityLink.resolve(session, *key)
+            title = row and (
+                getattr(row, "title", None) or getattr(row, "name", None) or getattr(row, "description", None)
+            )
+        if title:
+            labels[key] = str(title)
+    return labels
+
+
+def journal_lines(
+    entries: Sequence[Journal], records_from: Optional[Session] = None, clip: Optional[int] = None
+) -> list[str]:
+    """One line per Journal entry: when, what happened, and which session did it. With
+    records_from, each line also names its record (TYPE:ID and current title, looked up in that
+    session), for a list that mixes several records. clip shortens long field values (see
+    Journal.describe)."""
+    labels = _entry_labels(records_from, entries) if records_from is not None else {}
     lines = []
     for e in entries:
         line = f"[{e.created_at.strftime('%Y-%m-%d %H:%M')}] "
-        if with_entity:
-            line += f"{e.entity_type}:{e.entity_id} "
-        line += e.describe()
+        if records_from is not None:
+            label = labels.get((e.entity_type, e.entity_id))
+            line += f"{e.entity_type}:{e.entity_id}" + (f" {label!r}" if label else "") + " "
+        line += e.describe(clip)
         if e.harness_session is not None:
             line += f"  · session {e.harness_session.harness_id}"
         lines.append(line)

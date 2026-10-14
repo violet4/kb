@@ -78,5 +78,28 @@ _COMMAND_TARGET_RES = (
 )
 
 
-def command_targets(command: str) -> list[str]:
-    return [m for regex in _COMMAND_TARGET_RES for m in regex.findall(command) if not m.startswith("/dev/")]
+# A `cd DIR` that is a whole step of a command (between `&&`, `||`, `;`, or newlines).
+_COMMAND_STEP_SPLIT_RE = re.compile(r"&&|\|\||;|\n")
+_CD_RE = re.compile(r"^\s*cd\s+([^\s$`]+)\s*$")
+
+
+def command_targets(command: str, cwd: Optional[str] = None) -> list[str]:
+    """The files `command` writes, as far as its text shows. With `cwd` (the directory the
+    command starts in), a relative target is resolved against it, following each `cd DIR`
+    step before the write, so `cd /tmp/x && cat > a.py` names /tmp/x/a.py; without it,
+    relative targets stay relative. A `cd` to anything but a plain path leaves the directory
+    unchanged."""
+    targets = []
+    here = cwd
+    for step in _COMMAND_STEP_SPLIT_RE.split(command):
+        if here is not None and (cd := _CD_RE.match(step)):
+            here = os.path.normpath(os.path.join(here, os.path.expanduser(cd.group(1).strip("'\""))))
+            continue
+        for regex in _COMMAND_TARGET_RES:
+            for target in regex.findall(step):
+                if target.startswith("/dev/"):
+                    continue
+                if here is not None:
+                    target = os.path.normpath(os.path.join(here, os.path.expanduser(target)))
+                targets.append(target)
+    return targets

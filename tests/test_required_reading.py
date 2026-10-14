@@ -24,7 +24,7 @@ def _run(
     command: bool = False,
 ) -> str:
     monkeypatch.setattr(sys, "stdin", io.StringIO(stdin))
-    cmd_required_reading_check(argparse.Namespace(session=session, command=command))
+    cmd_required_reading_check(argparse.Namespace(session=session, command=command, with_cwd=False))
     return capsys.readouterr().out
 
 
@@ -134,3 +134,19 @@ def test_command_mode_blocks_markdown_write(
     out = _run(db_session, "cat > docs/new.md <<'EOF'", monkeypatch, capsys, command=True)
     assert "docs/new.md" in out and "kb si show documentation" in out
     assert _run(db_session, "echo x > /tmp/out.md", monkeypatch, capsys, command=True) == ""
+
+
+@pytest.mark.parametrize(
+    ("command", "targets"),
+    [
+        ("cat > a.py <<'EOF'", ["/home/u/kb/a.py"]),
+        ("cd /tmp/scratch && cat > hold.py <<'EOF'\nprint(1)\nEOF", ["/tmp/scratch/hold.py"]),
+        ("cd sub; text sub --file x.md -i a b", ["/home/u/kb/sub/x.md"]),
+        ("echo x > /abs/out.md", ["/abs/out.md"]),
+        ("cd $OLDPWD && echo x > out.md", ["/home/u/kb/out.md"]),
+    ],
+)
+def test_command_targets_resolve_against_cwd(command: str, targets: list[str]) -> None:
+    """A relative target names a file in the command's directory, after any `cd` step: a
+    scratch script written after `cd /tmp/...` is exempt like any other /tmp path."""
+    assert command_targets(command, cwd="/home/u/kb") == targets

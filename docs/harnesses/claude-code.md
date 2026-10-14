@@ -178,7 +178,7 @@ Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/
 
 ## required-reading-check, doc-command-check (harness-agnostic detectors, blocking)
 
-`required-reading-check` blocks a file write until the session has read every instruction node, in either tree, whose `write-globs` match the file ([kb_cli/required_reading.py](../../kb_cli/required_reading.py)); the documentation node's `*.md` is one such row. It takes a `Write`/`Edit` target path, or with `--command` a `Bash` command, whose written files it reads from the command text (`text sub|replace --file X`, a `>`/`tee` target). `doc-command-check` blocks a kb record-body write (`kb <noun> add|update|edit`) until the documentation node is read. Both use the same deny adapter as `find-root-check`.
+`required-reading-check` blocks a file write until the session has read every instruction node, in either tree, whose `write-globs` match the file ([kb_cli/required_reading.py](../../kb_cli/required_reading.py)); the documentation node's `*.md` is one such row. It takes a `Write`/`Edit` target path, or with `--command` a `Bash` command, whose written files it reads from the command text (`text sub|replace --file X`, a `>`/`tee` target). With `--with-cwd`, the last stdin line is the directory the command runs in, and relative targets resolve against it and any `cd` step before them; without it, a script written after `cd /tmp/...` is seen by its bare relative name and is not exempt as a `/tmp` path. `doc-command-check` blocks a kb record-body write (`kb <noun> add|update|edit`) until the documentation node is read. Both use the same deny adapter as `find-root-check`.
 
 ```json
 {
@@ -193,7 +193,7 @@ Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/
           },
           {
             "type": "command",
-            "command": "reason=$(jq -r '.tool_input.command' | /path/to/kb hooks required-reading-check --command 2>/dev/null); if [ -n \"$reason\" ]; then jq -n --arg r \"$reason\" '{hookSpecificOutput: {hookEventName: \"PreToolUse\", permissionDecision: \"deny\", permissionDecisionReason: $r}}'; else printf '{}'; fi"
+            "command": "reason=$(jq -r '.tool_input.command + \"\\n\" + .cwd' | /path/to/kb hooks required-reading-check --command --with-cwd 2>/dev/null); if [ -n \"$reason\" ]; then jq -n --arg r \"$reason\" '{hookSpecificOutput: {hookEventName: \"PreToolUse\", permissionDecision: \"deny\", permissionDecisionReason: $r}}'; else printf '{}'; fi"
           }
         ]
       },

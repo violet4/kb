@@ -417,7 +417,14 @@ def cmd_required_reading_check(args: argparse.Namespace) -> None:
     from kb_cli.required_reading import command_targets, unread_for
 
     text = sys.stdin.read()
-    paths = command_targets(text) if args.command else [text.strip()]
+    if args.command and args.with_cwd:
+        # The last line, not the first: the command itself can span lines (a heredoc).
+        command, _, cwd = text.rstrip("\n").rpartition("\n")
+        paths = command_targets(command, cwd=cwd.strip() or None)
+    elif args.command:
+        paths = command_targets(text)
+    else:
+        paths = [text.strip()]
     for path in paths:
         commands = unread_for(args.session, path)
         if commands:
@@ -701,6 +708,12 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     )
     p_required.add_argument(
         "--command", action="store_true", help="stdin is a Bash command; check the files its text writes"
+    )
+    p_required.add_argument(
+        "--with-cwd",
+        action="store_true",
+        help="with --command: stdin's last line is the directory the command runs in, so relative "
+        "targets resolve against it (and any `cd` in the command)",
     )
     p_required.set_defaults(func=cmd_required_reading_check)
 

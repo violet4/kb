@@ -39,6 +39,7 @@ Usage: kb [--as-of WHEN] <command> [subcommand ...] [args ...]
   kb text semsearch rank QUERY [FILE] | compare A B   # rank/compare paragraphs by embedding
   kb pager FILE [--lines N] [--reset]
   kb sessions   # list Claude Code CLI sessions across all projects
+  kb claude [ARGS...]   # run claude so the web UI can send prompts to the session
   kb stats errors [--days N] [--top N]   # CLI error patterns from CliInvocation audit log
   kb anki decks | deck-add NAME | notetype-init | search QUERY | add DECK NOTETYPE FIELD... [--tags T] | delete ID... | run [-f FILE|-i]
 """
@@ -89,6 +90,7 @@ from kb_cli import (
     anki,
     archivebox,
     bug,
+    claude,
     context_cmd,
     daily,
     event,
@@ -186,6 +188,7 @@ pager.add_subparser(subparsers)
 anki.add_subparser(subparsers)
 search.add_subparser(subparsers)
 sessions.add_subparser(subparsers)
+claude.add_subparser(subparsers)
 settings_cmd.add_subparser(subparsers)
 stats.add_subparser(subparsers)
 text.add_subparser(subparsers)

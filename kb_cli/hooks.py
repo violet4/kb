@@ -25,6 +25,8 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from kb_cli.shell_command import without_heredoc_bodies
+
 # mypy's own failure summary, e.g. "Found 6 errors in 4 files (checked 171 source files)" -- not
 # ruff's "Found 3 errors.", which shares the first words.
 _MYPY_FAILURE_RE = re.compile(r"Found \d+ errors? in \d+ files? \(checked \d+ source files?\)")
@@ -267,14 +269,16 @@ _UV_SYNC_HINT = (
 
 def cmd_uv_sync_check(args: argparse.Namespace) -> None:
     """Read a Bash command string on stdin; if it invokes `uv sync` inside ~/kb (cwd piped as
-    the second stdin line, "<command>\\n<cwd>") without a UV_SYNC_CONFIRMED=1 env-var prefix,
+    the last stdin line, "<command>\\n<cwd>") without a UV_SYNC_CONFIRMED=1 env-var prefix,
     print a block reason to stdout -- `uv sync` reconciles the venv strictly against
     pyproject.toml/uv.lock, silently removing any locally installed package not declared there.
     ~/kb installs the optional `cli_instrumentation` package exactly this way (not a declared
     dependency), and a bare `uv sync` there once destroyed 5 weeks of its recorded data. Prints
     nothing (exit 0) otherwise, so a harness adapter can pipe any Bash command through
     unconditionally and only block on non-empty output."""
-    command, _, cwd = sys.stdin.read().partition("\n")
+    # The last line, not the first: the command itself can span lines.
+    command, _, cwd = sys.stdin.read().rstrip("\n").rpartition("\n")
+    command = without_heredoc_bodies(command)
     if not _UV_SYNC_RE.search(command):
         return
     if "UV_SYNC_CONFIRMED=1" in command:

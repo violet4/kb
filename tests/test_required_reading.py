@@ -150,3 +150,7 @@ def test_command_targets_resolve_against_cwd(command: str, targets: list[str]) -
     """A relative target names a file in the command's directory, after any `cd` step: a
     scratch script written after `cd /tmp/...` is exempt like any other /tmp path."""
     assert command_targets(command, cwd="/home/u/kb") == targets
+
+
+def test_redirect_in_a_heredoc_body_is_not_a_write() -> None:
+    assert command_targets("cat > a.md <<'EOF'\necho x > b.md\nEOF", cwd="/r") == ["/r/a.md"]

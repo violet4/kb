@@ -18,6 +18,8 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from kb_cli.shell_command import without_heredoc_bodies
+
 WRITE_GLOBS_HELP = (
     "Space-separated globs of files a session must not write until it has read this node, e.g. "
     "'*.py' or '*/AGENTS.md' (* crosses /); pass \"\" to clear"
@@ -91,7 +93,7 @@ def command_targets(command: str, cwd: Optional[str] = None) -> list[str]:
     unchanged."""
     targets = []
     here = cwd
-    for step in _COMMAND_STEP_SPLIT_RE.split(command):
+    for step in _COMMAND_STEP_SPLIT_RE.split(without_heredoc_bodies(command)):
         if here is not None and (cd := _CD_RE.match(step)):
             here = os.path.normpath(os.path.join(here, os.path.expanduser(cd.group(1).strip("'\""))))
             continue

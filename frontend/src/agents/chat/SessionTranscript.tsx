@@ -1,4 +1,4 @@
-import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Markdown from '../../shared/Markdown';
 import { tokens } from '../../shared/tokens';
 import { useRefreshIntervalSetting } from '../hooks/useRefreshIntervalSetting';
@@ -46,13 +46,12 @@ function bashInput(
 // mostly by what it ran; expanding shows all of it.
 const BASH_PREVIEW_LINES = 6;
 
-function BashCommand({ command, description, full }: { command: string; description: string | null; full: boolean }) {
+function BashCommand({ command, full }: { command: string; full: boolean }) {
   const lines = command.split('\n');
   const hidden = full ? 0 : Math.max(0, lines.length - BASH_PREVIEW_LINES);
   const shown = hidden ? lines.slice(0, BASH_PREVIEW_LINES).join('\n') : command;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      {description && <span style={{ fontSize: 12, color: tokens.color.textMuted }}>{description}</span>}
       <pre
         style={{
           margin: 0,
@@ -80,14 +79,22 @@ function BashCommand({ command, description, full }: { command: string; descript
   );
 }
 
+// lead and trail are the message's own header (role; timestamp and Copy), carried on the first
+// block's toggle line so a message spends no line on a header of its own.
 function BlockRow({
   addressed,
   collapsed,
   onToggle,
+  showTags,
+  lead,
+  trail,
 }: {
   addressed: AddressedBlock;
   collapsed: boolean;
   onToggle: () => void;
+  showTags: boolean;
+  lead?: ReactNode;
+  trail?: ReactNode;
 }) {
   const { block } = addressed;
   const bash = bashInput(block);
@@ -102,13 +109,15 @@ function BlockRow({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={!collapsed}
-        aria-label={`Toggle ${summary} block ${addressed.id}`}
-        style={{
-          alignSelf: 'flex-start',
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, fontSize: 12 }}>
+        {lead}
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={!collapsed}
+          aria-label={`Toggle ${summary} block ${addressed.id}`}
+          style={{
+          flexShrink: 0,
           display: 'flex',
           alignItems: 'center',
           gap: 6,
@@ -122,8 +131,23 @@ function BlockRow({
       >
         <span>{collapsed ? '▸' : '▾'}</span>
         <span>{summary}</span>
-      </button>
-      {bash && <BashCommand command={bash.command} description={bash.description} full={!collapsed} />}
+        </button>
+        <span
+          title={bash?.description ?? undefined}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            color: tokens.color.textMuted,
+          }}
+        >
+          {bash?.description}
+        </span>
+        {trail}
+      </div>
+      {bash && <BashCommand command={bash.command} full={!collapsed} />}
       {!collapsed && (
         <>
           {block.kind === 'text' && <Markdown text={block.text ?? ''} />}
@@ -156,7 +180,7 @@ function BlockRow({
               {block.tool_output}
             </pre>
           )}
-          <TagList tags={addressed.tags} />
+          {showTags && <TagList tags={addressed.tags} />}
         </>
       )}
     </div>
@@ -226,8 +250,10 @@ const MessageRow = memo(function MessageRow({
   filter,
   isCollapsed,
   onToggle,
+  showTags,
 }: {
   entry: TranscriptEntry;
+  showTags: boolean;
   filter: FacetFilter;
   isCollapsed: (block: AddressedBlock) => boolean;
   onToggle: (block: AddressedBlock) => void;
@@ -249,21 +275,28 @@ const MessageRow = memo(function MessageRow({
         background: isHuman ? tokens.color.humanMessage : isUser ? tokens.color.surface : 'transparent',
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, color: tokens.color.textMuted }}>
-        <span style={{ fontWeight: 600, color: isUser ? tokens.color.accent : tokens.color.text }}>
-          {message.role}
-        </span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span>{message.timestamp}</span>
-          <CopyMarkdownButton getText={() => messageToMarkdown(message, addressedBlocks)} />
-        </div>
-      </div>
-      {addressedBlocks.map((addressed) => (
+      {addressedBlocks.map((addressed, i) => (
         <BlockRow
           key={addressed.id}
           addressed={addressed}
           collapsed={isCollapsed(addressed)}
           onToggle={() => onToggle(addressed)}
+          showTags={showTags}
+          lead={
+            i === 0 && (
+              <span style={{ flexShrink: 0, fontWeight: 600, color: isUser ? tokens.color.accent : tokens.color.text }}>
+                {message.role}
+              </span>
+            )
+          }
+          trail={
+            i === 0 && (
+              <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8, color: tokens.color.textMuted }}>
+                <span>{message.timestamp}</span>
+                <CopyMarkdownButton getText={() => messageToMarkdown(message, addressedBlocks)} />
+              </div>
+            )
+          }
         />
       ))}
     </div>
@@ -323,6 +356,8 @@ interface SessionTranscriptProps {
   sessionId: string;
   // Open at the newest message and follow, for a live session; otherwise open at the top.
   startAtBottom?: boolean;
+  // Each block's raw transcript fields (kind, isSidechain, model, ...) under its content.
+  showTags?: boolean;
 }
 
 // The raw Claude Code JSONL transcript for one session -- every user/assistant message,
@@ -332,7 +367,11 @@ interface SessionTranscriptProps {
 // must never be conflated into one view. A live session's new messages are appended at the
 // bottom as they are written (see useSessionChat); while the message pane is scrolled to the
 // bottom it follows them.
-export default function SessionTranscript({ sessionId, startAtBottom = false }: SessionTranscriptProps) {
+export default function SessionTranscript({
+  sessionId,
+  startAtBottom = false,
+  showTags = false,
+}: SessionTranscriptProps) {
   const [intervalSeconds] = useRefreshIntervalSetting();
   const { entries, loading, error } = useSessionChat(sessionId, intervalSeconds);
   const [filter, setFilter] = useState<FacetFilter>(new Map());
@@ -423,7 +462,14 @@ export default function SessionTranscript({ sessionId, startAtBottom = false }: 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {segments.map((segment) => {
               const row = (i: number) => (
-                <MessageRow key={i} entry={entries[i]} filter={filter} isCollapsed={isCollapsed} onToggle={toggle} />
+                <MessageRow
+                  key={i}
+                  entry={entries[i]}
+                  filter={filter}
+                  isCollapsed={isCollapsed}
+                  onToggle={toggle}
+                  showTags={showTags}
+                />
               );
               if (segment.kind === 'entry') return row(segment.index);
               const open = openRuns.has(segment.start);

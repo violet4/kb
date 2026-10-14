@@ -12,6 +12,9 @@ interface AgentContentTabsProps {
   onChangeTab: (tab: AgentContentTab) => void;
   onSent: () => void;
   isLive?: boolean;
+  // Set when the page renders AgentTabBar itself (e.g. in its header row).
+  hideTabBar?: boolean;
+  showTags?: boolean;
 }
 
 // The Chat/Session tab switch for one live agent -- shared by AgentPage's standalone
@@ -30,15 +33,18 @@ export default function AgentContentTabs({
   onChangeTab,
   onSent,
   isLive = false,
+  hideTabBar = false,
+  showTags = false,
 }: AgentContentTabsProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minHeight: 0, flex: 1 }}>
-      <div style={{ display: 'flex', gap: 4, borderBottom: `1px solid ${tokens.color.border}` }}>
-        <TabButton label="Chat" isActive={tab === 'chat'} onClick={() => onChangeTab('chat')} />
-        <TabButton label="Session" isActive={tab === 'session'} onClick={() => onChangeTab('session')} />
-      </div>
+      {!hideTabBar && (
+        <div style={{ borderBottom: `1px solid ${tokens.color.border}` }}>
+          <AgentTabBar tab={tab} onChangeTab={onChangeTab} />
+        </div>
+      )}
       {tab === 'session' ? (
-        <SessionTranscript sessionId={agentSessionId} startAtBottom={isLive} />
+        <SessionTranscript sessionId={agentSessionId} startAtBottom={isLive} showTags={showTags} />
       ) : (
         <DmChatPanel
           agentSessionId={agentSessionId}
@@ -70,5 +76,14 @@ function TabButton({ label, isActive, onClick }: { label: string; isActive: bool
     >
       {label}
     </button>
+  );
+}
+
+export function AgentTabBar({ tab, onChangeTab }: { tab: AgentContentTab; onChangeTab: (tab: AgentContentTab) => void }) {
+  return (
+    <div style={{ display: 'flex', gap: 4 }}>
+      <TabButton label="Chat" isActive={tab === 'chat'} onClick={() => onChangeTab('chat')} />
+      <TabButton label="Session" isActive={tab === 'session'} onClick={() => onChangeTab('session')} />
+    </div>
   );
 }

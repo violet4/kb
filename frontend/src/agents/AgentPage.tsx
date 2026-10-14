@@ -1,7 +1,9 @@
 import { pageTitle, useDocumentTitle } from '../shared/useDocumentTitle';
 import { useMemo } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
-import AgentContentTabs, { type AgentContentTab } from './AgentContentTabs';
+import AgentContentTabs, { AgentTabBar, type AgentContentTab } from './AgentContentTabs';
+import Popover from '../shared/Popover';
+import { isBoolean, useStoredState } from '../shared/useStoredState';
 import { sendSessionInput } from './api';
 import type { AgentSession } from './types';
 import MessageComposer from '../channels/components/MessageComposer';
@@ -31,6 +33,7 @@ export default function AgentPage() {
   const backLabel = fromHistoryProject ? '← Project' : '← Agents';
 
   const [displayName] = useDisplayName();
+  const [showTags, setShowTags] = useStoredState('kb-agents-transcript-show-tags', false, isBoolean);
   const [intervalSeconds] = useChannelListRefreshInterval();
   const { channels, refresh: refreshChannels } = useChannelList(displayName, intervalSeconds);
   const dmChannel = useMemo(
@@ -61,12 +64,35 @@ export default function AgentPage() {
     // ChannelsView's own layout -- see that component's comment. Both tabs need the bounded
     // height: Chat scrolls its message list internally, and Session scrolls its transcript
     // and filter legend independently, with the legend toggle fixed in view.
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, flex: 1, minHeight: 0 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <Link to={backHref} style={{ color: tokens.color.textMuted, fontSize: 13, textDecoration: 'none' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1, minHeight: 0 }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          minWidth: 0,
+          borderBottom: `1px solid ${tokens.color.border}`,
+        }}
+      >
+        <Link
+          to={backHref}
+          style={{ flexShrink: 0, color: tokens.color.textMuted, fontSize: 13, textDecoration: 'none' }}
+        >
           {backLabel}
         </Link>
-        <h1 style={{ margin: 0, fontSize: 18, fontFamily: 'monospace' }} title={sessionId}>
+        <AgentTabBar tab={tab} onChangeTab={setTab} />
+        <h1
+          style={{
+            margin: 0,
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            fontSize: 18,
+            fontFamily: 'monospace',
+          }}
+          title={sessionId}
+        >
           {liveSession?.title || dmChannel?.agent_title || sessionId}
         </h1>
         {liveSession && (
@@ -90,8 +116,19 @@ export default function AgentPage() {
         >
           contexts
         </Link>
+        {tab === 'session' && (
+          // A popover, not a modal, so the transcript stays visible while a setting changes it.
+          <Popover label="⚙" align="end" ariaLabel="Transcript display settings" title="Transcript display settings">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, whiteSpace: 'nowrap' }}>
+              <input type="checkbox" checked={showTags} onChange={(e) => setShowTags(e.target.checked)} />
+              Show transcript fields
+            </label>
+          </Popover>
+        )}
       </div>
       <AgentContentTabs
+        hideTabBar
+        showTags={showTags}
         agentSessionId={sessionId}
         channelId={channelId}
         displayName={displayName}

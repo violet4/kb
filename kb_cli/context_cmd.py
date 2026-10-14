@@ -2,13 +2,13 @@
 
 import argparse
 import sys
+from collections import Counter
 from typing import Any, Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import func, inspect, select
 
 from models.commerce.item import Item
 from models.context import Context, Tag
-from models.knowledge.log_entry import LogEntry
 from models.knowledge.reference import Reference
 from models.knowledge.working_memory import WorkingMemory
 from models.links.entity_link import EntityLink
@@ -23,11 +23,13 @@ from context import find_context, resolve_context
 from kb_cli._util import get_by_name, resolve_text_arg
 from kb_cli.link import parse_ref
 
-# Every model that can be pinned to a context, in the order counts should print.
-CONTEXT_LINKED_MODELS = (Goal, Todo, Daily, Item, Reference, WorkingMemory, LogEntry, Wishlist, Idea, Timer)
+# Every model whose rows are filed in a context: counted in `tree`, listed by `show`, and moved or
+# checked by `merge`/`rm`.
+CONTEXT_LINKED_MODELS = tuple(Context.filed_models())
 
-# LogEntry is a timestamped fact, not a status-bearing entity -- worth counting but not worth listing.
-# Idea gets its own --ideas flag instead of clogging up the default listing.
+# What `tree --entities` lists. LogEntry is a timestamped fact, not a status-bearing entity -- worth
+# counting but not worth listing; Idea gets its own --ideas flag instead of clogging up the default
+# listing; Note, Event, and Instruction have their own commands.
 # One flag's model tuple per --<flag> in `context tree`; --entities is the union of all of these.
 ENTITY_FLAG_MODELS: dict[str, tuple[Any, ...]] = {
     "goals": (Goal,),
@@ -35,7 +37,7 @@ ENTITY_FLAG_MODELS: dict[str, tuple[Any, ...]] = {
     "dailies": (Daily,),
     "items": (Item,),
 }
-ALL_ENTITY_MODELS = tuple(m for m in CONTEXT_LINKED_MODELS if m not in (LogEntry, Idea))
+ALL_ENTITY_MODELS = (Goal, Todo, Daily, Item, Reference, WorkingMemory, Wishlist, Timer)
 
 
 def cmd_add(args: argparse.Namespace) -> None:
@@ -261,23 +263,29 @@ def _linked_entities(session: Any, node: Context) -> list[tuple[str, int, Any]]:
     CONTEXT_LINKED_MODELS, as (type_name, id, row) triples."""
     out: list[tuple[str, int, Any]] = []
     for model in CONTEXT_LINKED_MODELS:
-        rows = session.scalars(select(model).where(model.context_id == node.id)).all()
+        rows = session.scalars(select(model).where(inspect(model).columns["context_id"] == node.id)).all()
         out.extend((model.__name__, row.id, row) for row in rows)
     return out
 
 
 def cmd_show(args: argparse.Namespace) -> None:
     context = find_context(args.session, args.name)
-    entities = _linked_entities(args.session, context)
     print(context)
     if context.description:
         print(f"description: {context.description}")
+    nodes = Context.self_and_descendants(args.session, context.name) if args.subtree else [context]
+    entities = [(node, entity) for node in nodes for entity in _linked_entities(args.session, node)]
     if not entities:
         print("No connected entities.")
         return
-    print(f"{len(entities)} connected entit{'y' if len(entities) == 1 else 'ies'}:")
-    for type_name, entity_id, row in entities:
-        print(f"  {type_name}:{entity_id} {row!r}")
+    scope = f" across {len(nodes)} contexts" if args.subtree else ""
+    print(f"{len(entities)} connected entit{'y' if len(entities) == 1 else 'ies'}{scope}:")
+    if args.subtree:
+        counts = Counter(type_name for _, (type_name, _, _) in entities)
+        print("  " + ", ".join(f"{type_name}: {count}" for type_name, count in sorted(counts.items())))
+    for node, (type_name, entity_id, row) in entities:
+        where = f"  [{node.name}]" if args.subtree else ""
+        print(f"  {type_name}:{entity_id} {row!r}{where}")
 
 
 def cmd_reassign(args: argparse.Namespace) -> None:
@@ -379,6 +387,11 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
 
     p_show = sub.add_parser("show", help="Show a context and everything directly connected to it")
     p_show.add_argument("name")
+    p_show.add_argument(
+        "--subtree",
+        action="store_true",
+        help="Also every sub-context: counts by type, then each TYPE:ID with the context it is in",
+    )
     p_show.set_defaults(func=cmd_show)
 
     p_reassign = sub.add_parser(

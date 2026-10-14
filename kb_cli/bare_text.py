@@ -57,7 +57,8 @@ with `kb <noun> update ID --context NAME`.
 A question about a place ("what do we need at X", "what's pending at X") is the read-side mirror:
 `kb search --context X QUERY` (substring plus semantic, scoped to X's subtree) or
 `kb todo list --context X` (everything pending under X, no query needed), not
-`context tree`/`todo pending --all` plus manual grepping. On read commands, --context NAME goes
+`context tree`/`todo pending --all` plus manual grepping. "What is filed under X", every record
+of every type, is `kb context show X --subtree`, whose TYPE:ID lines feed `kb context reassign`. On read commands, --context NAME goes
 after the command, like any other flag, and narrows to that context and its sub-contexts. Every
 scoped command prints which context it resolved to (`context: grocery`).
 

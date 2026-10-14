@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Optional, Sequence
 
-from sqlalchemy import ForeignKey, Integer, Text, select
+from sqlalchemy import ForeignKey, Integer, Text, inspect, select
 from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
 
 from models.base import Base
@@ -82,6 +82,23 @@ class Context(Base, HasUniqueName):
             node = node.parent
             chain.append(node)
         return chain
+
+    @staticmethod
+    def filed_models() -> list[type[Base]]:
+        """Every model whose rows are filed in a Context: one with a `context_id` column, one per
+        inheritance hierarchy, except the association tables of Context's own many-to-many
+        relationships (context_tag is a Context's tags, deleted with it, not a record filed
+        there). Read from the mapper registry, so a new model is included with no list to
+        update."""
+        own_tables = {rel.secondary for rel in inspect(Context).relationships if rel.secondary is not None}
+        return sorted(
+            (
+                mapper.class_
+                for mapper in Base.registry.mappers
+                if mapper.inherits is None and "context_id" in mapper.columns and mapper.local_table not in own_tables
+            ),
+            key=lambda model: model.__name__,
+        )
 
     @classmethod
     def self_and_descendants(cls, session: Session, name: str) -> Sequence[Context]:

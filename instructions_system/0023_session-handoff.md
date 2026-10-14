@@ -1,7 +1,7 @@
 title: session-handoff
 trigger: when a piece of work is finished (for example, right after committing it), and before a session's context is lost (the session ends or its context is compacted)
 
-A session's working context does not survive it: the next session has only what this one committed and recorded. At each trigger, leave the work where the next session can resume it without guessing (AB647).
+A session's working context does not survive it: the next session has only what this one committed and recorded. At each trigger, leave the work where the next session can resume it without guessing (AB647). At the end of a major session, run session-retrospective first: the changes it routes are what this pass commits and reports.
 
 Commit every finished, verified change, in every repository the session touched. Leave work that is unfinished, untested, or still under discussion uncommitted, and name it in the report with what remains. This pass only adds commits; history that has left the repository is never rewritten (AB645).
 

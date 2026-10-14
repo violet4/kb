@@ -546,6 +546,14 @@ def _extract_blocks(content: object, message_tags: dict[str, str]) -> list[ChatB
         block_tags = {**message_tags, **_flatten_tags(item)}
         if item_type == "text":
             blocks.append(ChatBlock(kind="text", text=item.get("text", ""), tags=block_tags))
+        elif item_type == "thinking" and message_tags.get("apiBlockIndex", "0") != "0":
+            # Claude Code records some of its visible replies as a thinking block that is not
+            # the first block of its response (written 1-3 ms after the real thinking), and its
+            # terminal shows such a block as a reply. Shown the same way here, so the viewer
+            # matches the terminal; storedAs keeps the recorded type visible. Observed in Claude
+            # Code 2.1.296 transcripts, verified 2026-10-14.
+            tags = {**block_tags, "storedAs": "thinking"}
+            blocks.append(ChatBlock(kind="text", text=item.get("thinking", ""), tags=tags))
         elif item_type == "thinking":
             blocks.append(ChatBlock(kind="thinking", text=item.get("thinking", ""), tags=block_tags))
         elif item_type == "tool_use":

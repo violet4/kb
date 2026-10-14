@@ -83,3 +83,19 @@ def test_mid_turn_message_is_a_user_message(tmp_path: Path) -> None:
     tags = messages[1].blocks[0].tags
     assert tags["delivered"] == "mid-turn"
     assert "mid-turn note" not in "".join(tags.values())
+
+
+def test_thinking_after_the_first_block_is_a_reply(tmp_path: Path) -> None:
+    """Claude Code's terminal shows a thinking block that is not the first block of its
+    response as a reply, so the viewer does too; the first block stays thinking."""
+
+    def thinking(index: int, text: str) -> str:
+        message = {"role": "assistant", "content": [{"type": "thinking", "thinking": text}]}
+        return json.dumps({"type": "assistant", "timestamp": "t", "apiBlockIndex": index, "message": message}) + "\n"
+
+    path = tmp_path / "s.jsonl"
+    path.write_text(thinking(0, "reasoning") + thinking(1, "Here is the answer."))
+    messages, _ = list_chat_messages(path)
+    blocks = [m.blocks[0] for m in messages]
+    assert [(b.kind, b.text) for b in blocks] == [("thinking", "reasoning"), ("text", "Here is the answer.")]
+    assert blocks[1].tags["storedAs"] == "thinking"

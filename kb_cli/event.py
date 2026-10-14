@@ -18,8 +18,7 @@ from kb_cli._util import (
     add_placement_argument,
     apply_context_or_tag_update,
     apply_purge,
-    apply_restore,
-    apply_soft_delete,
+    add_soft_delete_commands,
     apply_updates,
     print_fields,
     print_links,
@@ -148,18 +147,6 @@ def cmd_update(args: argparse.Namespace) -> None:
     print(event)
 
 
-def cmd_delete(args: argparse.Namespace) -> None:
-    event = apply_soft_delete(args.session, Event, args.id, "Event")
-    args.session.commit()
-    print(f"Event #{event.id} {event.title!r}: soft-deleted (restore with `kb event restore {event.id}`)")
-
-
-def cmd_restore(args: argparse.Namespace) -> None:
-    event = apply_restore(args.session, Event, args.id, "Event")
-    args.session.commit()
-    print(f"Event #{event.id} {event.title!r}: restored")
-
-
 def cmd_purge(args: argparse.Namespace) -> None:
     event = apply_purge(args.session, Event, args.id, "Event", args.force_delete_links)
     args.session.commit()
@@ -220,13 +207,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_update.add_argument("--tag", dest="new_tag", metavar="NAME", help="Address by Tag instead of context")
     p_update.set_defaults(func=cmd_update)
 
-    p_delete = sub.add_parser("delete", help="Soft-delete an Event (reversible, see restore)")
-    p_delete.add_argument("id", type=int)
-    p_delete.set_defaults(func=cmd_delete)
-
-    p_restore = sub.add_parser("restore", help="Undo a soft delete on an Event")
-    p_restore.add_argument("id", type=int)
-    p_restore.set_defaults(func=cmd_restore)
+    add_soft_delete_commands(sub, Event, "event")
 
     p_purge = sub.add_parser("purge", help="Permanently delete an Event (irreversible)")
     p_purge.add_argument("id", type=int)

@@ -13,8 +13,7 @@ from kb_cli._util import (
     show_each,
     add_placement_argument,
     apply_purge,
-    apply_restore,
-    apply_soft_delete,
+    add_soft_delete_commands,
     apply_text_edit,
     print_links,
     print_timestamps,
@@ -87,18 +86,6 @@ def cmd_update(args: argparse.Namespace) -> None:
         place(note, context=find_context(args.session, args.new_context))
     args.session.commit()
     print(f"Updated: {note}")
-
-
-def cmd_delete(args: argparse.Namespace) -> None:
-    note = apply_soft_delete(args.session, Note, args.id, "Note")
-    args.session.commit()
-    print(f"Note #{note.id} {note.title!r}: soft-deleted (restore with `kb notes restore {note.id}`)")
-
-
-def cmd_restore(args: argparse.Namespace) -> None:
-    note = apply_restore(args.session, Note, args.id, "Note")
-    args.session.commit()
-    print(f"Note #{note.id} {note.title!r}: restored")
 
 
 def cmd_purge(args: argparse.Namespace) -> None:
@@ -186,13 +173,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_reembed = sub.add_parser("reembed", help="Recompute embeddings for all notes")
     p_reembed.set_defaults(func=cmd_reembed)
 
-    p_delete = sub.add_parser("delete", help="Soft-delete a note (reversible, see restore)")
-    p_delete.add_argument("id", type=int)
-    p_delete.set_defaults(func=cmd_delete)
-
-    p_restore = sub.add_parser("restore", help="Undo a soft delete on a note")
-    p_restore.add_argument("id", type=int)
-    p_restore.set_defaults(func=cmd_restore)
+    add_soft_delete_commands(sub, Note, "notes")
 
     p_purge = sub.add_parser("purge", help="Permanently delete a note (irreversible)")
     p_purge.add_argument("id", type=int)

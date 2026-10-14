@@ -20,8 +20,7 @@ from kb_cli._util import (
     add_context_filter_argument,
     add_placement_argument,
     apply_purge,
-    apply_restore,
-    apply_soft_delete,
+    add_soft_delete_commands,
     apply_updates,
     get_by_name,
     print_journal_history,
@@ -156,18 +155,6 @@ def cmd_complete(args: argparse.Namespace) -> None:
         todo.status = TodoStatus.DONE
         print(f"Todo #{todo_id}: {todo.title!r} -> done")
     args.session.commit()
-
-
-def cmd_delete(args: argparse.Namespace) -> None:
-    todo = apply_soft_delete(args.session, Todo, args.id, "Todo")
-    args.session.commit()
-    print(f"Todo #{todo.id} {todo.title!r}: soft-deleted (restore with `kb todo restore {todo.id}`)")
-
-
-def cmd_restore(args: argparse.Namespace) -> None:
-    todo = apply_restore(args.session, Todo, args.id, "Todo")
-    args.session.commit()
-    print(f"Todo #{todo.id} {todo.title!r}: restored")
 
 
 def cmd_purge(args: argparse.Namespace) -> None:
@@ -344,13 +331,7 @@ def add_subparser(
     p_complete.add_argument("ids", nargs="+", type=int)
     p_complete.set_defaults(func=cmd_complete)
 
-    p_delete = sub.add_parser("delete", help=f"Soft-delete a {help_prefix} (reversible, see restore)")
-    p_delete.add_argument("id", type=int)
-    p_delete.set_defaults(func=cmd_delete)
-
-    p_restore = sub.add_parser("restore", help=f"Undo a soft delete on a {help_prefix}")
-    p_restore.add_argument("id", type=int)
-    p_restore.set_defaults(func=cmd_restore)
+    add_soft_delete_commands(sub, Todo, name)
 
     p_purge = sub.add_parser("purge", help=f"Permanently delete a {help_prefix} (irreversible)")
     p_purge.add_argument("id", type=int)

@@ -10,7 +10,7 @@ from context import resolve_placement
 from context_tree import render_context_tree
 from models.work.timer import Timer, TimerStatus
 
-from kb_cli._util import add_placement_argument, apply_purge, apply_restore, apply_soft_delete
+from kb_cli._util import add_placement_argument, add_soft_delete_commands, apply_purge
 
 
 def _parse_duration(raw: str) -> int:
@@ -72,18 +72,6 @@ def cmd_cancel(args: argparse.Namespace) -> None:
     args.session.commit()
 
 
-def cmd_delete(args: argparse.Namespace) -> None:
-    timer = apply_soft_delete(args.session, Timer, args.id, "Timer")
-    args.session.commit()
-    print(f"Timer #{timer.id}: soft-deleted (restore with `kb timer restore {timer.id}`)")
-
-
-def cmd_restore(args: argparse.Namespace) -> None:
-    timer = apply_restore(args.session, Timer, args.id, "Timer")
-    args.session.commit()
-    print(f"Timer #{timer.id}: restored")
-
-
 def cmd_purge(args: argparse.Namespace) -> None:
     timer = apply_purge(args.session, Timer, args.id, "Timer", args.force_delete_links)
     args.session.commit()
@@ -129,13 +117,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_tree = sub.add_parser("tree", help="Render active Timers nested under the Context tree")
     p_tree.set_defaults(func=cmd_tree)
 
-    p_delete = sub.add_parser("delete", help="Soft-delete a Timer (reversible, see restore)")
-    p_delete.add_argument("id", type=int)
-    p_delete.set_defaults(func=cmd_delete)
-
-    p_restore = sub.add_parser("restore", help="Undo a soft delete on a Timer")
-    p_restore.add_argument("id", type=int)
-    p_restore.set_defaults(func=cmd_restore)
+    add_soft_delete_commands(sub, Timer, "timer")
 
     p_purge = sub.add_parser("purge", help="Permanently delete a Timer (irreversible)")
     p_purge.add_argument("id", type=int)

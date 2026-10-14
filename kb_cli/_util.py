@@ -237,8 +237,8 @@ def not_deleted(q: Any, model: Type[Any]) -> Any:
 
 
 def add_ids_argument(parser: argparse.ArgumentParser) -> None:
-    """The ID positional of every `kb <noun> show`: one or more ids, read by show_each."""
-    parser.add_argument("ids", nargs="+", type=int, metavar="ID", help="one or more ids, printed in the order given")
+    """The ID positional of `kb <noun> show`/`delete`/`restore`: one or more ids."""
+    parser.add_argument("ids", nargs="+", type=int, metavar="ID", help="one or more ids, handled in the order given")
 
 
 def show_each(session: Session, model: Type[E], ids: Sequence[int], print_one: Callable[[E], None]) -> None:
@@ -260,28 +260,37 @@ def show_each(session: Session, model: Type[E], ids: Sequence[int], print_one: C
         sys.exit(1)
 
 
-def apply_soft_delete(session: Session, model: Type[E], entity_id: int, entity_label: str) -> E:
-    """`kb <noun> delete ID` -- reversible, no settings gate: stamps deleted_at rather than
-    removing the row, so it drops out of list/search/active-style queries (not_deleted) but
-    remains directly reachable via `show`/`kb <noun> restore ID`. Idempotent: deleting an
-    already-deleted row just re-stamps deleted_at."""
-    row = session.get(model, entity_id)
-    if row is None:
-        print(f"{entity_label} #{entity_id}: not found", file=sys.stderr)
-        sys.exit(1)
-    row.deleted_at = _now()
-    return row
+def add_soft_delete_commands(
+    sub: "argparse._SubParsersAction[argparse.ArgumentParser]", model: Type[E], noun: str
+) -> None:
+    """`kb NOUN delete ID [ID ...]` and `kb NOUN restore ID [ID ...]` for model. delete stamps
+    deleted_at instead of removing the row (no settings gate, unlike purge): the row drops out
+    of list/search/active-style queries (not_deleted) but stays reachable with `show` and comes
+    back with `restore`. Deleting an already-deleted row re-stamps it."""
+    p_delete = sub.add_parser("delete", help=f"Soft-delete {model.__name__} record(s) (reversible, see restore)")
+    add_ids_argument(p_delete)
+    p_delete.set_defaults(func=lambda args: _set_deleted_at(args, model, noun, deleted=True))
+    p_restore = sub.add_parser("restore", help=f"Undo a soft delete on {model.__name__} record(s)")
+    add_ids_argument(p_restore)
+    p_restore.set_defaults(func=lambda args: _set_deleted_at(args, model, noun, deleted=False))
 
 
-def apply_restore(session: Session, model: Type[E], entity_id: int, entity_label: str) -> E:
-    """Undo apply_soft_delete -- clears deleted_at so the row reappears in list/search/active
-    queries again."""
-    row = session.get(model, entity_id)
-    if row is None:
-        print(f"{entity_label} #{entity_id}: not found", file=sys.stderr)
+def _set_deleted_at(args: argparse.Namespace, model: Type[E], noun: str, deleted: bool) -> None:
+    """Soft-delete or restore each id; a missing id is reported and the rest still apply, then exit 1."""
+    missing = False
+    for entity_id in args.ids:
+        row = args.session.get(model, entity_id)
+        if row is None:
+            print(f"{model.__name__} #{entity_id}: not found", file=sys.stderr)
+            missing = True
+            continue
+        row.deleted_at = _now() if deleted else None
+        label = getattr(row, "title", None) or getattr(row, "name", None) or getattr(row, "description", None)
+        named = f"{model.__name__} #{row.id}" + (f" {label!r}" if label else "")
+        print(f"{named}: soft-deleted (restore with `kb {noun} restore {row.id}`)" if deleted else f"{named}: restored")
+    args.session.commit()
+    if missing:
         sys.exit(1)
-    row.deleted_at = None
-    return row
 
 
 def apply_purge(session: Session, model: Type[E], entity_id: int, entity_label: str, force_delete_links: bool) -> E:

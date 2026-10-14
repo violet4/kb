@@ -34,7 +34,10 @@ Routing a plain statement to the right subcommand (the noun -- which table):
 Once you have the right noun, most subcommands share the same small set of verbs -- this is
 the shape, not per-command trivia, so it isn't repeated per row above: `add` creates a new
 record; `show ID` reads one; `update ID` edits one in place; `complete ID` (or a closer verb
-like `abandon`/`drop`/`activate` where one genuinely fits better) resolves one. A stated fact
+like `abandon`/`drop`/`activate` where one genuinely fits better) resolves one; `delete ID`
+soft-deletes one, undone by `restore ID`. `show`, `delete`, `restore`, and the resolving verbs take several IDs at once,
+handled in the order given: `kb todo show 12 15 19`, `kb todo complete 12 15`; `update` and the
+irreversible `purge` take one. A stated fact
 usually means `add`; "I finished/fixed/no longer need X" usually means `complete` or `update`
 on an EXISTING record, not a fresh `add` -- check `kb <noun> pending`/`list`/`search` for the
 existing record first rather than creating a duplicate. Run `kb <noun> --help` to see the real

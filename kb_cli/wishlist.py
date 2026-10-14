@@ -9,8 +9,7 @@ from models.work.wishlist import Wishlist, WishlistEffort, WishlistStatus
 from kb_cli._util import (
     add_placement_argument,
     apply_purge,
-    apply_restore,
-    apply_soft_delete,
+    add_soft_delete_commands,
     apply_updates,
     resolve_text_arg,
 )
@@ -75,18 +74,6 @@ def cmd_update(args: argparse.Namespace) -> None:
     print(f"Updated: {item} score={item.score}")
 
 
-def cmd_delete(args: argparse.Namespace) -> None:
-    item = apply_soft_delete(args.session, Wishlist, args.id, "Wishlist")
-    args.session.commit()
-    print(f"Wishlist #{item.id} {item.title!r}: soft-deleted (restore with `kb wishlist restore {item.id}`)")
-
-
-def cmd_restore(args: argparse.Namespace) -> None:
-    item = apply_restore(args.session, Wishlist, args.id, "Wishlist")
-    args.session.commit()
-    print(f"Wishlist #{item.id} {item.title!r}: restored")
-
-
 def cmd_purge(args: argparse.Namespace) -> None:
     item = apply_purge(args.session, Wishlist, args.id, "Wishlist", args.force_delete_links)
     args.session.commit()
@@ -135,13 +122,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_search.add_argument("query", nargs="*", help="Ignored -- use `kb search` instead")
     p_search.set_defaults(func=cmd_search_deprecated)
 
-    p_delete = sub.add_parser("delete", help="Soft-delete a wishlist item (reversible, see restore)")
-    p_delete.add_argument("id", type=int)
-    p_delete.set_defaults(func=cmd_delete)
-
-    p_restore = sub.add_parser("restore", help="Undo a soft delete on a wishlist item")
-    p_restore.add_argument("id", type=int)
-    p_restore.set_defaults(func=cmd_restore)
+    add_soft_delete_commands(sub, Wishlist, "wishlist")
 
     p_purge = sub.add_parser("purge", help="Permanently delete a wishlist item (irreversible)")
     p_purge.add_argument("id", type=int)

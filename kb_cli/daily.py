@@ -16,8 +16,7 @@ from kb_cli._util import (
     add_placement_argument,
     apply_context_or_tag_update,
     apply_purge,
-    apply_restore,
-    apply_soft_delete,
+    add_soft_delete_commands,
     apply_updates,
     print_fields,
     print_links,
@@ -181,18 +180,6 @@ def cmd_update(args: argparse.Namespace) -> None:
     print(daily)
 
 
-def cmd_delete(args: argparse.Namespace) -> None:
-    daily = apply_soft_delete(args.session, Daily, args.id, "Daily")
-    args.session.commit()
-    print(f"Daily #{daily.id} {daily.description!r}: soft-deleted (restore with `kb daily restore {daily.id}`)")
-
-
-def cmd_restore(args: argparse.Namespace) -> None:
-    daily = apply_restore(args.session, Daily, args.id, "Daily")
-    args.session.commit()
-    print(f"Daily #{daily.id} {daily.description!r}: restored")
-
-
 def cmd_purge(args: argparse.Namespace) -> None:
     daily = apply_purge(args.session, Daily, args.id, "Daily", args.force_delete_links)
     args.session.commit()
@@ -322,13 +309,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_deactivate.add_argument("ids", nargs="+", type=int)
     p_deactivate.set_defaults(func=cmd_deactivate)
 
-    p_delete = sub.add_parser("delete", help="Soft-delete a Daily (reversible, see restore)")
-    p_delete.add_argument("id", type=int)
-    p_delete.set_defaults(func=cmd_delete)
-
-    p_restore = sub.add_parser("restore", help="Undo a soft delete on a Daily")
-    p_restore.add_argument("id", type=int)
-    p_restore.set_defaults(func=cmd_restore)
+    add_soft_delete_commands(sub, Daily, "daily")
 
     p_purge = sub.add_parser("purge", help="Permanently delete a Daily (irreversible)")
     p_purge.add_argument("id", type=int)

@@ -17,8 +17,7 @@ from kb_cli._util import (
     add_placement_argument,
     apply_context_or_tag_update,
     apply_purge,
-    apply_restore,
-    apply_soft_delete,
+    add_soft_delete_commands,
     apply_updates,
     print_journal_history,
     print_links,
@@ -108,25 +107,18 @@ def cmd_promote(args: argparse.Namespace) -> None:
 
 
 def cmd_drop(args: argparse.Namespace) -> None:
-    idea = args.session.get(Idea, args.id)
-    if idea is None:
-        print(f"Idea #{args.id}: not found", file=sys.stderr)
+    missing = False
+    for idea_id in args.ids:
+        idea = args.session.get(Idea, idea_id)
+        if idea is None:
+            print(f"Idea #{idea_id}: not found", file=sys.stderr)
+            missing = True
+            continue
+        idea.status = IdeaStatus.DROPPED
+        print(f"Idea #{idea.id}: {idea.title!r} -> dropped")
+    args.session.commit()
+    if missing:
         sys.exit(1)
-    idea.status = IdeaStatus.DROPPED
-    args.session.commit()
-    print(f"Idea #{idea.id}: {idea.title!r} -> dropped")
-
-
-def cmd_delete(args: argparse.Namespace) -> None:
-    idea = apply_soft_delete(args.session, Idea, args.id, "Idea")
-    args.session.commit()
-    print(f"Idea #{idea.id} {idea.title!r}: soft-deleted (restore with `kb idea restore {idea.id}`)")
-
-
-def cmd_restore(args: argparse.Namespace) -> None:
-    idea = apply_restore(args.session, Idea, args.id, "Idea")
-    args.session.commit()
-    print(f"Idea #{idea.id} {idea.title!r}: restored")
 
 
 def cmd_purge(args: argparse.Namespace) -> None:
@@ -178,17 +170,11 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_promote.add_argument("--to", required=True, help="Description of what it became, e.g. 'Goal #14'")
     p_promote.set_defaults(func=cmd_promote)
 
-    p_drop = sub.add_parser("drop", help="Mark an idea dropped")
-    p_drop.add_argument("id", type=int)
+    p_drop = sub.add_parser("drop", help="Mark idea(s) dropped")
+    add_ids_argument(p_drop)
     p_drop.set_defaults(func=cmd_drop)
 
-    p_delete = sub.add_parser("delete", help="Soft-delete an Idea (reversible, see restore)")
-    p_delete.add_argument("id", type=int)
-    p_delete.set_defaults(func=cmd_delete)
-
-    p_restore = sub.add_parser("restore", help="Undo a soft delete on an Idea")
-    p_restore.add_argument("id", type=int)
-    p_restore.set_defaults(func=cmd_restore)
+    add_soft_delete_commands(sub, Idea, "idea")
 
     p_purge = sub.add_parser("purge", help="Permanently delete an Idea (irreversible)")
     p_purge.add_argument("id", type=int)

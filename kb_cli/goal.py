@@ -19,8 +19,7 @@ from kb_cli._util import (
     add_placement_argument,
     apply_context_or_tag_update,
     apply_purge,
-    apply_restore,
-    apply_soft_delete,
+    add_soft_delete_commands,
     apply_updates,
     print_journal_history,
     print_links,
@@ -134,18 +133,6 @@ def cmd_reactivate(args: argparse.Namespace) -> None:
     _set_status(args.session, args.ids, GoalStatus.ACTIVE, "active")
 
 
-def cmd_delete(args: argparse.Namespace) -> None:
-    goal = apply_soft_delete(args.session, Goal, args.id, "Goal")
-    args.session.commit()
-    print(f"Goal #{goal.id} {goal.title!r}: soft-deleted (restore with `kb goal restore {goal.id}`)")
-
-
-def cmd_restore(args: argparse.Namespace) -> None:
-    goal = apply_restore(args.session, Goal, args.id, "Goal")
-    args.session.commit()
-    print(f"Goal #{goal.id} {goal.title!r}: restored")
-
-
 def cmd_purge(args: argparse.Namespace) -> None:
     goal = apply_purge(args.session, Goal, args.id, "Goal", args.force_delete_links)
     args.session.commit()
@@ -203,13 +190,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_search.add_argument("query", nargs="*", help="Ignored -- use `kb search` instead")
     p_search.set_defaults(func=cmd_search_deprecated)
 
-    p_delete = sub.add_parser("delete", help="Soft-delete a Goal (reversible, see restore)")
-    p_delete.add_argument("id", type=int)
-    p_delete.set_defaults(func=cmd_delete)
-
-    p_restore = sub.add_parser("restore", help="Undo a soft delete on a Goal")
-    p_restore.add_argument("id", type=int)
-    p_restore.set_defaults(func=cmd_restore)
+    add_soft_delete_commands(sub, Goal, "goal")
 
     p_purge = sub.add_parser("purge", help="Permanently delete a Goal (irreversible)")
     p_purge.add_argument("id", type=int)

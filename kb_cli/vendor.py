@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from models.commerce.item import IrlItem, Item
 from models.commerce.purchase import Purchase
 from models.commerce.vendor import Vendor, VendorItem
-from kb_cli._util import apply_purge, apply_restore, apply_soft_delete, resolve_text_arg
+from kb_cli._util import add_soft_delete_commands, apply_purge, resolve_text_arg
 from kb_cli.search import cmd_search_deprecated
 
 
@@ -56,18 +56,6 @@ def cmd_vendor_list(args: argparse.Namespace) -> None:
         print(repr(v))
 
 
-def cmd_vendor_delete(args: argparse.Namespace) -> None:
-    vendor = apply_soft_delete(args.session, Vendor, args.id, "Vendor")
-    args.session.commit()
-    print(f"Vendor #{vendor.id} {vendor.name!r}: soft-deleted (restore with `kb vendor restore {vendor.id}`)")
-
-
-def cmd_vendor_restore(args: argparse.Namespace) -> None:
-    vendor = apply_restore(args.session, Vendor, args.id, "Vendor")
-    args.session.commit()
-    print(f"Vendor #{vendor.id} {vendor.name!r}: restored")
-
-
 def cmd_vendor_purge(args: argparse.Namespace) -> None:
     vendor = apply_purge(args.session, Vendor, args.id, "Vendor", args.force_delete_links)
     args.session.commit()
@@ -99,18 +87,6 @@ def cmd_item_list(args: argparse.Namespace) -> None:
         return
     for i in items:
         print(repr(i))
-
-
-def cmd_item_delete(args: argparse.Namespace) -> None:
-    item = apply_soft_delete(args.session, Item, args.id, "Item")
-    args.session.commit()
-    print(f"Item #{item.id} {item.name!r}: soft-deleted (restore with `kb item restore {item.id}`)")
-
-
-def cmd_item_restore(args: argparse.Namespace) -> None:
-    item = apply_restore(args.session, Item, args.id, "Item")
-    args.session.commit()
-    print(f"Item #{item.id} {item.name!r}: restored")
 
 
 def cmd_item_purge(args: argparse.Namespace) -> None:
@@ -158,18 +134,6 @@ def cmd_purchase_list(args: argparse.Namespace) -> None:
         print(repr(p))
 
 
-def cmd_purchase_delete(args: argparse.Namespace) -> None:
-    purchase = apply_soft_delete(args.session, Purchase, args.id, "Purchase")
-    args.session.commit()
-    print(f"Purchase #{purchase.id}: soft-deleted (restore with `kb purchase restore {purchase.id}`)")
-
-
-def cmd_purchase_restore(args: argparse.Namespace) -> None:
-    purchase = apply_restore(args.session, Purchase, args.id, "Purchase")
-    args.session.commit()
-    print(f"Purchase #{purchase.id}: restored")
-
-
 def cmd_purchase_purge(args: argparse.Namespace) -> None:
     purchase = apply_purge(args.session, Purchase, args.id, "Purchase", args.force_delete_links)
     args.session.commit()
@@ -195,13 +159,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     v_search.add_argument("query", nargs="*", help="Ignored -- use `kb search` instead")
     v_search.set_defaults(func=cmd_search_deprecated)
 
-    v_delete = vsub.add_parser("delete", help="Soft-delete a vendor (reversible, see restore)")
-    v_delete.add_argument("id", type=int)
-    v_delete.set_defaults(func=cmd_vendor_delete)
-
-    v_restore = vsub.add_parser("restore", help="Undo a soft delete on a vendor")
-    v_restore.add_argument("id", type=int)
-    v_restore.set_defaults(func=cmd_vendor_restore)
+    add_soft_delete_commands(vsub, Vendor, "vendor")
 
     v_purge = vsub.add_parser("purge", help="Permanently delete a vendor (irreversible)")
     v_purge.add_argument("id", type=int)
@@ -228,13 +186,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     i_search.add_argument("query", nargs="*", help="Ignored -- use `kb search` instead")
     i_search.set_defaults(func=cmd_search_deprecated)
 
-    i_delete = isub.add_parser("delete", help="Soft-delete an item (reversible, see restore)")
-    i_delete.add_argument("id", type=int)
-    i_delete.set_defaults(func=cmd_item_delete)
-
-    i_restore = isub.add_parser("restore", help="Undo a soft delete on an item")
-    i_restore.add_argument("id", type=int)
-    i_restore.set_defaults(func=cmd_item_restore)
+    add_soft_delete_commands(isub, Item, "item")
 
     i_purge = isub.add_parser("purge", help="Permanently delete an item (irreversible)")
     i_purge.add_argument("id", type=int)
@@ -263,13 +215,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_search.add_argument("query", nargs="*", help="Ignored -- use `kb search` instead")
     p_search.set_defaults(func=cmd_search_deprecated)
 
-    p_delete = psub.add_parser("delete", help="Soft-delete a purchase (reversible, see restore)")
-    p_delete.add_argument("id", type=int)
-    p_delete.set_defaults(func=cmd_purchase_delete)
-
-    p_restore = psub.add_parser("restore", help="Undo a soft delete on a purchase")
-    p_restore.add_argument("id", type=int)
-    p_restore.set_defaults(func=cmd_purchase_restore)
+    add_soft_delete_commands(psub, Purchase, "purchase")
 
     p_purge = psub.add_parser("purge", help="Permanently delete a purchase (irreversible)")
     p_purge.add_argument("id", type=int)

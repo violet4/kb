@@ -27,6 +27,7 @@ import termios
 import time
 import tty
 from pathlib import Path
+from typing import NamedTuple
 
 SOCKET_DIR = Path(os.environ.get("XDG_RUNTIME_DIR") or f"/tmp/kb-{os.getuid()}") / "kb" / "claude"
 
@@ -35,6 +36,8 @@ _SUBMIT_DELAY_SECONDS = 0.15
 _NEXT_MESSAGE_DELAY_SECONDS = 0.5
 _PASTE_START = b"\x1b[200~"
 _PASTE_END = b"\x1b[201~"
+# Keys a caller may press by name. Escape interrupts a running turn or dismisses a dialog.
+KEYS = {"escape": b"\x1b"}
 # Every C0 control except tab and newline, DEL, and every C1 control. Removing them keeps the
 # message inert text: an embedded ESC[201~ would otherwise end the paste early and turn the
 # rest of the message into raw keystrokes.
@@ -60,6 +63,15 @@ def clean(text: str) -> str:
 
 def send(pid: int, text: str) -> None:
     """Submit `text` as a prompt to the session whose `claude` process is `pid`."""
+    _request(pid, {"text": text})
+
+
+def send_key(pid: int, key: str) -> None:
+    """Press `key` (a name in KEYS) in the session whose `claude` process is `pid`."""
+    _request(pid, {"key": key})
+
+
+def _request(pid: int, payload: dict[str, str]) -> None:
     path = socket_path(pid)
     if not path.exists():
         raise InputError("session was not started with `kb claude`")
@@ -67,7 +79,7 @@ def send(pid: int, text: str) -> None:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as conn:
             conn.settimeout(5)
             conn.connect(str(path))
-            conn.sendall(json.dumps({"text": text}).encode() + b"\n")
+            conn.sendall(json.dumps(payload).encode() + b"\n")
             reply = conn.makefile("rb").readline()
     except OSError as exc:
         raise InputError(f"session input socket unreachable: {exc}") from exc
@@ -92,14 +104,20 @@ def _copy_window_size(src_fd: int, dst_fd: int) -> None:
         pass
 
 
+class _Input(NamedTuple):
+    data: bytes
+    submit: bool  # press Enter after it
+
+
 class _Typist:
-    """Types queued messages into the pseudo-terminal one at a time: paste, pause, Enter,
-    pause. Claude Code folds input that arrives right after a paste into that paste, so an
-    Enter or a second message sent without the pauses merges into the previous message."""
+    """Types queued input into the pseudo-terminal one item at a time: a message is pasted,
+    then Enter, then a pause; a key is pressed, then a pause. Claude Code folds input that
+    arrives right after a paste into that paste, so an Enter or a second message sent without
+    the pauses merges into the previous message."""
 
     def __init__(self, master_fd: int) -> None:
         self.master_fd = master_fd
-        self.queue: collections.deque[str] = collections.deque()
+        self.queue: collections.deque[_Input] = collections.deque()
         self._submit_at: float | None = None
         self._next_paste_at = 0.0
 
@@ -119,17 +137,27 @@ class _Typist:
             self._submit_at = None
             self._next_paste_at = now + _NEXT_MESSAGE_DELAY_SECONDS
         if self._submit_at is None and self.queue and now >= self._next_paste_at:
-            _write_all(self.master_fd, _PASTE_START + self.queue.popleft().encode() + _PASTE_END)
-            self._submit_at = now + _SUBMIT_DELAY_SECONDS
+            item = self.queue.popleft()
+            _write_all(self.master_fd, item.data)
+            if item.submit:
+                self._submit_at = now + _SUBMIT_DELAY_SECONDS
+            else:
+                self._next_paste_at = now + _NEXT_MESSAGE_DELAY_SECONDS
 
 
-def _read_request(conn: socket.socket) -> str:
+def _read_request(conn: socket.socket) -> _Input | None:
+    """The input a request asks for: {"text": ...} pastes and submits a message, {"key": NAME}
+    presses one of KEYS. None for anything else, including a message empty once cleaned."""
     conn.settimeout(2)
     line = conn.makefile("rb").readline(1 << 20)
     try:
-        return clean(str(json.loads(line)["text"]))
+        request = json.loads(line)
+        if "key" in request:
+            return _Input(KEYS[request["key"]], submit=False)
+        text = clean(str(request["text"]))
     except (ValueError, KeyError, TypeError):
-        return ""
+        return None
+    return _Input(_PASTE_START + text.encode() + _PASTE_END, submit=True) if text else None
 
 
 def run(argv: list[str]) -> int:
@@ -187,13 +215,13 @@ def run(argv: list[str]) -> int:
                 else:
                     conn, _ = listener.accept()
                     with conn:
-                        text = _read_request(conn)
+                        item = _read_request(conn)
                         reply: dict[str, object]
-                        if text:
-                            typist.queue.append(text)
+                        if item:
+                            typist.queue.append(item)
                             reply = {"ok": True}
                         else:
-                            reply = {"ok": False, "error": "empty message"}
+                            reply = {"ok": False, "error": "empty message or unknown key"}
                         try:
                             conn.sendall(json.dumps(reply).encode() + b"\n")
                         except OSError:

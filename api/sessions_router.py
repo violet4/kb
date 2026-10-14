@@ -16,7 +16,14 @@ from api.record_hit import RecordHit, record_hit_fields
 import harness_input
 from harness import find_session_transcript_path
 from kb_cli import si_files
-from kb_cli.sessions import list_chat_messages, list_history_projects, list_history_sessions, list_live_sessions
+from kb_cli.sessions import (
+    interrupt_blocker,
+    list_chat_messages,
+    list_history_projects,
+    list_history_sessions,
+    list_live_sessions,
+    prompt_blocker,
+)
 from models.agents.harness_session import HarnessSession, HarnessSessionStatus
 from models.journal.journal import Journal
 from models.links.entity_link import EntityLink
@@ -33,7 +40,8 @@ class SessionOut(BaseModel):
     last_message_seconds: float | None
     cwd: str
     title: str
-    accepts_input: bool
+    prompt_blocker: str | None
+    interrupt_blocker: str | None
 
 
 @router.get("", response_model=list[SessionOut])
@@ -51,25 +59,50 @@ class SessionInputIn(BaseModel):
 def post_session_input(
     session_id: str, body: SessionInputIn, session: Session = Depends(get_session)
 ) -> dict[str, bool]:
-    """Submit `text` as a user prompt to a live session started with `kb claude`. Refused
-    while the session is mid-turn: a permission dialog may be open then, and the Enter that
-    submits the message would answer it."""
-    row = HarnessSession.by_harness_id(session, session_id)
-    if row is None or not row.is_alive():
-        raise HTTPException(status_code=404, detail=f"No live session {session_id!r}")
-    if row.status != HarnessSessionStatus.IDLE:
-        raise HTTPException(status_code=409, detail="Session is busy; send once its turn ends")
+    """Submit `text` as a user prompt to a live session started with `kb claude`: as its next
+    prompt when idle, or queued mid-turn (see prompt_blocker for when). 404 when the session
+    is not live, 409 when prompt_blocker refuses or the wrapper is unreachable, 422 when the
+    text is empty once control characters are removed."""
+    row = _live_row(session, session_id)
+    if blocker := prompt_blocker(row):
+        raise HTTPException(status_code=409, detail=blocker)
     if not harness_input.clean(body.text):
         raise HTTPException(status_code=422, detail="Message is empty")
     try:
         harness_input.send(row.pid, body.text)
     except harness_input.InputError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    # The session's prompt hook marks it busy too, but only once the prompt reaches it;
-    # marking it here refuses a second send in the meantime.
+    # The session's prompt hook marks it busy too, but only once the prompt reaches it, so an
+    # idle session would otherwise read idle for a moment after this send.
     row.status = HarnessSessionStatus.INFERRING
     session.commit()
     return {"ok": True}
+
+
+@router.post("/{session_id}/interrupt")
+def post_session_interrupt(session_id: str, session: Session = Depends(get_session)) -> dict[str, bool]:
+    """Press Esc in a live `kb claude` session mid-turn, interrupting the turn or dismissing a
+    permission dialog. Marks the session idle and clears awaiting_permission, since no hook
+    reports an interrupted turn. 404 when the session is not live, 409 when
+    interrupt_blocker refuses or the wrapper is unreachable."""
+    row = _live_row(session, session_id)
+    if blocker := interrupt_blocker(row):
+        raise HTTPException(status_code=409, detail=blocker)
+    try:
+        harness_input.send_key(row.pid, "escape")
+    except harness_input.InputError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    row.status = HarnessSessionStatus.IDLE
+    row.awaiting_permission = False
+    session.commit()
+    return {"ok": True}
+
+
+def _live_row(session: Session, session_id: str) -> HarnessSession:
+    row = HarnessSession.by_harness_id(session, session_id)
+    if row is None or not row.is_alive():
+        raise HTTPException(status_code=404, detail=f"No live session {session_id!r}")
+    return row
 
 
 class HistorySessionOut(BaseModel):

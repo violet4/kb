@@ -33,7 +33,7 @@ from sqlalchemy.orm import Session
 import harness_input
 from harness import current_session_id, find_session_transcript_path
 from models.agents.channel import Channel, ChannelMessage, ChannelRead, ChannelSubscription
-from models.agents.harness_session import HarnessSession
+from models.agents.harness_session import HarnessSession, HarnessSessionStatus
 from models.agents.transcript_cache import TranscriptCache
 
 from kb_cli._util import print_table, resolve_text_arg
@@ -175,7 +175,47 @@ class LiveSessionInfo(NamedTuple):
     last_message_seconds: Optional[float]
     cwd: str
     title: str
-    accepts_input: bool  # started with `kb claude`, so the web UI can send it prompts
+    prompt_blocker: Optional[str]  # see prompt_blocker()
+    interrupt_blocker: Optional[str]  # see interrupt_blocker()
+
+
+def _not_wrapped(row: HarnessSession) -> Optional[str]:
+    if harness_input.accepts_input(row.pid):
+        return None
+    return f"Started without `kb claude`; resume it with `kb claude --resume {row.harness_id}` to send from here."
+
+
+def prompt_blocker(row: HarnessSession) -> Optional[str]:
+    """Why the web UI must not submit a prompt to this live session now, or None if it may.
+    Allowed only in states known to be safe: idle, or mid-turn in a session that reports
+    permission prompts and has none flagged. Mid-turn, the Enter that submits a prompt would
+    answer an open permission dialog, and only a reporting session can say none is open."""
+    if blocker := _not_wrapped(row):
+        return blocker
+    if row.status == HarnessSessionStatus.IDLE:
+        return None
+    if row.status != HarnessSessionStatus.INFERRING:
+        return f"Session state {row.status.value!r} is not known to be safe to send to."
+    if not row.reports_permission_prompts:
+        return (
+            "Busy: send once this turn ends. To send mid-turn, restart it with "
+            f"`kb claude --resume {row.harness_id}`, which turns on permission-prompt reporting."
+        )
+    if row.awaiting_permission:
+        return "A permission prompt may be open in the terminal: answer it there, or press Esc."
+    return None
+
+
+def interrupt_blocker(row: HarnessSession) -> Optional[str]:
+    """Why the web UI must not press Esc in this live session now, or None if it may. Only
+    mid-turn, where Esc interrupts the turn or dismisses a permission dialog: on an idle
+    session a second Esc opens Claude Code's rewind menu, where a later prompt's Enter would
+    choose a rewind point."""
+    if blocker := _not_wrapped(row):
+        return blocker
+    if row.status != HarnessSessionStatus.INFERRING:
+        return "Nothing to interrupt: the session is idle."
+    return None
 
 
 def list_live_sessions(session: Session) -> tuple[list[LiveSessionInfo], int]:
@@ -215,7 +255,8 @@ def list_live_sessions(session: Session) -> tuple[list[LiveSessionInfo], int]:
                 last_message_seconds=last_message_seconds,
                 cwd=row.cwd,
                 title=row.title or "",
-                accepts_input=harness_input.accepts_input(row.pid),
+                prompt_blocker=prompt_blocker(row),
+                interrupt_blocker=interrupt_blocker(row),
             )
         )
     return infos, len(cleared)

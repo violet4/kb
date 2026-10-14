@@ -341,11 +341,14 @@ const runToggleStyle = {
   cursor: 'pointer',
 } as const;
 
-// The bar form of a run toggle: a padded hit area, so the thin stripe is still easy to click.
+// The bar form of a run toggle: a full-width rule like <hr>. Its padding is the hit area, so
+// the thin line stays easy to click, and the negative margin cancels that padding so the bar
+// adds no height beyond the list's own gap.
 const runBarStyle = {
-  alignSelf: 'flex-start',
-  display: 'flex',
-  padding: '2px 6px',
+  display: 'block',
+  width: '100%',
+  padding: '4px 0',
+  margin: '-4px 0',
   border: 'none',
   background: 'transparent',
   cursor: 'pointer',
@@ -504,9 +507,7 @@ function RunBar({ count, open, onToggle }: { count: number; open: boolean; onTog
   const label = `${open ? 'Hide' : 'Show'} ${count} collapsed card${count === 1 ? '' : 's'}`;
   return (
     <button type="button" onClick={onToggle} aria-expanded={open} aria-label={label} title={label} style={runBarStyle}>
-      <span
-        style={{ width: 4, height: 14, borderRadius: 2, background: tokens.color.accent, opacity: open ? 1 : 0.5 }}
-      />
+      <span style={{ display: 'block', height: 2, background: tokens.color.accent, opacity: open ? 1 : 0.4 }} />
     </button>
   );
 }

@@ -97,14 +97,14 @@ export default function MessageComposer({
             }}
           />
         </div>
-        <div style={{ display: 'flex', gap: 8, alignSelf: 'flex-end' }}>
+        {/* Stacked, Send at the bottom beside the textarea's last line; buttons share one width. */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignSelf: 'flex-end' }}>
           {actions}
           <button
             type="button"
             onClick={handleSend}
             disabled={sending || !body.trim() || !!disabledReason}
             style={{
-              alignSelf: 'flex-end',
               padding: '8px 16px',
               borderRadius: 6,
               border: `1px solid ${tokens.color.border}`,

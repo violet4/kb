@@ -25,7 +25,9 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-_MYPY_FAILURE_RE = re.compile(r"Found \d+ error")
+# mypy's own failure summary, e.g. "Found 6 errors in 4 files (checked 171 source files)" -- not
+# ruff's "Found 3 errors.", which shares the first words.
+_MYPY_FAILURE_RE = re.compile(r"Found \d+ errors? in \d+ files? \(checked \d+ source files?\)")
 
 _MYPY_HINT = (
     "A mypy run just failed. Before reaching for cast() or another type-checker "

@@ -60,12 +60,15 @@ function BashCommand({ command, description, full }: { command: string; descript
           fontSize: 12,
           whiteSpace: 'pre-wrap',
           overflowWrap: 'anywhere',
-          background: tokens.color.background,
+          background: tokens.color.shellBackground,
           border: `1px solid ${tokens.color.border}`,
+          borderLeft: `3px solid ${tokens.color.shellPrompt}`,
           borderRadius: 4,
           color: tokens.color.text,
         }}
       >
+        {/* The prompt marks it as a shell command; user-select keeps it out of a copied command. */}
+        <span style={{ color: tokens.color.shellPrompt, userSelect: 'none' }}>$ </span>
         {shown}
       </pre>
       {hidden > 0 && (

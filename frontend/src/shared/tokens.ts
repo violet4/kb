@@ -17,6 +17,8 @@ const color = {
   barFill: '#7c5cff',
   humanMessage: '#1c2a3d', // a message a person typed, set apart from tool results and harness-injected text
   thinking: '#b8a6e6', // a model's thinking, set apart from its reply by hue instead of italics
+  shellBackground: '#0a0d0f', // a shell command, styled as a terminal
+  shellPrompt: '#3fb950',
 };
 
 export const tokens = {

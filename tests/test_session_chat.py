@@ -61,3 +61,25 @@ def test_history_filters(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, db_ses
     assert [s.id for s in sessions.list_history_sessions(db_session, include_empty=True, max_messages=0)] == ["empty"]
     assert [s.id for s in sessions.list_history_sessions(db_session, title_pattern="^HELLO")] == ["talk"]
     assert sessions.list_history_sessions(db_session, title_pattern="nomatch") == []
+
+
+def test_mid_turn_message_is_a_user_message(tmp_path: Path) -> None:
+    """A message typed while the agent is mid-turn is recorded as a queued_command attachment,
+    not a user line; the viewer shows it as the user's message, its text carried once."""
+    queued = {
+        "type": "attachment",
+        "timestamp": "t",
+        "attachment": {"type": "queued_command", "commandMode": "prompt", "prompt": "mid-turn note"},
+        "rendered": [{"content": "<system-reminder>mid-turn note</system-reminder>"}],
+    }
+    path = tmp_path / "s.jsonl"
+    path.write_text(_line("user", "one") + json.dumps(queued) + "\n" + _line("assistant", "two"))
+    messages, _ = list_chat_messages(path)
+    assert [(m.role, m.blocks[0].text) for m in messages] == [
+        ("user", "one"),
+        ("user", "mid-turn note"),
+        ("assistant", "two"),
+    ]
+    tags = messages[1].blocks[0].tags
+    assert tags["delivered"] == "mid-turn"
+    assert "mid-turn note" not in "".join(tags.values())

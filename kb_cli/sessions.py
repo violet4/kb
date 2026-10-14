@@ -405,7 +405,8 @@ class ChatBlock(NamedTuple):
 
 class ChatMessage(NamedTuple):
     """One line of real chat content from a session transcript -- a `type: "user"` or
-    `type: "assistant"` JSONL record, in file order. Every other JSONL line (hook output,
+    `type: "assistant"` JSONL record, or a message the user typed mid-turn (see _queued_prompt),
+    in file order. Every other JSONL line (hook output,
     tool-listing deltas, mode/permission-mode bookkeeping) is not a message and is dropped
     entirely, not summarized -- this is the same content a viewer scrolling the raw
     transcript would call "the conversation," nothing added or condensed."""
@@ -534,6 +535,26 @@ def _extract_blocks(content: object, message_tags: dict[str, str]) -> list[ChatB
     return blocks
 
 
+def _queued_prompt(record: dict[str, Any]) -> Optional[str]:
+    """The text of a message the user typed while the agent was mid-turn. The harness records it
+    as an `attachment` line of type `queued_command`, delivered alongside the next tool result,
+    never as a `user` line, so without this it would be missing from the conversation."""
+    attachment = record.get("attachment")
+    if record.get("type") != "attachment" or not isinstance(attachment, dict):
+        return None
+    if attachment.get("type") != "queued_command" or attachment.get("commandMode") != "prompt":
+        return None
+    prompt = attachment.get("prompt")
+    return prompt if isinstance(prompt, str) and prompt else None
+
+
+def _without_queued_text(record: dict[str, Any]) -> dict[str, Any]:
+    """A queued-message record minus the two copies of its text (the prompt, and the reminder
+    the harness rendered around it), which its block already carries as text."""
+    attachment = {k: v for k, v in record["attachment"].items() if k != "prompt"}
+    return {k: v for k, v in record.items() if k != "rendered"} | {"attachment": attachment}
+
+
 def list_chat_messages(path: Path, offset: int = 0) -> tuple[list[ChatMessage], int]:
     """Every real chat message in a session transcript from byte `offset` on, in file
     order, with nothing compacted or summarized, plus the offset to pass next time. The
@@ -555,6 +576,17 @@ def list_chat_messages(path: Path, offset: int = 0) -> tuple[list[ChatMessage], 
         try:
             d = json.loads(line)
         except ValueError:
+            continue
+        queued = _queued_prompt(d)
+        if queued is not None:
+            tags = {**_flatten_tags(_without_queued_text(d)), "delivered": "mid-turn"}
+            messages.append(
+                ChatMessage(
+                    role="user",
+                    timestamp=d.get("timestamp", ""),
+                    blocks=[ChatBlock(kind="text", text=queued, tags=tags)],
+                )
+            )
             continue
         if d.get("type") not in ("user", "assistant"):
             continue

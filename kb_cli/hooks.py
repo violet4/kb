@@ -35,7 +35,12 @@ _MYPY_HINT = (
 )
 
 
-_GIT_COMMIT_RE = re.compile(r"(?<![\w.-])git\s+(?:[^&|;]*\s)?commit(?:\s|$)")
+# `git`, then any global options (`-C DIR`, `--git-dir=...`, `-c key=value`), then the `commit`
+# subcommand, starting where a command starts (a line's beginning or after a shell separator),
+# so "git commit" inside another command's arguments is not one.
+_GIT_COMMIT_RE = re.compile(
+    r"(?:^|[;&|(])\s*git(?:\s+-[Cc]\s+\S+|\s+--?[\w-]+(?:=\S+)?)*\s+commit(?![\w-])", re.MULTILINE
+)
 
 _POST_COMMIT_HINT = (
     "A commit just succeeded. Run `kb i show claude-code-session-persistence-review` and follow it now -- "
@@ -320,10 +325,6 @@ def _tree_reminder_text(session: Session) -> str:
         return ""
     return _TREE_FRONTIER_REMINDER.format(titles=", ".join(node.title for node in frontier))
 
-
-# `git` followed by any global options (`-C DIR`, `--git-dir=...`, `-c key=value`) and then
-# the `commit` subcommand.
-_GIT_COMMIT_RE = re.compile(r"(?<![\w./-])git(?:\s+-[Cc]\s+\S+|\s+--?[\w-]+(?:=\S+)?)*\s+commit(?![\w-])")
 
 _UNREAD_NODE_HINT = "Blocked: this session has not read the {purpose}. Run `kb si show {title}`, then retry."
 

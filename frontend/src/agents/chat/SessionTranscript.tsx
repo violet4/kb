@@ -507,7 +507,7 @@ function RunBar({ count, open, onToggle }: { count: number; open: boolean; onTog
   const label = `${open ? 'Hide' : 'Show'} ${count} collapsed card${count === 1 ? '' : 's'}`;
   return (
     <button type="button" onClick={onToggle} aria-expanded={open} aria-label={label} title={label} style={runBarStyle}>
-      <span style={{ display: 'block', height: 2, background: tokens.color.accent, opacity: open ? 1 : 0.4 }} />
+      <span style={{ display: 'block', height: 2, background: tokens.color.textMuted, opacity: open ? 1 : 0.6 }} />
     </button>
   );
 }

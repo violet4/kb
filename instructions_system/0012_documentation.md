@@ -1,5 +1,6 @@
 title: documentation
 trigger: whenever writing, editing, or producing any documentation, write-up, or persistent note-taking -- a doc, README, comment, docstring, report, or deliverable; documentation is very often the primary deliverable of a session, not a byproduct of writing code
+write-globs: *.md
 
 Document the reasoning behind a decision -- why this approach and not an obvious alternative --
 not a restatement of what's already visible through other means (code structure/naming, a

@@ -1,5 +1,6 @@
 title: code-level-implementation
 trigger: when writing or editing code
+write-globs: *.py *.ts *.tsx *.js *.jsx *.mjs *.sh *.rs *.cs
 
 Correctness and appropriate complexity for the actual constraint are the two universal bars for code at the level of a single function, class, or module — everything below is a corollary of one or the other, not a separate concern.
 

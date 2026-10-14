@@ -9,7 +9,7 @@ Storage shape, mirroring the DB tree's own split (Instruction rows + EntityLink 
 the filesystem:
 - One file per node: instructions_system/NNNN_slug.md, a 4-digit id prefix (this module's
   own id space, independent of Instruction.id -- see kb Note #283 for why) followed by a
-  slugified title, then a small plain-text header (title/trigger, mirroring exactly what
+  slugified title, then a small plain-text header (title/trigger/write-globs, mirroring exactly what
   `kb i show` already prints for a node) and the body. The header never repeats the id --
   the filename IS the id, so there is exactly one place that fact lives, not two that can
   drift apart if a file is ever renamed.
@@ -42,6 +42,7 @@ _FILENAME_RE = re.compile(r"^(\d{4})_(.+)\.md$")
 
 _HEADER_TITLE_RE = re.compile(r"^title:\s*(.*)$", re.MULTILINE)
 _HEADER_TRIGGER_RE = re.compile(r"^trigger:\s*(.*)$", re.MULTILINE)
+_HEADER_WRITE_GLOBS_RE = re.compile(r"^write-globs:\s*(.*)$", re.MULTILINE)
 
 
 class SiFilesError(RuntimeError):
@@ -54,7 +55,7 @@ class SiFilesError(RuntimeError):
 @dataclass
 class SiNode:
     """One node read from instructions_system/ -- the file-backed equivalent of an
-    Instruction row. id/title/trigger/body mirror Instruction's own columns exactly;
+    Instruction row. id/title/trigger/write_globs/body mirror Instruction's own columns exactly;
     path is this node's own file, kept on the dataclass so a caller that already has a
     SiNode never needs to re-derive its path from id."""
 
@@ -62,6 +63,7 @@ class SiNode:
     # a fixed-width filename component, not an arithmetic quantity.
     title: str
     trigger: Optional[str]
+    write_globs: str
     body: str
     path: Path = field(compare=False)
 
@@ -106,8 +108,10 @@ def _parse_node_file(path: Path) -> SiNode:
     trigger = trigger_match.group(1).strip() if trigger_match else None
     if trigger == "":
         trigger = None
+    globs_match = _HEADER_WRITE_GLOBS_RE.search(header)
+    write_globs = globs_match.group(1).strip() if globs_match else ""
 
-    return SiNode(id=node_id, title=title, trigger=trigger, body=body, path=path)
+    return SiNode(id=node_id, title=title, trigger=trigger, write_globs=write_globs, body=body, path=path)
 
 
 def list_nodes() -> list[SiNode]:
@@ -150,12 +154,21 @@ def save_graph(edges: list[SiEdge]) -> None:
     )
 
 
-def _render_node_file(title: str, trigger: Optional[str], body: str) -> str:
+def _render_node_file(title: str, trigger: Optional[str], write_globs: str, body: str) -> str:
     trigger_line = f"trigger: {trigger}\n" if trigger else ""
-    return f"title: {title}\n{trigger_line}\n{body}"
+    globs_line = f"write-globs: {write_globs}\n" if write_globs else ""
+    return f"title: {title}\n{trigger_line}{globs_line}\n{body}"
 
 
-def save_node(node_id: str, title: str, trigger: Optional[str], body: str, *, old_path: Optional[Path] = None) -> Path:
+def save_node(
+    node_id: str,
+    title: str,
+    trigger: Optional[str],
+    body: str,
+    *,
+    write_globs: str = "",
+    old_path: Optional[Path] = None,
+) -> Path:
     """Write (create or overwrite) a node's file. If old_path is given and its filename's
     slug no longer matches the new title, the old file is removed after the new one is
     written -- a title edit renames the file (matching id, new slug) rather than leaving a
@@ -163,7 +176,7 @@ def save_node(node_id: str, title: str, trigger: Optional[str], body: str, *, ol
     for human readability when browsing the directory, not as a second id."""
     _SI_DIR.mkdir(parents=True, exist_ok=True)
     new_path = _SI_DIR / f"{node_id}_{_slugify(title)}.md"
-    new_path.write_text(_render_node_file(title, trigger, body))
+    new_path.write_text(_render_node_file(title, trigger, write_globs, body))
     if old_path is not None and old_path != new_path and old_path.is_file():
         old_path.unlink()
     return new_path

@@ -35,6 +35,7 @@ from kb_cli._util import (
     print_timestamps,
     resolve_text_arg,
 )
+from kb_cli.required_reading import WRITE_GLOBS_HELP
 from kb_cli.search import cmd_search_deprecated
 
 
@@ -75,7 +76,8 @@ def _print_node(
     show_links: bool = False,
 ) -> None:
     trigger_line = f"\ntrigger: {node.trigger}" if node.trigger else ""
-    print(f"#{node.id} {node.title}{trigger_line}")
+    globs_line = f"\nwrite-globs: {node.write_globs}" if node.write_globs else ""
+    print(f"#{node.id} {node.title}{trigger_line}{globs_line}")
     print(_size_line(node))
     if show_body:
         print_timestamps(node)
@@ -243,6 +245,7 @@ def cmd_add(args: argparse.Namespace) -> None:
         title=args.title,
         body=resolve_text_arg(args.body),
         trigger=args.trigger,
+        write_globs=args.write_globs,
         context=resolve_context(args.session, args.context_name),
     )
     node.reembed()
@@ -293,6 +296,8 @@ def cmd_edit(args: argparse.Namespace) -> None:
         node.body = apply_replace_range(node.body, f"body of {node.title!r}", tuple(args.replace_range))
     if args.trigger is not None:
         node.trigger = None if args.trigger == "" else args.trigger
+    if args.write_globs is not None:
+        node.write_globs = args.write_globs
     args.session.commit()
     show_output = _rendered_show_output(args.session, node)
     print(show_output, end="")
@@ -410,6 +415,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_add.add_argument(
         "--trigger", required=True, help='"If/when ..." condition -- required, even a couple words beats none'
     )
+    p_add.add_argument("--write-globs", default="", help=WRITE_GLOBS_HELP)
     p_add.set_defaults(func=cmd_add)
 
     p_set_parent = sub.add_parser("set-parent", help="Change (or clear) a node's parent")
@@ -436,6 +442,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         "give short, unique anchors rather than the whole span, e.g. to delete/shrink a paragraph",
     )
     p_edit.add_argument("--trigger", help='New "if/when ..." condition; pass "" to clear it')
+    p_edit.add_argument("--write-globs", help=WRITE_GLOBS_HELP)
     p_edit.set_defaults(func=cmd_edit)
 
     p_delete = sub.add_parser("delete", help="Delete a node (must have no children, unless --reparent-children)")

@@ -28,6 +28,7 @@ from typing import Callable, Optional
 
 from kb_cli import si_files as sf
 from kb_cli._util import apply_replace_range, apply_text_edit, extract_range, journal_read, resolve_text_arg
+from kb_cli.required_reading import WRITE_GLOBS_HELP
 
 _SYSTEM_WRITE_WARNING = (
     "kb si: this writes instructions_system/ directly -- the git-tracked, shared-by-every-user "
@@ -50,7 +51,8 @@ def _size_line(node: sf.SiNode) -> str:
 
 def _print_node(node: sf.SiNode, show_body: bool) -> None:
     trigger_line = f"\ntrigger: {node.trigger}" if node.trigger else ""
-    print(f"#{node.id} {node.title}{trigger_line}")
+    globs_line = f"\nwrite-globs: {node.write_globs}" if node.write_globs else ""
+    print(f"#{node.id} {node.title}{trigger_line}{globs_line}")
     print(_size_line(node))
     if show_body:
         print()
@@ -168,7 +170,7 @@ def cmd_add(args: argparse.Namespace) -> None:
         )
         parent = _resolve_or_exit("root")
     node_id = sf.next_id()
-    sf.save_node(node_id, args.title, args.trigger, resolve_text_arg(args.body))
+    sf.save_node(node_id, args.title, args.trigger, resolve_text_arg(args.body), write_globs=args.write_globs)
     sf.set_parent(node_id, parent.id)
     _print_write_warning()
     written = sf.resolve(node_id)
@@ -188,6 +190,7 @@ def cmd_edit(args: argparse.Namespace) -> None:
     node = _resolve_or_exit(args.ref)
     title = node.title
     trigger = node.trigger
+    write_globs = node.write_globs
     body = node.body
 
     if args.title is not None:
@@ -206,9 +209,11 @@ def cmd_edit(args: argparse.Namespace) -> None:
         body = apply_replace_range(body, f"body of {title!r}", tuple(args.replace_range))
     if args.trigger is not None:
         trigger = None if args.trigger == "" else args.trigger
+    if args.write_globs is not None:
+        write_globs = args.write_globs
 
     old_path = node.path
-    sf.save_node(node.id, title, trigger, body, old_path=old_path)
+    sf.save_node(node.id, title, trigger, body, write_globs=write_globs, old_path=old_path)
     _print_write_warning()
     written = sf.resolve(node.id)
     assert written is not None, f"just wrote node {node.id!r}, resolve must find it"
@@ -302,6 +307,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_add.add_argument(
         "--trigger", required=True, help='"If/when ..." condition -- required, even a couple words beats none'
     )
+    p_add.add_argument("--write-globs", default="", help=WRITE_GLOBS_HELP)
     p_add.set_defaults(func=_handle_si_errors(cmd_add))
 
     p_set_parent = sub.add_parser("set-parent", help="Change (or clear) a node's parent")
@@ -309,7 +315,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_set_parent.add_argument("--parent", metavar="TITLE|#ID", help="Omit to clear the parent (make it a root node)")
     p_set_parent.set_defaults(func=_handle_si_errors(cmd_set_parent))
 
-    p_edit = sub.add_parser("edit", help="Edit a node's title, body, or trigger")
+    p_edit = sub.add_parser("edit", help="Edit a node's title, body, trigger, or write-globs")
     p_edit.add_argument("ref", metavar="TITLE|#ID")
     p_edit.add_argument("--title")
     p_edit.add_argument("--body", help="Replace the entire body -- prefer --append/--replace for a small change")
@@ -327,6 +333,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
         help="Replace everything from START_SNIPPET through END_SNIPPET (inclusive) with NEW",
     )
     p_edit.add_argument("--trigger", help='New "if/when ..." condition; pass "" to clear it')
+    p_edit.add_argument("--write-globs", help=WRITE_GLOBS_HELP)
     p_edit.set_defaults(func=_handle_si_errors(cmd_edit))
 
     p_delete = sub.add_parser("delete", help="Delete a node (must have no children, unless --reparent-children)")

@@ -41,6 +41,11 @@ class Instruction(Base, HasContextOrTag, HasEmbedding, HasJournal):
     separate "trigger tree" -- a trigger-worded node's children ARE topic-tree navigation, just
     phrased as conditions ("whenever doing a merge") instead of topic names ("merge").
 
+    write_globs is the machine-checkable part of a trigger: space-separated globs (`*.py`,
+    `*/AGENTS.md`) naming files an agent session must not write until it has read this node. The
+    `required-reading-check` hook blocks such a write and names the unread nodes; see
+    kb_cli/required_reading.py. Empty means the node gates no file.
+
     Intended navigation is root-to-leaf, one level at a time, judgment-based (which of this level's
     handful of children is obviously relevant), not a search/similarity operation -- keep each node's
     children few enough (~5-10) that this stays cheap; restructure (insert an intermediate node)
@@ -59,6 +64,7 @@ class Instruction(Base, HasContextOrTag, HasEmbedding, HasJournal):
     title: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     trigger: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    write_globs: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
     context_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("context.id"), nullable=True)
 
     context: Mapped[Optional[Context]] = relationship("Context")

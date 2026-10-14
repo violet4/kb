@@ -8,15 +8,16 @@ filter plus HasContextOrTag's tag fan-out), never re-derived here."""
 
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import Optional, Sequence
+from typing import Any, Optional, Sequence
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from api.context_homes import contexts_by_tag, home_context_ids
+from api.context_homes import contexts_by_tag, current_rows, filed_rows, home_context_ids
 from api.deps import get_session
+from api.record_hit import RecordHit, record_hit_fields
 from api.serialize import utc_iso
 from context import INBOX_CONTEXT_NAME, get_inbox_context
 from models.context import Context, Tag
@@ -38,6 +39,7 @@ class Counts(BaseModel):
     goals: int = 0
     notes: int = 0
     wishlist: int = 0
+    other: int = 0  # every other filed type (Event, Daily, Idea, ...), the page's "Other records"
 
 
 class ContextNode(BaseModel):
@@ -47,6 +49,15 @@ class ContextNode(BaseModel):
     tags: list[str]
     counts: Counts  # items filed directly here (tag-addressed ones included), not in descendants
     pinned: bool = False  # shown at the top of the tree, never filtered out (the inbox)
+
+
+# The types the context page lists in sections of their own; every other filed type is
+# derived from the mapper registry, so a new one shows up under "Other records" unlisted.
+_PAGE_MODELS: tuple[type[Any], ...] = (Goal, Todo, Note, Wishlist)
+
+
+def _other_filed_models() -> list[type[Any]]:
+    return [m for m in Context.filed_models() if m not in _PAGE_MODELS]
 
 
 def _live_contexts(session: Session) -> Sequence[Context]:
@@ -69,6 +80,10 @@ def context_tree(session: Session = Depends(get_session)) -> list[ContextNode]:
         counts[note.context_id].notes += 1
     for item in Wishlist.active(session):
         counts[item.context_id].wishlist += 1
+    for model in _other_filed_models():
+        for row in current_rows(session, model, contexts):
+            for cid in home_context_ids(row, by_tag):
+                counts[cid].other += 1
 
     return [
         ContextNode(
@@ -153,6 +168,7 @@ class GoalItem(BaseModel):
     status: str
     context: Optional[ContextRef]
     via_tag: Optional[str]
+    inactive: bool  # not what Goal.active() returns (completed, abandoned, ...); sent only on request
 
 
 class GoalRef(BaseModel):
@@ -174,6 +190,7 @@ class TodoItem(BaseModel):
     context: Optional[ContextRef]
     via_tag: Optional[str]
     updated_at_utc: Optional[str]
+    inactive: bool  # done or dropped; sent only on request
 
 
 class NoteItem(BaseModel):
@@ -193,6 +210,11 @@ class WishlistItem(BaseModel):
     priority: Optional[int]
     pinned: bool
     context: ContextRef
+    inactive: bool  # bought, dropped, ...; sent only on request
+
+
+class FiledRecord(RecordHit):
+    inactive: bool  # not current by its own model's .active() (an inactive Daily, ...); sent only on request
 
 
 class ContextPage(BaseModel):
@@ -206,26 +228,49 @@ class ContextPage(BaseModel):
     todos: list[TodoItem]
     notes: list[NoteItem]
     wishlist: list[WishlistItem]
+    others: list[FiledRecord]  # every other filed type, by type name then id
 
 
 def _ref(context: Optional[Context]) -> Optional[ContextRef]:
     return ContextRef(id=context.id, name=context.name) if context is not None else None
 
 
+def _inactive(session: Session, model: type[Any], scope: Sequence[Context], current: Sequence[Any]) -> list[Any]:
+    """model's live rows in scope that `current` (its own .active() result) leaves out, newest first."""
+    current_ids = {r.id for r in current}
+    return sorted((r for r in filed_rows(session, model, scope) if r.id not in current_ids), key=lambda r: -r.id)
+
+
 @router.get("/{context_id}", response_model=ContextPage)
 def context_page(
-    context_id: int, include_descendants: bool = True, session: Session = Depends(get_session)
+    context_id: int,
+    include_descendants: bool = True,
+    include_inactive: bool = False,
+    session: Session = Depends(get_session),
 ) -> ContextPage:
+    """Each type's current rows, as its own .active() decides; with include_inactive, the rest of its
+    live rows (completed, abandoned, inactive, ...) follow, marked inactive."""
     context = _live_context(session, context_id)
     scope = Context.self_and_descendants(session, context.name) if include_descendants else [context]
     scope_ids = [c.id for c in scope]
 
-    goals = sorted(Goal.active(session, contexts=scope), key=lambda g: g.id)
-    todos = sorted(Todo.active(session, contexts=scope, include_deferred=True), key=Todo.triage_key)
+    def with_inactive(model: type[Any], current: Sequence[Any]) -> tuple[list[Any], set[int]]:
+        rest = _inactive(session, model, scope, current) if include_inactive else []
+        return [*current, *rest], {r.id for r in rest}
+
+    goals, inactive_goals = with_inactive(Goal, sorted(Goal.active(session, contexts=scope), key=lambda g: g.id))
+    todos, inactive_todos = with_inactive(
+        Todo, sorted(Todo.active(session, contexts=scope, include_deferred=True), key=Todo.triage_key)
+    )
     notes = session.scalars(
         select(Note).where(Note.deleted_at.is_(None), Note.context_id.in_(scope_ids)).order_by(Note.updated_at.desc())
     ).all()
-    wishlist = Wishlist.top(session, n=1000, contexts=scope)
+    wishlist, inactive_wishlist = with_inactive(Wishlist, Wishlist.top(session, n=1000, contexts=scope))
+    by_tag = contexts_by_tag(session)
+    others: list[FiledRecord] = []
+    for model in _other_filed_models():
+        rows, inactive_ids = with_inactive(model, sorted(current_rows(session, model, scope), key=lambda r: r.id))
+        others.extend(FiledRecord(**record_hit_fields(session, r, by_tag), inactive=r.id in inactive_ids) for r in rows)
     children = session.scalars(
         select(Context).where(Context.parent_id == context.id, Context.deleted_at.is_(None)).order_by(Context.name)
     ).all()
@@ -244,6 +289,7 @@ def context_page(
                 status=g.status.value,
                 context=_ref(g.context),
                 via_tag=g.tag.name if g.tag else None,
+                inactive=g.id in inactive_goals,
             )
             for g in goals
         ],
@@ -262,6 +308,7 @@ def context_page(
                 context=_ref(t.context),
                 via_tag=t.tag.name if t.tag else None,
                 updated_at_utc=utc_iso(t.updated_at),
+                inactive=t.id in inactive_todos,
             )
             for t in todos
         ],
@@ -285,7 +332,9 @@ def context_page(
                 priority=w.priority,
                 pinned=w.pinned,
                 context=ContextRef(id=w.context.id, name=w.context.name),
+                inactive=w.id in inactive_wishlist,
             )
             for w in wishlist
         ],
+        others=others,
     )

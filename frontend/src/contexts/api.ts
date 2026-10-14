@@ -9,8 +9,8 @@ export function fetchContextTree(): Promise<ContextNode[]> {
   return getJson('/contexts/tree');
 }
 
-export function fetchContextPage(id: number, includeDescendants: boolean): Promise<ContextPage> {
-  return getJson(`/contexts/${id}?include_descendants=${includeDescendants}`);
+export function fetchContextPage(id: number, includeDescendants: boolean, includeInactive: boolean): Promise<ContextPage> {
+  return getJson(`/contexts/${id}?include_descendants=${includeDescendants}&include_inactive=${includeInactive}`);
 }
 
 export function createContext(name: string, parentId: number | null): Promise<ContextNode> {

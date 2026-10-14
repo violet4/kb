@@ -7,16 +7,12 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from api.context_homes import home_context_ids
+from api.entities_router import ENTITY_TYPES
 from archivebox_compat.config import ArchiveBoxConfigError
 from context import placement_kind
 from kb_cli.archivebox import archivebox_url
 from models.context import Context
 from models.knowledge.archived_link import ArchivedLink
-
-# Type names entities_router.ENTITY_TYPES also knows how to render -- a hit of one of these
-# gets a drilldown link into /entities/{type}/{id}; others (Context, Vendor, Item, LogEntry)
-# are shown as plain rows with no drilldown link.
-_DRILLDOWN_TYPES = {"Goal", "Todo", "Wishlist", "Idea", "Note", "Instruction", "Daily", "ArchivedLink"}
 
 
 class RecordHit(BaseModel):
@@ -54,7 +50,7 @@ def record_hit_fields(session: Session, item: Any, by_tag: dict[int, list[int]])
         type=type_name,
         id=item.id,
         label=_label(item),
-        drilldown=type_name in _DRILLDOWN_TYPES,
+        drilldown=type_name in ENTITY_TYPES,  # the types the entity page renders
         context_ids=home_context_ids(item, by_tag),
         placement="parent" if isinstance(item, Context) else placement_kind(type(item)),
         original_url=original_url,

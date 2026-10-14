@@ -2,6 +2,7 @@ import { pageTitle, useDocumentTitle } from '../shared/useDocumentTitle';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, Navigate, useLocation, useParams } from 'react-router-dom';
 import { entityPath } from '../entities/navigation';
+import type { EntityType } from '../entities/types';
 import { RecordList } from '../search/components/SearchResults';
 import ToleranceSlider from '../search/components/ToleranceSlider';
 import { useSearch } from '../search/hooks/useSearch';
@@ -15,8 +16,25 @@ import { fetchContextPage, fetchContextTree, fetchInbox, fetchSessionRefs, quick
 import ContextTreeNav from './components/ContextTreeNav';
 import { contextPaths } from './contextPaths';
 import SessionFollowPicker from './components/SessionFollowPicker';
-import type { ContextNode, ContextPage, ContextRef, NoteItem, SessionRefs, TodoItem, TouchedRecord, WishlistItem } from './types';
-import { InboxIdContext, useContextLink, useFollowedSession, useIncludeDescendants } from './useContextLink';
+import type {
+  ContextNode,
+  ContextPage,
+  ContextRef,
+  FiledRecord,
+  GoalItem,
+  NoteItem,
+  SessionRefs,
+  TodoItem,
+  TouchedRecord,
+  WishlistItem,
+} from './types';
+import {
+  InboxIdContext,
+  useContextLink,
+  useFollowedSession,
+  useIncludeDescendants,
+  useIncludeInactive,
+} from './useContextLink';
 
 const POLL_SECONDS = 15;
 // While following a live session, everything polls this often so its work shows up as it happens.
@@ -32,6 +50,10 @@ const PAGE_TYPE_SECTIONS = [
 ] as const;
 const PAGE_TYPES = new Set<string>(PAGE_TYPE_SECTIONS.map(([type]) => type));
 
+function pageRows(page: ContextPage, type: (typeof PAGE_TYPE_SECTIONS)[number][0]): { id: number }[] {
+  return { Goal: page.goals, Todo: page.todos, Note: page.notes, Wishlist: page.wishlist }[type];
+}
+
 const hitKey = (type: string, id: number) => `${type}:${id}`;
 
 export default function ContextsView() {
@@ -44,6 +66,7 @@ export default function ContextsView() {
   // Bare /contexts is the inbox.
   const selectedId = id !== undefined ? Number(id) : inboxId;
   const [includeDescendants, setIncludeDescendants] = useIncludeDescendants();
+  const [includeInactive, setIncludeInactive] = useIncludeInactive();
 
   // Typing filters context names; Enter submits the text as a kb search. Editing the text
   // again drops the search, back to name filtering.
@@ -98,8 +121,9 @@ export default function ContextsView() {
   const fetchTree = useCallback(() => fetchContextTree(), []);
   const { data: tree, error: treeError, refresh: refreshTree } = usePolling(fetchTree, pollSeconds);
   const fetchPage = useCallback(
-    () => (selectedId === null ? Promise.resolve(null) : fetchContextPage(selectedId, includeDescendants)),
-    [selectedId, includeDescendants],
+    () =>
+      selectedId === null ? Promise.resolve(null) : fetchContextPage(selectedId, includeDescendants, includeInactive),
+    [selectedId, includeDescendants, includeInactive],
   );
   const { data: page, error: pageError, refresh: refreshPage } = usePolling(fetchPage, pollSeconds);
   useDocumentTitle(page && page.context.id === selectedId ? pageTitle('contexts', page.context.name) : null);
@@ -115,6 +139,7 @@ export default function ContextsView() {
     () => (selectedId === null || !tree ? new Set<number>() : scopeOf(tree, selectedId, includeDescendants)),
     [tree, selectedId, includeDescendants],
   );
+  const contextNames = useMemo(() => new Map((tree ?? []).map((n) => [n.id, n.name])), [tree]);
   const hitsHere = filterHits ? filterHits.filter((h) => inScope(h, scopeIds)) : [];
   const shownTotal = filterHits?.length ?? 0;
   useEffect(() => {
@@ -203,6 +228,9 @@ export default function ContextsView() {
                 page={page}
                 includeDescendants={includeDescendants}
                 onIncludeDescendants={setIncludeDescendants}
+                includeInactive={includeInactive}
+                onIncludeInactive={setIncludeInactive}
+                contextNames={contextNames}
                 hits={filterHits ? hitsHere : null}
                 textFilter={search ? '' : filterText}
                 onCreated={refreshAll}
@@ -360,6 +388,9 @@ function ContextPageBody({
   page,
   includeDescendants,
   onIncludeDescendants,
+  includeInactive,
+  onIncludeInactive,
+  contextNames,
   hits,
   textFilter,
   onCreated,
@@ -367,6 +398,9 @@ function ContextPageBody({
   page: ContextPage;
   includeDescendants: boolean;
   onIncludeDescendants: (v: boolean) => void;
+  includeInactive: boolean;
+  onIncludeInactive: (v: boolean) => void;
+  contextNames: Map<number, string>;
   hits: RecordHit[] | null; // the filter's records in this page's scope; null when no filter is active
   textFilter: string; // typed in the sidebar box: rows whose title contains it
   onCreated: () => void;
@@ -374,16 +408,24 @@ function ContextPageBody({
   const contextLink = useContextLink();
   const hitKeys = hits && new Set(hits.map((h) => hitKey(h.type, h.id)));
   const needle = textFilter.trim().toLowerCase();
-  const matches = (type: string) => (row: { id: number; title: string }) =>
-    (!hitKeys || hitKeys.has(hitKey(type, row.id))) && row.title.toLowerCase().includes(needle);
+  const matchesRow = (type: string, id: number, title: string) =>
+    (!hitKeys || hitKeys.has(hitKey(type, id))) && title.toLowerCase().includes(needle);
+  const matches = (type: string) => (row: { id: number; title: string }) => matchesRow(type, row.id, row.title);
   const goals = page.goals.filter(matches('Goal'));
   const todos = page.todos.filter(matches('Todo'));
   const notes = page.notes.filter(matches('Note'));
   const wishlist = page.wishlist.filter(matches('Wishlist'));
-  const otherHits = (hits ?? []).filter((h) => !PAGE_TYPES.has(h.type));
+  const others = page.others.filter((r) => matchesRow(r.type, r.id, r.label));
+  const otherTypes = [...new Set(others.map((r) => r.type))];
+  // Filter matches the page doesn't list in any of its sections.
+  const pageKeys = new Set([
+    ...PAGE_TYPE_SECTIONS.flatMap(([type]) => pageRows(page, type).map((r) => hitKey(type, r.id))),
+    ...page.others.map((r) => hitKey(r.type, r.id)),
+  ]);
+  const otherHits = (hits ?? []).filter((h) => !pageKeys.has(hitKey(h.type, h.id)));
 
   const now = Date.now();
-  const isScheduled = (t: TodoItem) => t.defer_until_utc !== null && Date.parse(t.defer_until_utc) > now;
+  const isScheduled = (t: TodoItem) => !t.inactive && t.defer_until_utc !== null && Date.parse(t.defer_until_utc) > now;
   // The server sends todos in triage order (Todo.triage_key).
   const open = todos.filter((t) => !isScheduled(t));
   const scheduled = todos
@@ -418,6 +460,13 @@ function ContextPageBody({
               include sub-contexts
             </label>
           )}
+          <label
+            style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}
+            title="Also list done/dropped todos, abandoned goals, inactive dailies, ..."
+          >
+            <input type="checkbox" checked={includeInactive} onChange={(e) => onIncludeInactive(e.target.checked)} />
+            show inactive
+          </label>
         </div>
         {page.description && <p style={{ margin: 0, color: tokens.color.textMuted, fontSize: 13 }}>{page.description}</p>}
         {page.children.length > 0 && (
@@ -434,11 +483,7 @@ function ContextPageBody({
 
       <Section title="Goals" count={goals.length} add={quickAdd('Goal')}>
         {goals.map((g) => (
-          <Row key={g.id} record={{ type: 'Goal', id: g.id, label: g.title }}>
-            <IdCell type="Goal" id={g.id} />
-            <TitleLink type="Goal" id={g.id} title={g.title} />
-            <Where context={g.context} viaTag={g.via_tag} here={here} />
-          </Row>
+          <GoalRow key={g.id} goal={g} here={here} />
         ))}
       </Section>
 
@@ -465,6 +510,17 @@ function ContextPageBody({
           <WishlistRow key={w.id} item={w} here={here} />
         ))}
       </Section>
+
+      {otherTypes.map((type) => {
+        const rows = others.filter((r) => r.type === type);
+        return (
+          <Section key={type} title={type} count={rows.length}>
+            {rows.map((r) => (
+              <FiledRow key={r.id} record={r} here={here} contextNames={contextNames} />
+            ))}
+          </Section>
+        );
+      })}
 
       {hits && (
         <Section title="Other matches" count={otherHits.length}>
@@ -580,11 +636,13 @@ function QuickAddInput({ add, onClose }: { add: QuickAdd; onClose: () => void })
 }
 
 // Every row is a record that can be dragged onto a context in the sidebar to move it there.
-function Row({ record, children }: { record: DraggedRecord; children: ReactNode }) {
+// An inactive row (done, abandoned, ...; shown only on request) is dimmed, so current work still reads first.
+function Row({ record, inactive, children }: { record: DraggedRecord; inactive?: boolean; children: ReactNode }) {
   return (
     <div
       {...recordDragProps(record)}
       style={{
+        opacity: inactive ? 0.55 : 1,
         cursor: 'grab',
         display: 'flex',
         alignItems: 'baseline',
@@ -599,7 +657,7 @@ function Row({ record, children }: { record: DraggedRecord; children: ReactNode 
   );
 }
 
-function IdCell({ type, id }: { type: 'Goal' | 'Todo' | 'Note' | 'Wishlist'; id: number }) {
+function IdCell({ type, id }: { type: string; id: number }) {
   return (
     <span style={{ color: tokens.color.textMuted, width: 44, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
       {type[0]}
@@ -608,7 +666,7 @@ function IdCell({ type, id }: { type: 'Goal' | 'Todo' | 'Note' | 'Wishlist'; id:
   );
 }
 
-function TitleLink({ type, id, title }: { type: 'Goal' | 'Todo' | 'Note' | 'Wishlist'; id: number; title: string }) {
+function TitleLink({ type, id, title }: { type: EntityType; id: number; title: string }) {
   return (
     <Link to={entityPath(type, id)} draggable={false} style={{ ...tokens.link, minWidth: 0 }}>
       {title}
@@ -646,10 +704,41 @@ function Where({ context, viaTag, here }: { context: ContextRef | null; viaTag: 
   );
 }
 
+function GoalRow({ goal, here }: { goal: GoalItem; here: number }) {
+  return (
+    <Row record={{ type: 'Goal', id: goal.id, label: goal.title }} inactive={goal.inactive}>
+      <IdCell type="Goal" id={goal.id} />
+      {goal.inactive && <Chip>{goal.status.replace('_', ' ')}</Chip>}
+      <TitleLink type="Goal" id={goal.id} title={goal.title} />
+      <Where context={goal.context} viaTag={goal.via_tag} here={here} />
+    </Row>
+  );
+}
+
+// A record of any other filed type (Event, Daily, Idea, ...), in its type's own section.
+function FiledRow({ record, here, contextNames }: { record: FiledRecord; here: number; contextNames: Map<number, string> }) {
+  // Several homes means it floats in on a tag; the page shows where only for a single other home.
+  const home = record.context_ids.length === 1 ? record.context_ids[0] : null;
+  const context = home === null ? null : { id: home, name: contextNames.get(home) ?? `#${home}` };
+  return (
+    <Row record={{ type: record.type, id: record.id, label: record.label }} inactive={record.inactive}>
+      <IdCell type={record.type} id={record.id} />
+      {record.inactive && <Chip>inactive</Chip>}
+      {record.drilldown ? (
+        <TitleLink type={record.type as EntityType} id={record.id} title={record.label} />
+      ) : (
+        <span style={{ minWidth: 0 }}>{record.label}</span>
+      )}
+      <Where context={context} viaTag={null} here={here} />
+    </Row>
+  );
+}
+
 function TodoRow({ todo, here, showDeferDate }: { todo: TodoItem; here: number; showDeferDate?: boolean }) {
   return (
-    <Row record={{ type: 'Todo', id: todo.id, label: todo.title }}>
+    <Row record={{ type: 'Todo', id: todo.id, label: todo.title }} inactive={todo.inactive}>
       <IdCell type="Todo" id={todo.id} />
+      {todo.inactive && <Chip>{todo.status.replace('_', ' ')}</Chip>}
       {showDeferDate && (
         <span style={{ color: tokens.color.due, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
           {isoDate(todo.defer_until_utc)}
@@ -696,8 +785,9 @@ function priceRange(item: WishlistItem): string | null {
 function WishlistRow({ item, here }: { item: WishlistItem; here: number }) {
   const price = priceRange(item);
   return (
-    <Row record={{ type: 'Wishlist', id: item.id, label: item.title }}>
+    <Row record={{ type: 'Wishlist', id: item.id, label: item.title }} inactive={item.inactive}>
       <IdCell type="Wishlist" id={item.id} />
+      {item.inactive && <Chip>inactive</Chip>}
       {item.pinned && <Chip color={tokens.color.accent}>pinned</Chip>}
       <TitleLink type="Wishlist" id={item.id} title={item.title} />
       {price && <Chip>{price}</Chip>}

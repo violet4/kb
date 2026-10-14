@@ -9,6 +9,7 @@ export type EntityType =
   | 'Wishlist'
   | 'Instruction'
   | 'Daily'
+  | 'Event'
   | 'ArchivedLink'
   | 'LogEntry';
 

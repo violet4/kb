@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 
 // Page settings kept in the query string. Every link to a context page goes through
 // useContextLink, so they carry over as you move around the tree.
-const CARRIED_PARAMS = ['sub', 'session'] as const;
+const CARRIED_PARAMS = ['sub', 'inactive', 'session'] as const;
 
 function useQueryParam(name: (typeof CARRIED_PARAMS)[number]): [string | null, (value: string | null) => void] {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -19,6 +19,13 @@ function useQueryParam(name: (typeof CARRIED_PARAMS)[number]): [string | null, (
 // ?sub=1 turns on "include sub-contexts" (off by default).
 export function useIncludeDescendants(): [boolean, (value: boolean) => void] {
   const [value, set] = useQueryParam('sub');
+  return [value === '1', (on) => set(on ? '1' : null)];
+}
+
+// ?inactive=1 also lists records their type no longer counts as current: done or dropped
+// Todos, abandoned Goals, inactive Dailies, ... (off by default).
+export function useIncludeInactive(): [boolean, (value: boolean) => void] {
+  const [value, set] = useQueryParam('inactive');
   return [value === '1', (on) => set(on ? '1' : null)];
 }
 

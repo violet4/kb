@@ -6,7 +6,7 @@ import { tokens } from '../../shared/tokens';
 import { isBoolean, useStoredState } from '../../shared/useStoredState';
 import { draggedRecord, isRecordDrag, isRecordDragEvent, type DraggedRecord } from '../../shared/recordDrag';
 import { createContext, moveContext, setPlacement } from '../api';
-import type { ContextNode } from '../types';
+import { countTotal, type ContextNode } from '../types';
 import { useContextLink } from '../useContextLink';
 
 interface TreeIndex {
@@ -25,7 +25,7 @@ function buildIndex(nodes: ContextNode[]): TreeIndex {
   }
   const subtreeTotal = new Map<number, number>();
   const total = (n: ContextNode): number => {
-    const own = n.counts.todos + n.counts.goals + n.counts.notes + n.counts.wishlist;
+    const own = countTotal(n.counts);
     const sum = own + (childrenOf.get(n.id) ?? []).reduce((acc, c) => acc + total(c), 0);
     subtreeTotal.set(n.id, sum);
     return sum;
@@ -94,8 +94,8 @@ export default function ContextTreeNav({
   const index = useMemo(() => buildIndex(nodes), [nodes]);
   const contextLink = useContextLink();
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
-  const [hideEmpty, setHideEmpty] = useState(true);
-  // Contexts created in this session stay visible under "hide empty" although they hold nothing yet.
+  const [showEmpty, setShowEmpty] = useState(false);
+  // Contexts created in this session stay visible without "show empty" although they hold nothing yet.
   const [justCreated, setJustCreated] = useState<Set<number>>(new Set());
   // Where an inline "new context" input is open: under a parent id, or ROOT; null when closed.
   const [creatingUnder, setCreatingUnder] = useState<DropTarget | null>(null);
@@ -105,7 +105,7 @@ export default function ContextTreeNav({
   const hoverExpandTimer = useRef<number | null>(null);
 
   // With "show all while dragging" on, dragging a record from the page shows the tree in
-  // full (no search/name filter, no hide-empty) until the drag ends, so every context is a
+  // full (no search/name filter, empty ones too) until the drag ends, so every context is a
   // drop target; off by default, since the tree jumping around mid-drag is distracting.
   const [revealOnDrag, setRevealOnDrag] = useStoredState('kb-contexts-reveal-on-drag', false, isBoolean);
   const [recordDraggingRaw, setRecordDragging] = useState(false);
@@ -150,11 +150,11 @@ export default function ContextTreeNav({
     return visible;
   }, [recordTotals, needle, nodes, index, selectedId]);
 
-  // Shown outside a record drag: by the search/name filter, else by hide-empty.
+  // Shown outside a record drag: by the search/name filter, else by emptiness unless "show empty" is on.
   const isNormallyShown = (n: ContextNode) => {
     if (filterVisible) return filterVisible.has(n.id);
     const empty = (index.subtreeTotal.get(n.id) ?? 0) === 0;
-    return !hideEmpty || !empty || n.id === selectedId || n.id === creatingUnder || justCreated.has(n.id);
+    return showEmpty || !empty || n.id === selectedId || n.id === creatingUnder || justCreated.has(n.id);
   };
   // A pinned context (the inbox) is always shown, whatever the filters or followed session.
   const isShown = (n: ContextNode) => n.pinned || recordDragging || isNormallyShown(n);
@@ -293,7 +293,7 @@ export default function ContextTreeNav({
       return { count, rolledUp: subtree && !includeDescendants };
     }
     if (subtree) return { count: index.subtreeTotal.get(n.id) ?? 0, rolledUp: !includeDescendants };
-    return { count: n.counts.todos + n.counts.goals + n.counts.notes + n.counts.wishlist, rolledUp: false };
+    return { count: countTotal(n.counts), rolledUp: false };
   };
 
   const renderLevel = (parent: number | null, depth: number) =>
@@ -432,8 +432,8 @@ export default function ContextTreeNav({
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', columnGap: 12, rowGap: 4 }}>
         <label style={checkboxLabelStyle}>
-          <input type="checkbox" checked={hideEmpty} onChange={(e) => setHideEmpty(e.target.checked)} />
-          hide empty
+          <input type="checkbox" checked={showEmpty} onChange={(e) => setShowEmpty(e.target.checked)} />
+          show empty
         </label>
         <label style={checkboxLabelStyle} title="While dragging a record, show every context as a drop target">
           <input type="checkbox" checked={revealOnDrag} onChange={(e) => setRevealOnDrag(e.target.checked)} />

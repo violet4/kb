@@ -12,7 +12,10 @@ export interface Counts {
   goals: number;
   notes: number;
   wishlist: number;
+  other: number; // every other filed type (Event, Daily, Idea, ...)
 }
+
+export const countTotal = (c: Counts): number => c.todos + c.goals + c.notes + c.wishlist + c.other;
 
 export interface ContextNode {
   id: number;
@@ -29,6 +32,7 @@ export interface GoalItem {
   status: string;
   context: ContextRef | null;
   via_tag: string | null;
+  inactive: boolean; // not current (completed, abandoned, ...); sent only when inactive rows are requested
 }
 
 export interface TodoItem {
@@ -45,6 +49,7 @@ export interface TodoItem {
   context: ContextRef | null;
   via_tag: string | null;
   updated_at_utc: string | null;
+  inactive: boolean; // done or dropped
 }
 
 export interface NoteItem {
@@ -64,6 +69,12 @@ export interface WishlistItem {
   priority: number | null;
   pinned: boolean;
   context: ContextRef;
+  inactive: boolean;
+}
+
+// Any other filed type (Event, Daily, Idea, ...), as a generic record row.
+export interface FiledRecord extends RecordHit {
+  inactive: boolean; // not current by its own model's .active()
 }
 
 export interface ContextPage {
@@ -77,6 +88,7 @@ export interface ContextPage {
   todos: TodoItem[];
   notes: NoteItem[];
   wishlist: WishlistItem[];
+  others: FiledRecord[]; // by type name, then id
 }
 
 // Mirrors api/entities_router.py's PlacementOut: where a record lives -- a context, or

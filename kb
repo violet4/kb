@@ -18,7 +18,6 @@ Usage: kb [--as-of WHEN] <command> [subcommand ...] [args ...]
   kb todo add CONTEXT|#TAG "..." | show ID | update ID | complete ID | pending [--tag NAME] | tag ID TAG... | untag ID TAG...
   kb tag add NAME [--parent P] | show NAME | set-parent NAME [PARENT] | list
   kb daily add CONTEXT|#TAG "..." | show ID | list | update ID | complete ID | activate ID | deactivate ID
-  kb inbox add ... | pending | triage ID
   kb instructions root [--set TITLE] | show TITLE | search QUERY | add TITLE BODY [--parent TITLE] [--trigger "..."] | set-parent TITLE [--parent TITLE] | edit TITLE [--title T] [--body B|--append TEXT|--replace OLD NEW] [--trigger "..."] | delete TITLE [--reparent-children] | tree [--bodies]
     # nodes are referenced by title everywhere; prefix with # for an id (only needed if a title is ambiguous). Use --context NAME on add to link a node into the Context tree.
   kb si show TITLE|#ID|root [--links] | add TITLE BODY [--parent TITLE] [--trigger "..."] | set-parent TITLE [--parent TITLE] | edit TITLE [--title T] [--body B|--append TEXT|--replace OLD NEW] [--trigger "..."] | delete TITLE [--reparent-children] | tree [--bodies]
@@ -95,7 +94,6 @@ from kb_cli import (
     health,
     hooks,
     idea,
-    inbox,
     instruction,
     journal,
     link,
@@ -169,7 +167,6 @@ tag.add_subparser(subparsers)
 daily.add_subparser(subparsers)
 event.add_subparser(subparsers)
 hooks.add_subparser(subparsers)
-inbox.add_subparser(subparsers)
 instruction.add_subparser(subparsers)
 journal.add_subparser(subparsers)
 link.add_subparser(subparsers)

@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import difflib
 from dataclasses import dataclass
-from typing import Optional, Sequence, Type, TypeVar, Union
+from typing import Any, Optional, Sequence, Type, TypeVar, Union
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, class_mapper
@@ -147,3 +147,22 @@ def placement_required(model: type) -> bool:
     if issubclass(model, HasContextOrTag):
         return model._context_or_tag_required
     return not class_mapper(model).columns["context_id"].nullable
+
+
+def filed_rows(session: Session, model: type[Any], contexts: Sequence[Context]) -> Sequence[Any]:
+    """Every live row of model filed in contexts, whatever its status: pinned to one of them, or
+    floating on a tag one of them carries (HasContextOrTag)."""
+    if issubclass(model, HasContextOrTag):
+        match = model.matches_contexts(contexts)
+    else:
+        match = model.context_id.in_([c.id for c in contexts])
+    return session.scalars(select(model).where(model.deleted_at.is_(None), match)).all()
+
+
+def current_rows(session: Session, model: type[Any], contexts: Sequence[Context]) -> Sequence[Any]:
+    """The rows of filed_rows that model itself counts as current: its own `.active()` when it
+    has one (status, recurrence, ...), else every live row (a Note or LogEntry has no lifecycle)."""
+    if hasattr(model, "active"):
+        current: Sequence[Any] = model.active(session, contexts=contexts)
+        return current
+    return filed_rows(session, model, contexts)

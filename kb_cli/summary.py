@@ -7,10 +7,9 @@ from typing import Callable, Optional
 
 from sqlalchemy.orm import Session
 
-from context import resolve_context
+from context import current_rows, get_inbox_context, resolve_context
 from kb_cli._util import add_context_filter_argument
 from models.context import Context
-from models.knowledge.inbox import InboxItem
 from models.knowledge.person import Person
 from models.work.daily import Daily, DailyTier
 from models.work.goal import Goal
@@ -167,15 +166,14 @@ def wishlist_section(session: Session) -> str | None:
 
 
 def inbox_section(session: Session) -> str | None:
-    items = InboxItem.pending(session)
-    if not items:
+    """Current records filed in the inbox context, by type: what is waiting to be triaged."""
+    inbox = get_inbox_context(session)
+    counts = {m.__name__: len(current_rows(session, m, [inbox])) for m in Context.filed_models()}
+    counts = {name: n for name, n in counts.items() if n}
+    if not counts:
         return None
-    by_category: dict[str, int] = {}
-    for i in items:
-        by_category.setdefault(i.category or "(uncategorized)", 0)
-        by_category[i.category or "(uncategorized)"] += 1
-    breakdown = ", ".join(f"{count} {cat}" for cat, count in sorted(by_category.items()))
-    return f"=== INBOX ({len(items)}) ===\n{breakdown} — kb inbox pending [--category C]"
+    breakdown = ", ".join(f"{n} {name}" for name, n in sorted(counts.items()))
+    return f"=== INBOX ({sum(counts.values())}) ===\n{breakdown} — kb context show inbox"
 
 
 def idea_section(session: Session) -> str | None:

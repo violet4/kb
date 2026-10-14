@@ -15,11 +15,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from api.context_homes import contexts_by_tag, current_rows, filed_rows, home_context_ids
+from api.context_homes import contexts_by_tag, home_context_ids
 from api.deps import get_session
 from api.record_hit import RecordHit, record_hit_fields
 from api.serialize import utc_iso
-from context import get_inbox_context
+from context import current_rows, filed_rows, get_inbox_context
 from models.context import INBOX_CONTEXT_NAME, Context, Tag
 from models.knowledge.note import Note
 from models.work.goal import Goal

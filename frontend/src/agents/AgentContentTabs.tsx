@@ -11,6 +11,7 @@ interface AgentContentTabsProps {
   tab: AgentContentTab;
   onChangeTab: (tab: AgentContentTab) => void;
   onSent: () => void;
+  isLive?: boolean;
 }
 
 // The Chat/Session tab switch for one live agent -- shared by AgentPage's standalone
@@ -28,6 +29,7 @@ export default function AgentContentTabs({
   tab,
   onChangeTab,
   onSent,
+  isLive = false,
 }: AgentContentTabsProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minHeight: 0, flex: 1 }}>
@@ -36,7 +38,7 @@ export default function AgentContentTabs({
         <TabButton label="Session" isActive={tab === 'session'} onClick={() => onChangeTab('session')} />
       </div>
       {tab === 'session' ? (
-        <SessionTranscript sessionId={agentSessionId} />
+        <SessionTranscript sessionId={agentSessionId} startAtBottom={isLive} />
       ) : (
         <DmChatPanel
           agentSessionId={agentSessionId}

@@ -321,6 +321,8 @@ const FOLLOW_THRESHOLD_PX = 40;
 
 interface SessionTranscriptProps {
   sessionId: string;
+  // Open at the newest message and follow, for a live session; otherwise open at the top.
+  startAtBottom?: boolean;
 }
 
 // The raw Claude Code JSONL transcript for one session -- every user/assistant message,
@@ -330,7 +332,7 @@ interface SessionTranscriptProps {
 // must never be conflated into one view. A live session's new messages are appended at the
 // bottom as they are written (see useSessionChat); while the message pane is scrolled to the
 // bottom it follows them.
-export default function SessionTranscript({ sessionId }: SessionTranscriptProps) {
+export default function SessionTranscript({ sessionId, startAtBottom = false }: SessionTranscriptProps) {
   const [intervalSeconds] = useRefreshIntervalSetting();
   const { entries, loading, error } = useSessionChat(sessionId, intervalSeconds);
   const [filter, setFilter] = useState<FacetFilter>(new Map());
@@ -361,14 +363,24 @@ export default function SessionTranscript({ sessionId }: SessionTranscriptProps)
     const pane = paneRef.current;
     if (pane) followRef.current = pane.scrollHeight - pane.scrollTop - pane.clientHeight <= FOLLOW_THRESHOLD_PX;
   }, []);
+  // Whether the first load has been positioned yet: at the top, or with startAtBottom at the
+  // bottom and following. startAtBottom can arrive after the first entries do.
+  const placedRef = useRef(false);
   useLayoutEffect(() => {
     const previousCount = seenCountRef.current;
     seenCountRef.current = entries.length;
-    // The first load opens at the top of the transcript; only later appends follow.
-    if (previousCount === 0 || entries.length <= previousCount) return;
     const pane = paneRef.current;
-    if (pane && followRef.current) pane.scrollTop = pane.scrollHeight;
-  }, [entries]);
+    if (!pane || entries.length === 0) return;
+    if (!placedRef.current) {
+      if (startAtBottom) {
+        pane.scrollTop = pane.scrollHeight;
+        followRef.current = true;
+        placedRef.current = true;
+      }
+      if (previousCount === 0) return;
+    }
+    if (entries.length > previousCount && followRef.current) pane.scrollTop = pane.scrollHeight;
+  }, [entries, startAtBottom]);
   // A pane that shrinks (e.g. under a growing message composer) fires no scroll event and keeps
   // its scrollTop, which would slide the newest message out of view; keep it pinned instead.
   useLayoutEffect(() => {

@@ -98,6 +98,7 @@ export default function AgentPage() {
         tab={tab}
         onChangeTab={setTab}
         onSent={refreshChannels}
+        isLive={liveSession !== null}
       />
       {tab === 'session' && liveSession && (
         <MessageComposer

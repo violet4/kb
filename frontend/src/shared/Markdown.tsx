@@ -33,12 +33,13 @@ function ensureStyleInjected() {
 
 interface MarkdownProps {
   text: string;
+  color?: string; // body text color; defaults to tokens.color.text
 }
 
 // Adapter around marked+dompurify (see kb Notes #285/#286 for the supply-chain audit) --
 // keeps the two libraries confined to this one component per kb instructions #39
 // (libraries), so callers (SessionTranscript, etc.) never touch marked/dompurify directly.
-export default function Markdown({ text }: MarkdownProps) {
+export default function Markdown({ text, color = tokens.color.text }: MarkdownProps) {
   ensureStyleInjected();
   const html = useMemo(() => DOMPurify.sanitize(marked.parse(text, { async: false, breaks: true })), [text]);
   // dangerouslySetInnerHTML must receive a referentially stable object across renders where
@@ -95,7 +96,7 @@ export default function Markdown({ text }: MarkdownProps) {
     <div
       ref={ref}
       className="kb-markdown"
-      style={{ fontSize: 14, color: tokens.color.text }}
+      style={{ fontSize: 14, color }}
       onClick={handleClick}
       dangerouslySetInnerHTML={htmlProp}
     />

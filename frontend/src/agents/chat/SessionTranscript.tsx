@@ -73,9 +73,7 @@ function BlockRow({
         <>
           {block.kind === 'text' && <Markdown text={block.text ?? ''} />}
           {block.kind === 'thinking' && (
-            <div style={{ color: tokens.color.textMuted, fontStyle: 'italic' }}>
-              <Markdown text={block.text ?? ''} />
-            </div>
+            <Markdown text={block.text ?? ''} color={tokens.color.thinking} />
           )}
           {block.kind === 'tool_use' && (
             <pre
@@ -177,6 +175,7 @@ const MessageRow = memo(function MessageRow({
   const addressedBlocks = useMemo(() => filterBlocks(entry.blocks, filter), [entry.blocks, filter]);
   if (addressedBlocks.length === 0) return null;
   const isUser = message.role === 'user';
+  const isHuman = isUser && isHumanText(message);
   return (
     <div
       style={{
@@ -186,7 +185,7 @@ const MessageRow = memo(function MessageRow({
         padding: 12,
         borderRadius: 8,
         border: `1px solid ${tokens.color.border}`,
-        background: isUser ? tokens.color.surface : 'transparent',
+        background: isHuman ? tokens.color.humanMessage : isUser ? tokens.color.surface : 'transparent',
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, color: tokens.color.textMuted }}>
@@ -209,6 +208,11 @@ const MessageRow = memo(function MessageRow({
     </div>
   );
 });
+
+// Text a person typed, as opposed to a tool result or text the harness injected (isMeta) on the user's turn.
+function isHumanText(message: ChatMessage): boolean {
+  return message.blocks.some((b) => b.kind === 'text' && b.tags.isMeta !== 'true');
+}
 
 // Distance from the bottom, in pixels, within which the message pane counts as scrolled to
 // the bottom and keeps following new messages.

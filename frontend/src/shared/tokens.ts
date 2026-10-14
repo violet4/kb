@@ -15,6 +15,8 @@ const color = {
   due: '#e0a94c',
   barTrack: '#3a3f47',
   barFill: '#7c5cff',
+  humanMessage: '#1c2a3d', // a message a person typed, set apart from tool results and harness-injected text
+  thinking: '#b8a6e6', // a model's thinking, set apart from its reply by hue instead of italics
 };
 
 export const tokens = {

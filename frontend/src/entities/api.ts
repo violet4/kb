@@ -72,3 +72,11 @@ export async function updateEntityField(
   if (!response.ok) throw new Error(`Failed to update ${type}:${id}.${field} -> ${response.status} ${await response.text()}`);
   return response.json();
 }
+
+// Soft delete (reversible): the row leaves list/search views but stays reachable here.
+export async function setEntityDeleted(type: EntityType, id: number, deleted: boolean): Promise<EntityRow> {
+  const path = deleted ? `/entities/${type}/${id}` : `/entities/${type}/${id}/restore`;
+  const response = await fetch(`${API_BASE}${path}`, { method: deleted ? 'DELETE' : 'POST' });
+  if (!response.ok) throw new Error(`${deleted ? 'Delete' : 'Restore'} failed -> ${response.status} ${await response.text()}`);
+  return response.json();
+}

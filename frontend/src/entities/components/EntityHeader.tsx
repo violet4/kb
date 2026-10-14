@@ -3,6 +3,7 @@ import PlacementControl from '../../contexts/components/PlacementControl';
 import { tokens } from '../../shared/tokens';
 import { rowToEntityDetail } from '../rowToEntityDetail';
 import type { ColumnSchema, EntityDetail } from '../types';
+import DeleteControl from './DeleteControl';
 import EditableFieldControl from './renderers/EditableFieldControl';
 
 interface EntityHeaderProps {
@@ -66,6 +67,7 @@ export default function EntityHeader({ entity, titleSchema, placementSchema, onF
             {entity.status}
           </span>
         )}
+        <DeleteControl entity={entity} onChanged={onFieldSaved} />
       </div>
     </div>
   );

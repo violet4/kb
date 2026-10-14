@@ -33,6 +33,7 @@ export interface EntityDetail {
   placement: Placement | null; // null for types with no context
   created_at: string;
   updated_at: string;
+  deleted_at: string | null; // set while soft-deleted
   fields: Record<string, unknown>;
 }
 

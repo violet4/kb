@@ -20,11 +20,11 @@ from sqlalchemy import inspect, select
 from sqlalchemy.orm import Session
 
 from api.deps import get_session
-from models.base import UtcDateTime
+from models.base import UtcDateTime, _now
 from context import PlacementError, place, placement_kind, placement_required
 from archivebox_compat.config import ArchiveBoxConfigError
 from kb_cli.archivebox import archivebox_url
-from models.context import Context, Tag
+from models.context import Context, ContextError, Tag
 from models.journal.journal import Journal, JournalAction
 from models.journal.tracking import HasJournal
 from models.knowledge.archived_link import ArchivedLink
@@ -353,6 +353,30 @@ async def update_entity_field(
     session.commit()
     session.refresh(row)
     return _to_row(entity_type, row, columns)
+
+
+def _set_deleted(session: Session, entity_type: str, entity_id: int, deleted: bool) -> dict[str, Any]:
+    """Soft delete or restore: deleted_at drops the row out of list/search/active views while
+    keeping it reachable here, the same reversible delete as `kb <noun> delete`."""
+    model = _model_or_404(entity_type)
+    row = _get_or_404(session, entity_type, entity_id)
+    try:
+        row.deleted_at = _now() if deleted else None
+    except ContextError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    session.commit()
+    session.refresh(row)
+    return _to_row(entity_type, row, _introspect_columns(entity_type, model))
+
+
+@router.delete("/{entity_type}/{entity_id}")
+async def delete_entity(entity_type: str, entity_id: int, session: Session = Depends(get_session)) -> dict[str, Any]:
+    return _set_deleted(session, entity_type, entity_id, deleted=True)
+
+
+@router.post("/{entity_type}/{entity_id}/restore")
+async def restore_entity(entity_type: str, entity_id: int, session: Session = Depends(get_session)) -> dict[str, Any]:
+    return _set_deleted(session, entity_type, entity_id, deleted=False)
 
 
 class PlacementIn(BaseModel):

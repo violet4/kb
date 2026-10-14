@@ -12,6 +12,7 @@ A session started with plain `claude` has no socket and accepts no input this wa
 refuses to inject keystrokes into a terminal a process does not own (TIOCSTI is disabled
 by default since kernel 6.2), which is why the wrapper has to own the pseudo-terminal."""
 
+import collections
 import errno
 import fcntl
 import json
@@ -29,9 +30,9 @@ from pathlib import Path
 
 SOCKET_DIR = Path(os.environ.get("XDG_RUNTIME_DIR") or f"/tmp/kb-{os.getuid()}") / "kb" / "claude"
 
-# Pause between the end of the paste and Enter, so the TUI has finished handling the paste
-# before the submit key arrives.
+# Pauses that keep Claude Code from folding Enter, or the next message, into a paste; see _Typist.
 _SUBMIT_DELAY_SECONDS = 0.15
+_NEXT_MESSAGE_DELAY_SECONDS = 0.5
 _PASTE_START = b"\x1b[200~"
 _PASTE_END = b"\x1b[201~"
 # Every C0 control except tab and newline, DEL, and every C1 control. Removing them keeps the
@@ -91,6 +92,37 @@ def _copy_window_size(src_fd: int, dst_fd: int) -> None:
         pass
 
 
+class _Typist:
+    """Types queued messages into the pseudo-terminal one at a time: paste, pause, Enter,
+    pause. Claude Code folds input that arrives right after a paste into that paste, so an
+    Enter or a second message sent without the pauses merges into the previous message."""
+
+    def __init__(self, master_fd: int) -> None:
+        self.master_fd = master_fd
+        self.queue: collections.deque[str] = collections.deque()
+        self._submit_at: float | None = None
+        self._next_paste_at = 0.0
+
+    def seconds_until_due(self) -> float | None:
+        if self._submit_at is not None:
+            due = self._submit_at
+        elif self.queue:
+            due = self._next_paste_at
+        else:
+            return None
+        return max(0.0, due - time.monotonic())
+
+    def type_due(self) -> None:
+        now = time.monotonic()
+        if self._submit_at is not None and now >= self._submit_at:
+            _write_all(self.master_fd, b"\r")
+            self._submit_at = None
+            self._next_paste_at = now + _NEXT_MESSAGE_DELAY_SECONDS
+        if self._submit_at is None and self.queue and now >= self._next_paste_at:
+            _write_all(self.master_fd, _PASTE_START + self.queue.popleft().encode() + _PASTE_END)
+            self._submit_at = now + _SUBMIT_DELAY_SECONDS
+
+
 def _read_request(conn: socket.socket) -> str:
     conn.settimeout(2)
     line = conn.makefile("rb").readline(1 << 20)
@@ -132,11 +164,10 @@ def run(argv: list[str]) -> int:
     selector.register(master_fd, selectors.EVENT_READ, "pty")
     selector.register(stdin_fd, selectors.EVENT_READ, "stdin")
     selector.register(listener, selectors.EVENT_READ, "socket")
-    submit_at: float | None = None
+    typist = _Typist(master_fd)
     try:
         while True:
-            timeout = None if submit_at is None else max(0.0, submit_at - time.monotonic())
-            for key, _ in selector.select(timeout):
+            for key, _ in selector.select(typist.seconds_until_due()):
                 if key.data == "pty":
                     try:
                         data = os.read(master_fd, 65536)
@@ -159,10 +190,7 @@ def run(argv: list[str]) -> int:
                         text = _read_request(conn)
                         reply: dict[str, object]
                         if text:
-                            if submit_at is not None:
-                                _write_all(master_fd, b"\r")
-                            _write_all(master_fd, _PASTE_START + text.encode() + _PASTE_END)
-                            submit_at = time.monotonic() + _SUBMIT_DELAY_SECONDS
+                            typist.queue.append(text)
                             reply = {"ok": True}
                         else:
                             reply = {"ok": False, "error": "empty message"}
@@ -170,9 +198,7 @@ def run(argv: list[str]) -> int:
                             conn.sendall(json.dumps(reply).encode() + b"\n")
                         except OSError:
                             pass
-            if submit_at is not None and time.monotonic() >= submit_at:
-                _write_all(master_fd, b"\r")
-                submit_at = None
+            typist.type_due()
     finally:
         listener.close()
         path.unlink(missing_ok=True)

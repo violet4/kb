@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { tokens } from '../../shared/tokens';
 
 interface MessageComposerProps {
@@ -19,15 +19,6 @@ export default function MessageComposer({
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  // Grow with the message up to maxHeight, then scroll inside, so the content above stays in view.
-  useLayoutEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    textarea.style.height = 'auto';
-    textarea.style.height = `${textarea.scrollHeight + textarea.offsetHeight - textarea.clientHeight}px`;
-  }, [body]);
 
   async function handleSend() {
     const trimmed = body.trim();
@@ -45,7 +36,15 @@ export default function MessageComposer({
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingTop: 8, borderTop: `1px solid ${tokens.color.border}` }}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 4,
+        paddingTop: 8,
+        borderTop: `1px solid ${tokens.color.border}`,
+      }}
+    >
       {/* Always rendered, with its line reserved, so a status appearing never moves the textarea. */}
       <p
         style={{
@@ -58,34 +57,43 @@ export default function MessageComposer({
         {disabledReason ?? error}
       </p>
       <div style={{ display: 'flex', gap: 8 }}>
-        <textarea
-          ref={textareaRef}
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          onKeyDown={(e) => {
-            const isSendKey = sendOnModEnter ? e.ctrlKey || e.metaKey : !e.shiftKey;
-            if (e.key === 'Enter' && isSendKey) {
-              e.preventDefault();
-              handleSend();
-            }
-          }}
-          placeholder={placeholder}
-          rows={2}
-          style={{
-            flex: 1,
-            resize: 'none',
-            maxHeight: '40vh',
-            overflowY: 'auto',
-            boxSizing: 'border-box',
-            padding: '8px 10px',
-            borderRadius: 6,
-            border: `1px solid ${tokens.color.border}`,
-            background: tokens.color.surface,
-            color: tokens.color.text,
-            fontSize: 14,
-            fontFamily: 'inherit',
-          }}
-        />
+        {/* The textarea grows with its message up to maxHeight, then scrolls inside, so the
+            content above stays in view. A hidden copy of the text in the same grid cell sets the
+            cell's height; measuring the textarea itself would mean collapsing it first, and that
+            momentary reflow scrolls the content above. */}
+        <div style={{ flex: 1, display: 'grid' }}>
+          <div
+            aria-hidden
+            style={{
+              ...textBoxStyle,
+              visibility: 'hidden',
+              whiteSpace: 'pre-wrap',
+              overflow: 'hidden',
+            }}
+          >
+            {body + ' '}
+          </div>
+          <textarea
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            onKeyDown={(e) => {
+              const isSendKey = sendOnModEnter ? e.ctrlKey || e.metaKey : !e.shiftKey;
+              if (e.key === 'Enter' && isSendKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
+            placeholder={placeholder}
+            rows={2}
+            style={{
+              ...textBoxStyle,
+              resize: 'none',
+              overflowY: 'auto',
+              background: tokens.color.surface,
+              color: tokens.color.text,
+            }}
+          />
+        </div>
         <button
           type="button"
           onClick={handleSend}
@@ -108,3 +116,17 @@ export default function MessageComposer({
     </div>
   );
 }
+
+// Shared by the textarea and its hidden sizing copy, which must wrap text identically.
+const textBoxStyle = {
+  gridArea: '1 / 1',
+  maxHeight: '40vh',
+  boxSizing: 'border-box',
+  padding: '8px 10px',
+  borderRadius: 6,
+  border: `1px solid ${tokens.color.border}`,
+  fontSize: 14,
+  lineHeight: 1.4,
+  fontFamily: 'inherit',
+  overflowWrap: 'break-word',
+} as const;

@@ -1,5 +1,7 @@
 #!/bin/sh
+# fmt: off
 ''''exec uv run --project "$(dirname "$(readlink -f "$0")")" python3 "$0" "$@" # '''
+# fmt: on
 """Global kb CLI entry point. Usable from any directory (see ~/bin/kb symlink).
 
 Usage: kb [--as-of WHEN] <command> [subcommand ...] [args ...]

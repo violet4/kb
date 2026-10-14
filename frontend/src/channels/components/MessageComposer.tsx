@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { tokens } from '../../shared/tokens';
 
 interface MessageComposerProps {
@@ -8,6 +8,8 @@ interface MessageComposerProps {
   sendOnModEnter?: boolean;
   // Present while sending is not possible; shown in place of the error and disables Send.
   disabledReason?: string | null;
+  // Extra buttons shown beside Send.
+  actions?: ReactNode;
 }
 
 export default function MessageComposer({
@@ -15,6 +17,7 @@ export default function MessageComposer({
   placeholder,
   sendOnModEnter = false,
   disabledReason = null,
+  actions,
 }: MessageComposerProps) {
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
@@ -94,24 +97,27 @@ export default function MessageComposer({
             }}
           />
         </div>
-        <button
-          type="button"
-          onClick={handleSend}
-          disabled={sending || !body.trim() || !!disabledReason}
-          style={{
-            alignSelf: 'flex-end',
-            padding: '8px 16px',
-            borderRadius: 6,
-            border: `1px solid ${tokens.color.border}`,
-            background: tokens.color.accent,
-            color: tokens.color.background,
-            fontSize: 13,
-            cursor: sending || !body.trim() || !!disabledReason ? 'default' : 'pointer',
-            opacity: sending || !body.trim() || !!disabledReason ? 0.5 : 1,
-          }}
-        >
-          Send
-        </button>
+        <div style={{ display: 'flex', gap: 8, alignSelf: 'flex-end' }}>
+          {actions}
+          <button
+            type="button"
+            onClick={handleSend}
+            disabled={sending || !body.trim() || !!disabledReason}
+            style={{
+              alignSelf: 'flex-end',
+              padding: '8px 16px',
+              borderRadius: 6,
+              border: `1px solid ${tokens.color.border}`,
+              background: tokens.color.accent,
+              color: tokens.color.background,
+              fontSize: 13,
+              cursor: sending || !body.trim() || !!disabledReason ? 'default' : 'pointer',
+              opacity: sending || !body.trim() || !!disabledReason ? 0.5 : 1,
+            }}
+          >
+            Send
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -8,7 +8,9 @@ export interface AgentSession {
   last_message_seconds: number | null;
   cwd: string;
   title: string;
-  accepts_input: boolean;
+  // Why the page must not send a prompt / press Esc now, or null when it may (kb_cli/sessions.py).
+  prompt_blocker: string | null;
+  interrupt_blocker: string | null;
 }
 
 // Mirrors api/sessions_router.py's HistorySessionOut Pydantic model.

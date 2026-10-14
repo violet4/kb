@@ -27,3 +27,7 @@ export async function fetchHistorySessions(project: string | null): Promise<Hist
 export async function sendSessionInput(sessionId: string, text: string): Promise<void> {
   await sendJson('POST', `/sessions/${encodeURIComponent(sessionId)}/input`, { text });
 }
+
+export async function interruptSession(sessionId: string): Promise<void> {
+  await sendJson('POST', `/sessions/${encodeURIComponent(sessionId)}/interrupt`, {});
+}

@@ -6,6 +6,7 @@ import type { AgentSession } from '../types';
 interface UseAgentSessionsResult {
   sessions: AgentSession[];
   error: string | null;
+  refresh: () => void;
 }
 
 // Polls at intervalSeconds on a fixed schedule (not a "wait intervalSeconds after the
@@ -14,6 +15,6 @@ interface UseAgentSessionsResult {
 // shared, generation-scoped poll mechanism this builds on.
 export function useAgentSessions(intervalSeconds: number): UseAgentSessionsResult {
   const fetcher = useCallback(() => fetchAgentSessions(), []);
-  const { data, error } = usePolling(fetcher, intervalSeconds);
-  return { sessions: data ?? [], error };
+  const { data, error, refresh } = usePolling(fetcher, intervalSeconds);
+  return { sessions: data ?? [], error, refresh };
 }

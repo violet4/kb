@@ -1,11 +1,11 @@
 import { pageTitle, useDocumentTitle } from '../shared/useDocumentTitle';
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import AgentContentTabs, { AgentTabBar, type AgentContentTab } from './AgentContentTabs';
 import Popover from '../shared/Popover';
 import { isBoolean, useStoredState } from '../shared/useStoredState';
-import { sendSessionInput } from './api';
-import type { AgentSession } from './types';
+import { interruptSession, sendSessionInput } from './api';
+import InterruptButton from './InterruptButton';
 import MessageComposer from '../channels/components/MessageComposer';
 import { formatSeconds } from './formatSeconds';
 import { useAgentSessions } from './hooks/useAgentSessions';
@@ -46,8 +46,29 @@ export default function AgentPage() {
   // Present only while the session is live: the same polled list as the Agents table's
   // Current tab, so the header's age matches the table's.
   const [agentsIntervalSeconds] = useRefreshIntervalSetting();
-  const { sessions: liveSessions } = useAgentSessions(agentsIntervalSeconds);
+  const { sessions: liveSessions, refresh: refreshLiveSessions } = useAgentSessions(agentsIntervalSeconds);
   const liveSession = liveSessions.find((s) => s.id === sessionId) ?? null;
+
+  const interrupt = useCallback(async () => {
+    if (!sessionId) return;
+    await interruptSession(sessionId);
+    refreshLiveSessions();
+  }, [sessionId, refreshLiveSessions]);
+
+  // Escape anywhere on the Session tab presses Esc in the session, as it would in its terminal.
+  // An open popover or dialog takes Escape first (closing it), and so does text mid-composition
+  // in an input method.
+  const canInterrupt = tab === 'session' && liveSession !== null && liveSession.interrupt_blocker === null;
+  useEffect(() => {
+    if (!canInterrupt) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== 'Escape' || e.isComposing || e.defaultPrevented) return;
+      if (document.querySelector(':popover-open, dialog[open]')) return;
+      interrupt().catch(() => {}); // the Esc button shows failures; the next poll shows the state
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [canInterrupt, interrupt]);
   useDocumentTitle(pageTitle('agents', liveSession?.title || dmChannel?.agent_title || (sessionId ?? '').slice(0, 8)));
 
   function setTab(next: AgentContentTab) {
@@ -147,22 +168,18 @@ export default function AgentPage() {
       />
       {tab === 'session' && liveSession && (
         <MessageComposer
-          onSend={(text) => sendSessionInput(sessionId, text)}
+          onSend={async (text) => {
+            await sendSessionInput(sessionId, text);
+            refreshLiveSessions();
+          }}
           placeholder="Prompt this session (Ctrl+Enter to send)"
           sendOnModEnter
-          disabledReason={sessionInputBlocker(liveSession)}
+          disabledReason={liveSession.prompt_blocker}
+          actions={<InterruptButton onInterrupt={interrupt} blocker={liveSession.interrupt_blocker} />}
         />
       )}
     </div>
   );
-}
-
-// Why the session can't take a prompt from here right now, or null when it can. A busy session
-// is refused because Enter would answer a permission dialog if one is open.
-function sessionInputBlocker(session: AgentSession): string | null {
-  if (!session.accepts_input) return `Started without \`kb claude\`; resume it with \`kb claude --resume ${session.id}\` to send from here.`;
-  if (session.status !== 'idle') return 'Busy: send once this turn ends.';
-  return null;
 }
 
 const settingStyle = { display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, whiteSpace: 'nowrap' } as const;

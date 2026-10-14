@@ -30,6 +30,7 @@ from api.core_router import router as core_router
 from api.dailies_router import router as dailies_router
 from api.entities_router import router as entities_router
 from api.events_router import router as events_router
+from api.journal_router import router as journal_router
 from api.log_router import router as log_router
 from api.search_router import router as search_router
 from api.sessions_router import router as sessions_router
@@ -95,6 +96,7 @@ app.include_router(events_router)
 app.include_router(entities_router)
 app.include_router(contexts_router)
 app.include_router(log_router)
+app.include_router(journal_router)
 app.include_router(search_router)
 app.include_router(archivebox_router)
 app.include_router(usage_router)

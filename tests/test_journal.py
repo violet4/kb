@@ -125,3 +125,16 @@ def test_every_browsable_entity_type_is_journaled() -> None:
     from api.entities_router import ENTITY_TYPES
 
     assert [name for name, model in ENTITY_TYPES.items() if not issubclass(model, HasJournal)] == []
+
+
+def test_recent_pages_newest_first_without_reads(db_session: Session, agent_session: HarnessSession) -> None:
+    todos = [make_todo(db_session, f"t{i}") for i in range(3)]
+    db_session.flush()
+    Journal.record_read(db_session, "Todo", todos[0].id)
+    db_session.flush()
+    first = Journal.recent(db_session, 2)
+    assert [e.entity_id for e in first] == [todos[2].id, todos[1].id]
+    assert all(e.action is not JournalAction.READ for e in first)
+    rest = Journal.recent(db_session, 2, before_id=first[-1].id)
+    assert [e.entity_id for e in rest] == [todos[0].id]
+    assert Journal.recent(db_session, 1, include_reads=True)[0].action is JournalAction.READ

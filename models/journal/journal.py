@@ -82,6 +82,19 @@ class Journal(Base):
         return session.scalars(q.order_by(cls.created_at, cls.id)).all()
 
     @classmethod
+    def recent(
+        cls, session: Session, limit: int, before_id: Optional[int] = None, include_reads: bool = False
+    ) -> Sequence[Journal]:
+        """Every record's history together, newest first: one page of `limit` entries older than
+        before_id. Paging by id rather than offset keeps pages stable while new entries arrive."""
+        q = select(cls)
+        if before_id is not None:
+            q = q.where(cls.id < before_id)
+        if not include_reads:
+            q = q.where(cls.action != JournalAction.READ)
+        return session.scalars(q.order_by(cls.id.desc()).limit(limit)).all()
+
+    @classmethod
     def for_session(cls, session: Session, session_id: int) -> Sequence[Journal]:
         """Everything one agent session did to kb records, oldest first: its trajectory."""
         return session.scalars(select(cls).where(cls.session_id == session_id).order_by(cls.created_at, cls.id)).all()

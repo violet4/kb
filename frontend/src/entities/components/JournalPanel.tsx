@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { isoDateTime } from '../../shared/isoDate';
 import { tokens } from '../../shared/tokens';
@@ -29,13 +30,15 @@ const ACTION_LABELS: Record<JournalEntry['action'], string | null> = {
   note: null,
 };
 
-function JournalEntryRow({ entry }: { entry: JournalEntry }) {
+// subject: which record the entry is about, for a list mixing several records' entries.
+export function JournalEntryRow({ entry, subject }: { entry: JournalEntry; subject?: ReactNode }) {
   const when = isoDateTime(entry.created_at_utc);
   const label = ACTION_LABELS[entry.action];
   return (
     <div style={{ fontSize: 13, borderLeft: `2px solid ${tokens.color.border}`, paddingLeft: 10 }}>
       <p style={{ margin: 0, color: tokens.color.textMuted, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <span>{when}</span>
+        {subject}
         {entry.session_id && (
           <Link to={`/agents/${entry.session_id}`} style={tokens.link} title={entry.session_id}>
             session {entry.session_id.slice(0, 8)}

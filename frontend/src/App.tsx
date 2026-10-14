@@ -9,6 +9,7 @@ import DailiesView from './dailies/DailiesView';
 import BrowseView from './entities/BrowseView';
 import EntityView from './entities/EntityView';
 import EventsView from './events/EventsView';
+import JournalView from './journal/JournalView';
 import LogView from './log/LogView';
 import SearchView from './search/SearchView';
 import NavBar from './shared/NavBar';
@@ -42,6 +43,7 @@ export default function App() {
           <Route path="/contexts" element={<ContextsView />} />
           <Route path="/contexts/:id" element={<ContextsView />} />
           <Route path="/log" element={<LogView />} />
+          <Route path="/journal" element={<JournalView />} />
           <Route path="/events" element={<EventsView />} />
           <Route path="/usage" element={<UsageView />} />
           <Route element={<AgentsLayout />}>

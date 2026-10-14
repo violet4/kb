@@ -10,6 +10,7 @@ export const PAGE_ICON = {
   dailies: '🔁',
   events: '📅',
   log: '📝',
+  journal: '📜',
   channels: '💬',
 } as const;
 

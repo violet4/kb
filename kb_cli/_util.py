@@ -236,6 +236,30 @@ def not_deleted(q: Any, model: Type[Any]) -> Any:
     return q.where(model.deleted_at.is_(None))
 
 
+def add_ids_argument(parser: argparse.ArgumentParser) -> None:
+    """The ID positional of every `kb <noun> show`: one or more ids, read by show_each."""
+    parser.add_argument("ids", nargs="+", type=int, metavar="ID", help="one or more ids, printed in the order given")
+
+
+def show_each(session: Session, model: Type[E], ids: Sequence[int], print_one: Callable[[E], None]) -> None:
+    """The body of every `kb <noun> show ID [ID ...]`: each record printed by print_one, in the
+    order given, a blank line between them, and a journal read recorded for each. A missing id
+    is reported on stderr and the rest still print; the command then exits 1."""
+    missing = False
+    for i, entity_id in enumerate(ids):
+        if i > 0:
+            print()
+        row = session.get(model, entity_id)
+        if row is None:
+            print(f"{model.__name__} #{entity_id}: not found", file=sys.stderr)
+            missing = True
+            continue
+        journal_read(session, model.__name__, entity_id)
+        print_one(row)
+    if missing:
+        sys.exit(1)
+
+
 def apply_soft_delete(session: Session, model: Type[E], entity_id: int, entity_label: str) -> E:
     """`kb <noun> delete ID` -- reversible, no settings gate: stamps deleted_at rather than
     removing the row, so it drops out of list/search/active-style queries (not_deleted) but

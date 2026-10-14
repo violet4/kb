@@ -12,7 +12,8 @@ from models.journal.journal import Journal
 from models.work.goal import Goal, GoalStatus
 
 from kb_cli._util import (
-    journal_read,
+    add_ids_argument,
+    show_each,
     add_context_filter_argument,
     add_history_arg,
     add_placement_argument,
@@ -62,14 +63,7 @@ def cmd_update(args: argparse.Namespace) -> None:
 
 
 def cmd_show(args: argparse.Namespace) -> None:
-    for i, goal_id in enumerate(args.ids):
-        if i > 0:
-            print()
-        goal = args.session.get(Goal, goal_id)
-        if goal is None:
-            print(f"id: {goal_id}\nerror: not found", file=sys.stderr)
-            continue
-        journal_read(args.session, "Goal", goal.id)
+    def print_one(goal: Goal) -> None:
         print(f"id: {goal.id}")
         print(f"title: {goal.title}")
         print(f"status: {goal.status.value}")
@@ -90,6 +84,8 @@ def cmd_show(args: argparse.Namespace) -> None:
             f"journal show Goal {goal.id} or kb goal show {goal.id} --history [N]",
         )
         print_links(args.session, "Goal", goal.id)
+
+    show_each(args.session, Goal, args.ids, print_one)
 
 
 def cmd_list(args: argparse.Namespace) -> None:
@@ -178,7 +174,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_update.set_defaults(func=cmd_update)
 
     p_show = sub.add_parser("show", help="Show Goal details")
-    p_show.add_argument("ids", nargs="+", type=int)
+    add_ids_argument(p_show)
     add_history_arg(p_show)
     p_show.set_defaults(func=cmd_show)
 

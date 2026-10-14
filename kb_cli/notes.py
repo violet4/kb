@@ -9,7 +9,8 @@ from sqlalchemy import select
 from client import KBClient
 from context import find_context, place, resolve_context_only
 from kb_cli._util import (
-    journal_read,
+    add_ids_argument,
+    show_each,
     add_placement_argument,
     apply_purge,
     apply_restore,
@@ -25,20 +26,18 @@ from models.knowledge.note import Collection, Note
 
 
 def cmd_show(args: argparse.Namespace) -> None:
-    note = Note.get(args.session, args.id)
-    if note is None:
-        print(f"Note #{args.id}: not found", file=sys.stderr)
-        sys.exit(1)
-    journal_read(args.session, "Note", note.id)
-    print(f"id: {note.id}")
-    print(f"title: {note.title}")
-    print(f"collection: {note.collection.value}")
-    print(f"context: {note.context.name}")
-    if note.tags:
-        print(f"tags: {note.tags}")
-    print_timestamps(note)
-    print(f"body: {note.body}")
-    print_links(args.session, "Note", note.id)
+    def print_one(note: Note) -> None:
+        print(f"id: {note.id}")
+        print(f"title: {note.title}")
+        print(f"collection: {note.collection.value}")
+        print(f"context: {note.context.name}")
+        if note.tags:
+            print(f"tags: {note.tags}")
+        print_timestamps(note)
+        print(f"body: {note.body}")
+        print_links(args.session, "Note", note.id)
+
+    show_each(args.session, Note, args.ids, print_one)
 
 
 def _resolve_collection(name: Optional[str]) -> Optional[Collection]:
@@ -128,7 +127,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_show = sub.add_parser("show", help="Show a note by id")
-    p_show.add_argument("id", type=int)
+    add_ids_argument(p_show)
     p_show.set_defaults(func=cmd_show)
 
     p_add = sub.add_parser("add", help="Add a note")

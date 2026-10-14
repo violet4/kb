@@ -12,7 +12,8 @@ from context import resolve_placement
 from models.work.event import Event
 
 from kb_cli._util import (
-    journal_read,
+    add_ids_argument,
+    show_each,
     add_context_filter_argument,
     add_placement_argument,
     apply_context_or_tag_update,
@@ -66,15 +67,13 @@ def _event_fields(event: Event) -> list[tuple[str, object]]:
 
 
 def cmd_show(args: argparse.Namespace) -> None:
-    event = args.session.get(Event, args.id)
-    if event is None:
-        print(f"Event #{args.id}: not found", file=sys.stderr)
-        sys.exit(1)
-    journal_read(args.session, "Event", event.id)
-    print_fields(_event_fields(event))
-    next_occ = event.next_occurrence()
-    print(f"next_occurrence: {next_occ.isoformat() if next_occ else 'none (past, non-recurring)'}")
-    print_links(args.session, "Event", event.id)
+    def print_one(event: Event) -> None:
+        print_fields(_event_fields(event))
+        next_occ = event.next_occurrence()
+        print(f"next_occurrence: {next_occ.isoformat() if next_occ else 'none (past, non-recurring)'}")
+        print_links(args.session, "Event", event.id)
+
+    show_each(args.session, Event, args.ids, print_one)
 
 
 def cmd_list(args: argparse.Namespace) -> None:
@@ -187,7 +186,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_show = sub.add_parser("show", help="Show Event details")
-    p_show.add_argument("id", type=int)
+    add_ids_argument(p_show)
     p_show.set_defaults(func=cmd_show)
 
     p_list = sub.add_parser("list", help="List upcoming events, soonest first")

@@ -13,7 +13,8 @@ from models.work.todo import Todo, TodoKind, TodoResolutionDistance, TodoSeverit
 from models.work.wishlist import WishlistEffort
 
 from kb_cli._util import (
-    journal_read,
+    add_ids_argument,
+    show_each,
     add_history_arg,
     apply_context_or_tag_update,
     add_context_filter_argument,
@@ -50,14 +51,7 @@ def _parse_defer_until(raw: str) -> datetime:
 
 
 def cmd_show(args: argparse.Namespace) -> None:
-    for i, todo_id in enumerate(args.ids):
-        if i > 0:
-            print()
-        todo = args.session.get(Todo, todo_id)
-        if todo is None:
-            print(f"id: {todo_id}\nerror: not found", file=sys.stderr)
-            continue
-        journal_read(args.session, "Todo", todo.id)
+    def print_one(todo: Todo) -> None:
         print(f"id: {todo.id}")
         print(f"title: {todo.title}")
         print(f"status: {todo.status.value}")
@@ -93,6 +87,8 @@ def cmd_show(args: argparse.Namespace) -> None:
             f"journal show Todo {todo.id} or kb todo show {todo.id} --history [N]",
         )
         print_links(args.session, "Todo", todo.id)
+
+    show_each(args.session, Todo, args.ids, print_one)
 
 
 def cmd_add(args: argparse.Namespace) -> None:
@@ -265,7 +261,7 @@ def add_subparser(
     kind_choices = [k.value for k in TodoKind]
 
     p_show = sub.add_parser("show", help=f"Show {help_prefix} details")
-    p_show.add_argument("ids", nargs="+", type=int)
+    add_ids_argument(p_show)
     add_history_arg(p_show)
     p_show.set_defaults(func=cmd_show)
 

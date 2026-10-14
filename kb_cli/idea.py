@@ -10,7 +10,8 @@ from models.journal.journal import Journal
 from models.work.idea import Idea, IdeaStatus
 
 from kb_cli._util import (
-    journal_read,
+    add_ids_argument,
+    show_each,
     add_context_filter_argument,
     add_history_arg,
     add_placement_argument,
@@ -60,14 +61,7 @@ def cmd_update(args: argparse.Namespace) -> None:
 
 
 def cmd_show(args: argparse.Namespace) -> None:
-    for i, idea_id in enumerate(args.ids):
-        if i > 0:
-            print()
-        idea = args.session.get(Idea, idea_id)
-        if idea is None:
-            print(f"id: {idea_id}\nerror: not found", file=sys.stderr)
-            continue
-        journal_read(args.session, "Idea", idea.id)
+    def print_one(idea: Idea) -> None:
         print(f"id: {idea.id}")
         print(f"title: {idea.title}")
         print(f"status: {idea.status.value}")
@@ -88,6 +82,8 @@ def cmd_show(args: argparse.Namespace) -> None:
             f"journal show Idea {idea.id} or kb idea show {idea.id} --history [N]",
         )
         print_links(args.session, "Idea", idea.id)
+
+    show_each(args.session, Idea, args.ids, print_one)
 
 
 def cmd_list(args: argparse.Namespace) -> None:
@@ -163,7 +159,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_update.set_defaults(func=cmd_update)
 
     p_show = sub.add_parser("show", help="Show idea details")
-    p_show.add_argument("ids", nargs="+", type=int)
+    add_ids_argument(p_show)
     add_history_arg(p_show)
     p_show.set_defaults(func=cmd_show)
 

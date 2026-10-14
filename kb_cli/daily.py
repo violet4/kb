@@ -11,7 +11,8 @@ from context import resolve_placement
 from models.work.daily import Daily, DailyTier
 
 from kb_cli._util import (
-    journal_read,
+    add_ids_argument,
+    show_each,
     add_placement_argument,
     apply_context_or_tag_update,
     apply_purge,
@@ -46,13 +47,11 @@ def _daily_fields(daily: Daily) -> list[tuple[str, object]]:
 
 
 def cmd_show(args: argparse.Namespace) -> None:
-    daily = args.session.get(Daily, args.id)
-    if daily is None:
-        print(f"Daily #{args.id}: not found", file=sys.stderr)
-        sys.exit(1)
-    journal_read(args.session, "Daily", daily.id)
-    print_fields(_daily_fields(daily))
-    print_links(args.session, "Daily", daily.id)
+    def print_one(daily: Daily) -> None:
+        print_fields(_daily_fields(daily))
+        print_links(args.session, "Daily", daily.id)
+
+    show_each(args.session, Daily, args.ids, print_one)
 
 
 def cmd_list(args: argparse.Namespace) -> None:
@@ -242,7 +241,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_show = sub.add_parser("show", help="Show Daily details")
-    p_show.add_argument("id", type=int)
+    add_ids_argument(p_show)
     p_show.set_defaults(func=cmd_show)
 
     p_list = sub.add_parser("list", help="List dailies due today (default: irl+critical only, per --domain/--tier)")

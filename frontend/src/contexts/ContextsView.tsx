@@ -13,6 +13,7 @@ import { tokens } from '../shared/tokens';
 import { usePolling } from '../shared/usePolling';
 import { fetchContextPage, fetchContextTree, fetchInbox, fetchSessionRefs, quickCreate, type QuickCreateType } from './api';
 import ContextTreeNav from './components/ContextTreeNav';
+import { contextPaths } from './contextPaths';
 import SessionFollowPicker from './components/SessionFollowPicker';
 import type { ContextNode, ContextPage, ContextRef, NoteItem, SessionRefs, TodoItem, TouchedRecord, WishlistItem } from './types';
 import { InboxIdContext, useContextLink, useFollowedSession, useIncludeDescendants } from './useContextLink';
@@ -191,7 +192,7 @@ export default function ContextsView() {
           {pageError && <p style={{ color: tokens.color.danger }}>{pageError}</p>}
           {filterHits && showAllHits ? (
             followedId !== null ? (
-              <RecordsByType hits={filterHits} />
+              <RecordsByType hits={filterHits} tree={tree ?? []} />
             ) : (
               <RecordList hits={filterHits} describe={describeRecord} />
             )
@@ -707,20 +708,68 @@ function WishlistRow({ item, here }: { item: WishlistItem; here: number }) {
 }
 
 // Records grouped into the page's own sections, in its order, then one section per other
-// type present; each section keeps the records' incoming order.
-function RecordsByType({ hits }: { hits: RecordHit[] }) {
+// type present; each section is sub-grouped by context.
+function RecordsByType({ hits, tree }: { hits: RecordHit[]; tree: ContextNode[] }) {
+  const paths = useMemo(() => contextPaths(tree), [tree]);
   const otherTypes = [...new Set(hits.map((h) => h.type).filter((t) => !PAGE_TYPES.has(t)))].sort();
   const sections: (readonly [string, string])[] = [...PAGE_TYPE_SECTIONS, ...otherTypes.map((t) => [t, t] as const)];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 960 }}>
-      {sections.map(([type, title]) => {
-        const ofType = hits.filter((h) => h.type === type);
-        return (
-          <Section key={type} title={title} count={ofType.length}>
-            <RecordList hits={ofType} describe={describeRecord} />
-          </Section>
-        );
-      })}
+      {sections.map(([type, title]) => (
+        <TypeSection key={type} title={title} hits={hits.filter((h) => h.type === type)} paths={paths} />
+      ))}
+    </div>
+  );
+}
+
+// The section's count is its records; a record in several contexts is one record shown under each.
+function TypeSection({ title, hits, paths }: { title: string; hits: RecordHit[]; paths: ContextPath[] }) {
+  return (
+    <Section title={title} count={hits.length}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {groupByContext(hits, paths).map((group) => (
+          <ContextGroup key={group.contextId ?? 'none'} group={group} />
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+type ContextPath = ReturnType<typeof contextPaths>[number];
+
+interface RecordGroup {
+  contextId: number | null; // null: records with no (live) context
+  path: string;
+  hits: RecordHit[];
+}
+
+// One group per context holding any of the records, in tree order, each keeping the records'
+// incoming order; a tag-addressed record lands under every context it lives in. Records in no
+// known context come last.
+function groupByContext(hits: RecordHit[], paths: ContextPath[]): RecordGroup[] {
+  const groups = paths
+    .map(({ id, path }) => ({ contextId: id, path, hits: hits.filter((h) => h.context_ids.includes(id)) }))
+    .filter((g) => g.hits.length > 0);
+  const known = new Set(paths.map((p) => p.id));
+  const homeless = hits.filter((h) => !h.context_ids.some((c) => known.has(c)));
+  return homeless.length > 0 ? [...groups, { contextId: null, path: 'no context', hits: homeless }] : groups;
+}
+
+function ContextGroup({ group }: { group: RecordGroup }) {
+  const contextLink = useContextLink();
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <h3 style={{ margin: 0, fontSize: 12, fontWeight: 600, color: tokens.color.textMuted }}>
+        {group.contextId === null ? (
+          group.path
+        ) : (
+          <Link to={contextLink(group.contextId)} style={tokens.link}>
+            {group.path}
+          </Link>
+        )}{' '}
+        <span style={{ fontWeight: 400 }}>{group.hits.length}</span>
+      </h3>
+      <RecordList hits={group.hits} describe={describeRecord} />
     </div>
   );
 }

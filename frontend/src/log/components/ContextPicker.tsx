@@ -1,28 +1,7 @@
 import { useMemo, useState } from 'react';
+import { contextPaths } from '../../contexts/contextPaths';
 import type { ContextNode } from '../../contexts/types';
 import { tokens } from '../../shared/tokens';
-
-const SEPARATOR = ' / ';
-
-// Every context as its full tree path ("pg / alice"), depth-first in name order, so the
-// native datalist's substring filter matches on any ancestor name as well as the leaf.
-function contextPaths(nodes: ContextNode[]): { id: number; path: string }[] {
-  const children = new Map<number | null, ContextNode[]>();
-  for (const n of nodes) {
-    const key = n.parent_id !== null && nodes.some((p) => p.id === n.parent_id) ? n.parent_id : null;
-    children.set(key, [...(children.get(key) ?? []), n]);
-  }
-  const out: { id: number; path: string }[] = [];
-  const walk = (parent: number | null, prefix: string) => {
-    for (const n of [...(children.get(parent) ?? [])].sort((a, b) => a.name.localeCompare(b.name))) {
-      const path = prefix + n.name;
-      out.push({ id: n.id, path });
-      walk(n.id, path + SEPARATOR);
-    }
-  };
-  walk(null, '');
-  return out;
-}
 
 interface Props {
   nodes: ContextNode[];
@@ -30,7 +9,8 @@ interface Props {
   onChange: (id: number | null) => void;
 }
 
-// <input list> rather than <select>: with ~100+ contexts, substring search beats scrolling.
+// <input list> rather than <select>: with ~100+ contexts, substring search beats scrolling, and
+// matching full paths means any ancestor name finds a context as well as its own name.
 // The text is local state; the parent only ever sees a resolved context id (or null while
 // the typed text matches no path).
 export default function ContextPicker({ nodes, selectedId, onChange }: Props) {

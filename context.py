@@ -11,7 +11,8 @@ Two distinct questions, two distinct functions -- never conflate them:
 
 Neither ever creates a Context: an unknown name is a PlacementError listing the closest
 existing names and the `kb context add` command that would create it, so a typo can never
-grow the tree. Contexts are created only by `kb context add`.
+grow the tree. Contexts are created only by `kb context add`, except the inbox, which
+get_inbox_context creates on first use.
 
 Every script that needs a context from a name calls one of these, not Context directly.
 """
@@ -26,14 +27,12 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, class_mapper
 
 from models.behaviors.placement import HasContextOrTag
-from models.context import Context, Tag
-
-INBOX_CONTEXT_NAME = "inbox"
+from models.context import INBOX_CONTEXT_NAME, Context, ContextError, Tag
 
 TAG_PREFIX = "#"
 
 
-class PlacementError(ValueError):
+class PlacementError(ContextError):
     """A context/tag name that doesn't exist. The message is complete user-facing text."""
 
 

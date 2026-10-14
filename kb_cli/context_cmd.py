@@ -313,6 +313,7 @@ def cmd_reassign(args: argparse.Namespace) -> None:
 
 def cmd_rm(args: argparse.Namespace) -> None:
     context = find_context(args.session, args.name)
+    context.check_deletable()
     entities = _linked_entities(args.session, context)
     if entities:
         print(
@@ -341,6 +342,7 @@ def cmd_merge(args: argparse.Namespace) -> None:
     the single-step version of `reassign` (every entity) + `rm`, for the common "these two
     are actually the same place" case (see kb-instructions context-creation-check #65)."""
     source = find_context(args.session, args.name)
+    source.check_deletable()
     target = find_context(args.session, args.into)
     if source.id == target.id:
         print("Cannot merge a context into itself.", file=sys.stderr)

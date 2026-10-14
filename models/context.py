@@ -4,11 +4,29 @@ from __future__ import annotations
 
 from typing import Optional, Sequence
 
-from sqlalchemy import ForeignKey, Integer, Text, inspect, select
-from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
+from datetime import datetime
+
+from sqlalchemy import ForeignKey, Integer, Text, event, inspect, select
+from sqlalchemy.orm import Mapped, Session, mapped_column, relationship, validates
 
 from models.base import Base
 from models.columns import HasUniqueName
+
+# kb's own context: quick capture files into it, and `kb <noun> add inbox ...` names it, so it
+# is found by this name and can be neither renamed nor deleted (Context refuses both).
+INBOX_CONTEXT_NAME = "inbox"
+
+
+class ContextError(ValueError):
+    """A context operation that cannot be carried out. The message is complete user-facing text."""
+
+
+def _inbox_refusal(action: str) -> ContextError:  # action: "renamed" or "deleted"
+    return ContextError(
+        f"The {INBOX_CONTEXT_NAME!r} context cannot be {action}: quick capture and "
+        f"`kb <noun> add {INBOX_CONTEXT_NAME} ...` file into it by name. Move its records out with "
+        f"`kb context reassign TYPE:ID ... --to OTHER`; merging other contexts into it is allowed."
+    )
 
 
 class Context(Base, HasUniqueName):
@@ -28,6 +46,24 @@ class Context(Base, HasUniqueName):
 
     parent: Mapped[Optional[Context]] = relationship("Context", remote_side=[id])
     tags: Mapped[list["Tag"]] = relationship("Tag", secondary="context_tag")
+
+    def check_deletable(self) -> None:
+        """Raise ContextError if this context may never be deleted (the inbox). Deleting it fails
+        at flush regardless; a command calls this first to refuse before changing anything."""
+        if self.name == INBOX_CONTEXT_NAME:
+            raise _inbox_refusal("deleted")
+
+    @validates("name")
+    def _keep_inbox_name(self, _key: str, name: str) -> str:
+        if self.name == INBOX_CONTEXT_NAME and name != INBOX_CONTEXT_NAME:
+            raise _inbox_refusal("renamed")
+        return name
+
+    @validates("deleted_at")
+    def _keep_inbox_live(self, _key: str, deleted_at: Optional[datetime]) -> Optional[datetime]:
+        if deleted_at is not None:
+            self.check_deletable()
+        return deleted_at
 
     @classmethod
     def get_or_create(cls, session: Session, name: str, description: Optional[str] = None) -> Context:
@@ -158,3 +194,8 @@ class ContextTag(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     context_id: Mapped[int] = mapped_column(Integer, ForeignKey("context.id"), nullable=False)
     tag_id: Mapped[int] = mapped_column(Integer, ForeignKey("tag.id"), nullable=False)
+
+
+@event.listens_for(Context, "before_delete")
+def _refuse_inbox_delete(_mapper: object, _connection: object, context: Context) -> None:
+    context.check_deletable()

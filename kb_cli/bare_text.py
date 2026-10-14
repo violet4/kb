@@ -46,7 +46,8 @@ Every `add` takes where the record belongs as its first argument, CONTEXT: a con
 #TAG for a record that floats to every context carrying that tag. Example: "I need salt next time
 I'm in Serbule Keep" is `kb todo add "serbule keep" "buy salt"`, not a title that mentions the
 place in passing; "buy salt at any tavern" is `kb todo add "#tavern" "buy salt"`. When the right
-home is genuinely unclear, `inbox` is a real context for "file it later" -- type it explicitly.
+home is genuinely unclear, `inbox` is a real context for "file it later" -- type it explicitly. kb owns
+the inbox: it always exists and cannot be renamed or deleted.
 Notes, log entries, and wishlist items take a context only, not a tag.
 
 An unknown name is an error that lists close matches and the `kb context add NAME --parent P`

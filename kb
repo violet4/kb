@@ -83,7 +83,7 @@ if (
 ):
     subprocess.run(["scripts/dev/setup-hooks"], cwd=_KB_ROOT, check=False)
 
-from context import PlacementError
+from models.context import ContextError
 from kb_cli import (
     anki,
     archivebox,
@@ -218,7 +218,7 @@ def _record_invocation(payload: dict[str, Any]) -> None:
 def _run(args: argparse.Namespace) -> None:
     try:
         args.func(args)
-    except PlacementError as e:
+    except ContextError as e:
         print(e, file=sys.stderr)
         sys.exit(1)
 

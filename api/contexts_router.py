@@ -19,8 +19,8 @@ from api.context_homes import contexts_by_tag, current_rows, filed_rows, home_co
 from api.deps import get_session
 from api.record_hit import RecordHit, record_hit_fields
 from api.serialize import utc_iso
-from context import INBOX_CONTEXT_NAME, get_inbox_context
-from models.context import Context, Tag
+from context import get_inbox_context
+from models.context import INBOX_CONTEXT_NAME, Context, Tag
 from models.knowledge.note import Note
 from models.work.goal import Goal
 from models.work.todo import Todo

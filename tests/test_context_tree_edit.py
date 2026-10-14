@@ -1,5 +1,6 @@
 """Creating and re-parenting contexts: Context.create/move_under, and the API routes over them."""
 
+from datetime import datetime, timezone
 from typing import Iterator
 
 import pytest
@@ -86,3 +87,24 @@ def test_place_refuses_tag_for_context_only_row(db_session: Session) -> None:
     db_session.add(tavern)
     with pytest.raises(PlacementError, match="needs a context"):
         place(entry, tag=tavern)
+
+
+def test_inbox_cannot_be_renamed_or_deleted(db_session: Session) -> None:
+    from models.context import ContextError
+    from context import get_inbox_context
+
+    box = get_inbox_context(db_session)
+    with pytest.raises(ContextError, match="cannot be renamed"):
+        box.name = "elsewhere"
+    with pytest.raises(ContextError, match="cannot be deleted"):
+        box.deleted_at = datetime.now(timezone.utc)
+    db_session.delete(box)
+    with pytest.raises(ContextError, match="cannot be deleted"):
+        db_session.flush()
+    db_session.rollback()
+
+    # Every other context still deletes, as `context merge OTHER --into inbox` needs.
+    other = Context.create(db_session, "elsewhere")
+    db_session.delete(other)
+    db_session.flush()
+    assert get_inbox_context(db_session).id == box.id

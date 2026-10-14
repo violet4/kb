@@ -66,7 +66,8 @@ export default function Popover({ label, children, align = 'end', ariaLabel, tit
           {
             positionAnchor: anchorName,
             top: 'calc(anchor(bottom) + 6px)',
-            ...(align === 'end' ? { right: 'calc(100% - anchor(right))' } : { left: 'anchor(left)' }),
+            // The UA popover style is inset: 0; the unused side must be auto, or left: 0 wins.
+            ...(align === 'end' ? { left: 'auto', right: 'anchor(right)' } : { left: 'anchor(left)', right: 'auto' }),
             margin: 0,
             padding: 12,
             background: tokens.color.surface,

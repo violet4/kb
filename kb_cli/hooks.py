@@ -43,15 +43,15 @@ _GIT_COMMIT_RE = re.compile(
 )
 
 _POST_COMMIT_HINT = (
-    "A commit just succeeded. Run `kb i show claude-code-session-persistence-review` and follow it now -- "
-    "committing is part of that pass, not a separate step, and it must run after every successful commit."
+    "A commit just succeeded: a piece of work is finished. Run `kb si show session-handoff` and do its pass "
+    "for the work since the previous pass."
 )
 
 
 def cmd_post_commit_check(args: argparse.Namespace) -> None:
     """Read "<exit_code>\\n<command>" on stdin (the Bash tool's own exit code, then the
     command string); if the command was a `git commit` and it exited 0, print a reminder
-    to run the session-persistence-review pass. Prints nothing (exit 0) otherwise, so a
+    to run the session-handoff pass. Prints nothing (exit 0) otherwise, so a
     harness adapter can pipe any Bash command through unconditionally and only act on
     non-empty output."""
     exit_code, _, command = sys.stdin.read().partition("\n")
@@ -643,7 +643,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParse
     p_post_commit = sub.add_parser(
         "post-commit-check",
         help='Detect a successful `git commit` ("<exit_code>\\n<command>" on stdin); '
-        "print a session-persistence-review reminder if it matches",
+        "print a session-handoff reminder if it matches",
     )
     p_post_commit.set_defaults(func=cmd_post_commit_check)
 

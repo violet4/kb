@@ -392,10 +392,10 @@ class ChatBlock(NamedTuple):
     "tool_use", "tool_result", or "unknown" for a future content-block type it doesn't -- see
     _extract_blocks). `tags` is deliberately open-ended metadata about this block and its
     parent message (every scalar field the raw JSONL carries, flattened -- see
-    _flatten_tags) -- the frontend legend/filter panel is built entirely from whatever keys
-    and values actually occur in `tags` across a session, so a new Claude Code JSONL field
-    (a new `stop_reason`, a new hook type, a future MCP server) becomes filterable the moment
-    it appears in a transcript, with no parser change required."""
+    _flatten_tags) -- the frontend's transcript fields view shows whatever keys and values
+    actually occur in `tags`, so a new Claude Code JSONL field (a new `stop_reason`, a new
+    hook type, a future MCP server) appears the moment it is in a transcript, with no parser
+    change required."""
 
     kind: str  # "text", "thinking", "tool_use", "tool_result", or "unknown"
     text: Optional[str] = None  # for kind == "text" or "thinking"
@@ -458,11 +458,10 @@ _TAG_EXCLUDE_KEYS = frozenset(
 
 def _flatten_tags(obj: object, prefix: str = "") -> dict[str, str]:
     """Recursively collects every scalar (str/bool/int/float) leaf in obj into a flat
-    {dotted.path: str(value)} map -- the generic enrichment this whole module's tags-based
-    filtering rests on. Deliberately has no notion of which fields are "interesting"; that
-    judgment is left entirely to the frontend legend, which only ever shows keys/values that
-    actually occurred. See _TAG_EXCLUDE_KEYS for the few keys skipped to keep this from
-    surfacing bulk content or single-use identifiers as if they were filterable facets."""
+    {dotted.path: str(value)} map -- the generic enrichment behind a block's tags.
+    Deliberately has no notion of which fields are "interesting"; the frontend shows whatever
+    keys/values occurred. See _TAG_EXCLUDE_KEYS for the few keys skipped to keep this from
+    surfacing bulk content or single-use identifiers as fields."""
     tags: dict[str, str] = {}
     if isinstance(obj, dict):
         for key, value in obj.items():
@@ -512,8 +511,8 @@ def _extract_blocks(content: object, message_tags: dict[str, str]) -> list[ChatB
             tool_name = item.get("name")
             if isinstance(tool_name, str) and tool_name.startswith("mcp__"):
                 # mcp__<server>__<tool> is Claude Code's own naming convention for every MCP
-                # tool -- splitting it out gives the legend an "MCP server"/"MCP tool" facet
-                # without hardcoding which servers/tools exist.
+                # tool -- splitting it out gives a block separate "MCP server"/"MCP tool"
+                # fields without hardcoding which servers/tools exist.
                 parts = tool_name.split("__", 2)
                 if len(parts) == 3:
                     block_tags = {**block_tags, "mcp.server": parts[1], "mcp.tool": parts[2]}

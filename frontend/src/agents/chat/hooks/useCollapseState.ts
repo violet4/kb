@@ -4,8 +4,6 @@ import type { AddressedBlock } from '../blockAddress';
 interface UseCollapseStateResult {
   isCollapsed: (block: AddressedBlock) => boolean;
   toggle: (block: AddressedBlock) => void;
-  collapseMatching: (blocks: AddressedBlock[]) => void;
-  expandMatching: (blocks: AddressedBlock[]) => void;
 }
 
 // Collapsed-by-default rule: text and thinking start expanded, since they are the part of a
@@ -36,16 +34,5 @@ export function useCollapseState(): UseCollapseStateResult {
     });
   }, []);
 
-  const setMatching = useCallback((blocks: AddressedBlock[], collapsed: boolean) => {
-    setOverrides((prev) => {
-      const next = new Map(prev);
-      for (const block of blocks) next.set(block.id, collapsed);
-      return next;
-    });
-  }, []);
-
-  const collapseMatching = useCallback((blocks: AddressedBlock[]) => setMatching(blocks, true), [setMatching]);
-  const expandMatching = useCallback((blocks: AddressedBlock[]) => setMatching(blocks, false), [setMatching]);
-
-  return { isCollapsed, toggle, collapseMatching, expandMatching };
+  return { isCollapsed, toggle };
 }

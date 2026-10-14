@@ -3,10 +3,8 @@ import Markdown from '../../shared/Markdown';
 import { tokens } from '../../shared/tokens';
 import { useRefreshIntervalSetting } from '../hooks/useRefreshIntervalSetting';
 import type { AddressedBlock } from './blockAddress';
-import type { FacetFilter } from './facets';
 import { defaultCollapsed, useCollapseState } from './hooks/useCollapseState';
 import { useSessionChat, type TranscriptEntry } from './hooks/useSessionChat';
-import LegendPanel, { filterBlocks } from './LegendPanel';
 import type { ChatBlock, ChatMessage } from './types';
 
 function TagList({ tags }: { tags: Record<string, string> }) {
@@ -15,9 +13,7 @@ function TagList({ tags }: { tags: Record<string, string> }) {
       {Object.entries(tags).map(([key, value]) => (
         // minWidth: 0 + overflow-wrap on the value -- a long unbroken tag value (a full
         // path, a long id) would otherwise force this flex item wider than its container,
-        // pushing the whole message column into horizontal scroll (confirmed live
-        // 2026-08-28: the session transcript pane, not the legend, was the one actually
-        // overflowing).
+        // pushing the whole message column into horizontal scroll.
         <div key={key} style={{ display: 'flex', gap: 4, minWidth: 0, maxWidth: '100%' }}>
           <dt style={{ color: tokens.color.textMuted, flexShrink: 0 }}>{key}:</dt>
           <dd style={{ margin: 0, color: tokens.color.text, minWidth: 0, overflowWrap: 'break-word' }}>{value}</dd>
@@ -243,23 +239,21 @@ function CopyMarkdownButton({ getText }: { getText: () => string }) {
 }
 
 // Memoized so a live transcript's appended messages render only the new rows: an existing
-// row's props (its entry, the filter, the collapse callbacks) are unchanged by an append, so
+// row's props (its entry, the collapse callbacks) are unchanged by an append, so
 // React skips it and leaves its DOM, and any text selection inside it, untouched.
 const MessageRow = memo(function MessageRow({
   entry,
-  filter,
   isCollapsed,
   onToggle,
   showTags,
 }: {
   entry: TranscriptEntry;
   showTags: boolean;
-  filter: FacetFilter;
   isCollapsed: (block: AddressedBlock) => boolean;
   onToggle: (block: AddressedBlock) => void;
 }) {
   const { message } = entry;
-  const addressedBlocks = useMemo(() => filterBlocks(entry.blocks, filter), [entry.blocks, filter]);
+  const addressedBlocks = entry.blocks;
   if (addressedBlocks.length === 0) return null;
   const isUser = message.role === 'user';
   const isHuman = isUser && isHumanText(message);
@@ -310,13 +304,13 @@ function isHumanText(message: ChatMessage): boolean {
 
 // A card folds into a run when every block it shows starts collapsed, so by default it shows
 // nothing but headers. The default, not the current state, decides: expanding one card inside
-// an open run leaves the run whole. A Bash call never folds: its command shows even while collapsed. A card the filter
-// hides entirely shows nothing and does not break a run. Fewer than RUN_MIN cards stay as is.
+// an open run leaves the run whole. A Bash call never folds: its command shows even while collapsed. A card with no
+// blocks shows nothing and does not break a run. Fewer than RUN_MIN cards stay as is.
 const RUN_MIN = 2;
 
 type Segment = { kind: 'entry'; index: number } | { kind: 'run'; start: number; indices: number[] };
 
-function segmentEntries(entries: TranscriptEntry[], filter: FacetFilter): Segment[] {
+function segmentEntries(entries: TranscriptEntry[]): Segment[] {
   const segments: Segment[] = [];
   let run: number[] = [];
   const flush = () => {
@@ -325,7 +319,7 @@ function segmentEntries(entries: TranscriptEntry[], filter: FacetFilter): Segmen
     run = [];
   };
   entries.forEach((entry, index) => {
-    const shown = filterBlocks(entry.blocks, filter);
+    const shown = entry.blocks;
     if (shown.length === 0) return;
     if (shown.every((a) => defaultCollapsed(a) && !bashInput(a.block))) run.push(index);
     else {
@@ -361,7 +355,7 @@ interface SessionTranscriptProps {
 }
 
 // The raw Claude Code JSONL transcript for one session -- every user/assistant message,
-// tool_use/tool_result block, with the generic tag-filter legend. Distinct from a Channel DM
+// tool_use/tool_result block. Distinct from a Channel DM
 // (frontend/src/channels/): this reads the session's own transcript file, not the
 // cross-session ChannelMessage mailbox -- see the two-tab split in AgentPage.tsx for why they
 // must never be conflated into one view. A live session's new messages are appended at the
@@ -374,13 +368,8 @@ export default function SessionTranscript({
 }: SessionTranscriptProps) {
   const [intervalSeconds] = useRefreshIntervalSetting();
   const { entries, loading, error } = useSessionChat(sessionId, intervalSeconds);
-  const [filter, setFilter] = useState<FacetFilter>(new Map());
-  const [legendOpen, setLegendOpen] = useState(false);
-
-  const allBlocks = useMemo(() => entries.flatMap((entry) => entry.blocks), [entries]);
-  const visibleBlocks = useMemo(() => filterBlocks(allBlocks, filter), [allBlocks, filter]);
-  const { isCollapsed, toggle, collapseMatching, expandMatching } = useCollapseState();
-  const segments = useMemo(() => segmentEntries(entries, filter), [entries, filter]);
+  const { isCollapsed, toggle } = useCollapseState();
+  const segments = useMemo(() => segmentEntries(entries), [entries]);
   // Runs the user opened, by the index of their first entry: stable while a live transcript
   // appends, since new entries only extend the last run.
   const [openRuns, setOpenRuns] = useState<Set<number>>(new Set());
@@ -432,17 +421,6 @@ export default function SessionTranscript({
     return () => observer.disconnect();
   }, []);
 
-  const toggleFilterValue = useCallback((key: string, value: string) => {
-    setFilter((prev) => {
-      const next = new Map(prev);
-      const values = new Set(next.get(key) ?? []);
-      if (values.has(value)) values.delete(value);
-      else values.add(value);
-      next.set(key, values);
-      return next;
-    });
-  }, []);
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minHeight: 0, flex: 1 }}>
       {loading && <p style={{ margin: 0, color: tokens.color.textMuted, fontSize: 13 }}>Loading...</p>}
@@ -450,14 +428,7 @@ export default function SessionTranscript({
       {!loading && !error && entries.length === 0 && (
         <p style={{ margin: 0, color: tokens.color.textMuted, fontSize: 13 }}>No chat messages found.</p>
       )}
-      {/* alignItems defaults to stretch (not flex-start) so both the message pane and the
-          legend fill this row's bounded height and scroll independently of each other and
-          of the page; with flex-start each pane sizes to its own content and the page
-          scrolls instead. */}
-      {/* position: relative so the collapsed-state expand tab (below) floats over this row
-          as an absolutely positioned overlay instead of reserving its own flex slice, which
-          reads as a lost strip beside the messages. */}
-      <div style={{ display: 'flex', gap: legendOpen ? 16 : 0, flex: 1, minHeight: 0, position: 'relative' }}>
+      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         <div ref={paneRef} onScroll={onPaneScroll} style={{ flex: 1, minWidth: 0, height: '100%', overflowY: 'auto' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {segments.map((segment) => {
@@ -465,7 +436,6 @@ export default function SessionTranscript({
                 <MessageRow
                   key={i}
                   entry={entries[i]}
-                  filter={filter}
                   isCollapsed={isCollapsed}
                   onToggle={toggle}
                   showTags={showTags}
@@ -484,49 +454,7 @@ export default function SessionTranscript({
             })}
           </div>
         </div>
-        {allBlocks.length > 0 && legendOpen && (
-          <div style={{ flex: '0 0 280px', height: '100%' }}>
-            <LegendPanel
-              allBlocks={allBlocks}
-              visibleBlocks={visibleBlocks}
-              filter={filter}
-              onToggleFilterValue={toggleFilterValue}
-              onClearFilter={() => setFilter(new Map())}
-              onCollapseVisible={() => collapseMatching(visibleBlocks)}
-              onExpandVisible={() => expandMatching(visibleBlocks)}
-              onCollapsePanel={() => setLegendOpen(false)}
-            />
-          </div>
-        )}
-        {allBlocks.length > 0 && !legendOpen && (
-          // Overlay tab, not a flex item -- takes zero width from the message pane. Anchored
-          // to this bounded row rather than to the scrolling content, so it stays in view at
-          // any scroll position; inset from the right edge to clear the pane's scrollbar.
-          <button
-            type="button"
-            onClick={() => setLegendOpen(true)}
-            aria-label="Expand filter legend"
-            title="Expand filter legend"
-            style={{
-              position: 'absolute',
-              top: 0,
-              right: 16,
-              padding: '6px 4px',
-              borderRadius: 6,
-              border: `1px solid ${tokens.color.border}`,
-              background: tokens.color.surface,
-              color: tokens.color.textMuted,
-              fontSize: 12,
-              cursor: 'pointer',
-              opacity: 0.6,
-              transition: 'opacity 0.15s',
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
-            onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.6')}
-          >
-            ◂
-          </button>
-        )}
+
       </div>
     </div>
   );

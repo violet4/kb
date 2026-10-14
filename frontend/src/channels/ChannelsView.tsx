@@ -141,10 +141,7 @@ export default function ChannelsView() {
     // viewport, not a reading-width-capped column with breathing room on every side. Negative
     // margin cancels that padding with NO compensating padding of its own: an 8px
     // paddingLeft/Right was tried first as "breathing room," but it visually read as its own
-    // lost strip sitting flush against the legend panel's border on the right (confirmed live
-    // via a high-contrast debug outline overlay, 2026-08-28 -- a bright yellow background made
-    // an 8px gap between the legend's border and the true viewport edge obvious in a
-    // screenshot where it hadn't been visible at normal contrast). marginBottom follows the
+    // lost strip along the right edge of the viewport. marginBottom follows the
     // same reasoning -- the initial fix only canceled left/right and missed that the same
     // padding: 24 applies equally to the bottom edge, confirmed live as the same kind of
     // dead-space band running the full width at the bottom of the viewport. Any breathing
@@ -157,7 +154,7 @@ export default function ChannelsView() {
     // (confirmed live 2026-08-28 via getBoundingClientRect on the rendered page).
     //
     // overflow: hidden here (this page's every scroll area is already its own internal
-    // overflowY: auto pane -- the message list, the legend, the left sidebar) stops a
+    // overflowY: auto pane -- the message list, the left sidebar) stops a
     // sub-pixel rounding overflow (confirmed live: this root's scrollHeight was 862 against a
     // clientHeight of 860, a 2px overflow from flex gap/border rounding) from ever reaching
     // App.tsx's shared ancestor and triggering ITS scrollbar gutter reservation there --

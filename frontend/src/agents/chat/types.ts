@@ -7,8 +7,8 @@ export interface ChatBlock {
   tool_output: string | null;
   is_error: boolean;
   // Every scalar field kb_cli/sessions.py's _flatten_tags found on this block and its
-  // parent message -- deliberately open-ended so a legend/filter panel can be built from
-  // whatever keys/values actually occur, with no fixed field list on this side either.
+  // parent message -- deliberately open-ended, so the transcript fields view shows whatever
+  // keys/values actually occur, with no fixed field list on this side either.
   tags: Record<string, string>;
 }
 

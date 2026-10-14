@@ -36,7 +36,9 @@ _SUBMIT_DELAY_SECONDS = 0.15
 _NEXT_MESSAGE_DELAY_SECONDS = 0.5
 _PASTE_START = b"\x1b[200~"
 _PASTE_END = b"\x1b[201~"
-# Keys a caller may press by name. Escape interrupts a running turn or dismisses a dialog.
+# Keys a caller may press by name. Escape interrupts a running turn or dismisses a permission
+# dialog, but only with Claude Code's editor mode set to normal: in vim mode, Esc during a running
+# tool only leaves insert mode (verified 2026-10-14, Claude Code 2.1.296).
 KEYS = {"escape": b"\x1b"}
 # Every C0 control except tab and newline, DEL, and every C1 control. Removing them keeps the
 # message inert text: an embedded ESC[201~ would otherwise end the paste early and turn the

@@ -99,3 +99,28 @@ def test_thinking_after_the_first_block_is_a_reply(tmp_path: Path) -> None:
     blocks = [m.blocks[0] for m in messages]
     assert [(b.kind, b.text) for b in blocks] == [("thinking", "reasoning"), ("text", "Here is the answer.")]
     assert blocks[1].tags["storedAs"] == "thinking"
+
+
+def test_mid_turn_message_with_an_image_is_a_user_message(tmp_path: Path) -> None:
+    """A mid-turn message carrying an image is recorded with its prompt as content blocks, not a
+    string; it is still the user's message, and the image's data stays out of its tags."""
+    image = {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "QUJD" * 1000}}
+    queued = {
+        "type": "attachment",
+        "timestamp": "t",
+        "attachment": {
+            "type": "queued_command",
+            "commandMode": "prompt",
+            "prompt": [{"type": "text", "text": "see this"}, image],
+        },
+    }
+    path = tmp_path / "s.jsonl"
+    path.write_text(json.dumps(queued) + "\n")
+    messages, _ = list_chat_messages(path)
+    assert [(m.role, [(b.kind, b.text) for b in m.blocks]) for m in messages] == [
+        ("user", [("text", "see this"), ("image", None)])
+    ]
+    image_tags = messages[0].blocks[1].tags
+    assert image_tags["media_type"] == "image/png"
+    assert image_tags["delivered"] == "mid-turn"
+    assert "QUJD" not in "".join(image_tags.values())

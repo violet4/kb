@@ -430,7 +430,7 @@ class ChatBlock(NamedTuple):
     (e.g. one assistant turn with a text block followed by a tool_use block).
 
     `kind` is the most specific shape this parser recognizes today ("text", "thinking",
-    "tool_use", "tool_result", or "unknown" for a future content-block type it doesn't -- see
+    "image", "tool_use", "tool_result", or "unknown" for a future content-block type it doesn't -- see
     _extract_blocks). `tags` is deliberately open-ended metadata about this block and its
     parent message (every scalar field the raw JSONL carries, flattened -- see
     _flatten_tags) -- the frontend's transcript fields view shows whatever keys and values
@@ -531,7 +531,7 @@ def _flatten_tags(obj: object, prefix: str = "") -> dict[str, str]:
 
 def _extract_blocks(content: object, message_tags: dict[str, str]) -> list[ChatBlock]:
     """Parses message.content into ChatBlocks as specifically as this function recognizes
-    (text/thinking/tool_use/tool_result), falling back to kind="unknown" with the block's own raw
+    (text/thinking/image/tool_use/tool_result), falling back to kind="unknown" with the block's own raw
     scalar fields flattened into tags for anything else -- a future content-block type this
     parser has never seen renders as a generic block instead of being silently dropped."""
     if isinstance(content, str):
@@ -546,6 +546,13 @@ def _extract_blocks(content: object, message_tags: dict[str, str]) -> list[ChatB
         block_tags = {**message_tags, **_flatten_tags(item)}
         if item_type == "text":
             blocks.append(ChatBlock(kind="text", text=item.get("text", ""), tags=block_tags))
+        elif item_type == "image":
+            # Tagged with its media type only: the source carries the whole image as base64,
+            # hundreds of KB that would otherwise travel with every transcript read as a tag.
+            source = item.get("source")
+            media_type = source.get("media_type") if isinstance(source, dict) else None
+            image_tags = {**message_tags, "media_type": media_type} if isinstance(media_type, str) else message_tags
+            blocks.append(ChatBlock(kind="image", tags=image_tags))
         elif item_type == "thinking" and message_tags.get("apiBlockIndex", "0") != "0":
             # Claude Code records some of its visible replies as a thinking block that is not
             # the first block of its response (written 1-3 ms after the real thinking), and its
@@ -586,17 +593,19 @@ def _extract_blocks(content: object, message_tags: dict[str, str]) -> list[ChatB
     return blocks
 
 
-def _queued_prompt(record: dict[str, Any]) -> Optional[str]:
-    """The text of a message the user typed while the agent was mid-turn. The harness records it
-    as an `attachment` line of type `queued_command`, delivered alongside the next tool result,
-    never as a `user` line, so without this it would be missing from the conversation."""
+def _queued_prompt(record: dict[str, Any]) -> Optional[str | list[Any]]:
+    """The content of a message the user typed while the agent was mid-turn: a string, or a list
+    of content blocks when it carries an image, the same two shapes as a user message's content.
+    The harness records it as an `attachment` line of type `queued_command`, delivered alongside
+    the next tool result, never as a `user` line, so without this it would be missing from the
+    conversation."""
     attachment = record.get("attachment")
     if record.get("type") != "attachment" or not isinstance(attachment, dict):
         return None
     if attachment.get("type") != "queued_command" or attachment.get("commandMode") != "prompt":
         return None
     prompt = attachment.get("prompt")
-    return prompt if isinstance(prompt, str) and prompt else None
+    return prompt if isinstance(prompt, (str, list)) and prompt else None
 
 
 def _without_queued_text(record: dict[str, Any]) -> dict[str, Any]:
@@ -635,7 +644,7 @@ def list_chat_messages(path: Path, offset: int = 0) -> tuple[list[ChatMessage], 
                 ChatMessage(
                     role="user",
                     timestamp=d.get("timestamp", ""),
-                    blocks=[ChatBlock(kind="text", text=queued, tags=tags)],
+                    blocks=_extract_blocks(queued, tags),
                 )
             )
             continue

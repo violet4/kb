@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { tokens } from '../../shared/tokens';
 
 interface MessageComposerProps {
@@ -19,6 +19,15 @@ export default function MessageComposer({
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Grow with the message up to maxHeight, then scroll inside, so the content above stays in view.
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = 'auto';
+    textarea.style.height = `${textarea.scrollHeight + textarea.offsetHeight - textarea.clientHeight}px`;
+  }, [body]);
 
   async function handleSend() {
     const trimmed = body.trim();
@@ -50,6 +59,7 @@ export default function MessageComposer({
       </p>
       <div style={{ display: 'flex', gap: 8 }}>
         <textarea
+          ref={textareaRef}
           value={body}
           onChange={(e) => setBody(e.target.value)}
           onKeyDown={(e) => {
@@ -63,7 +73,10 @@ export default function MessageComposer({
           rows={2}
           style={{
             flex: 1,
-            resize: 'vertical',
+            resize: 'none',
+            maxHeight: '40vh',
+            overflowY: 'auto',
+            boxSizing: 'border-box',
             padding: '8px 10px',
             borderRadius: 6,
             border: `1px solid ${tokens.color.border}`,

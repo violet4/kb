@@ -10,6 +10,7 @@ every migration module, about 400 ms, too slow for every `kb` command.
 import os
 import re
 import sqlite3
+import subprocess
 import time
 from pathlib import Path
 
@@ -26,7 +27,8 @@ _REVISION_RE = re.compile(r"^revision\s*(?::[^=]*)?=\s*['\"](\w+)['\"]", re.MULT
 _DOWN_REVISION_RE = re.compile(r"^down_revision\s*(?::[^=]*)?=\s*(.*)$", re.MULTILINE)
 _REVISION_ID_RE = re.compile(r"['\"](\w+)['\"]")
 
-UPGRADE_HINT = f"{KB_DIR / 'scripts' / 'db' / 'upgrade'} (or restart the kb server, which migrates on startup)"
+UPGRADE_SCRIPT = KB_DIR / "scripts" / "db" / "upgrade"
+UPGRADE_HINT = f"{UPGRADE_SCRIPT} (or restart the kb server, which migrates committed migrations on startup)"
 
 
 def revision_graph() -> dict[str, set[str]]:
@@ -60,10 +62,11 @@ def db_revisions() -> set[str]:
             return set()
 
 
-def pending_count() -> int:
-    """How many migrations stand between the database and this code's head. A database at a
-    revision this code does not know (migrated by newer code) counts as current."""
-    graph = revision_graph()
+def pending_count(graph: dict[str, set[str]] | None = None) -> int:
+    """How many migrations of graph (default: every version file) stand between the database
+    and its head. A database at a revision the graph does not know (migrated by newer code, or
+    by a migration left out of the graph) counts as current."""
+    graph = revision_graph() if graph is None else graph
     stamped = db_revisions()
     applied: set[str] = set()
     frontier = [rev for rev in stamped if rev in graph]
@@ -109,3 +112,44 @@ def describe(proc: psutil.Process) -> str:
         return f"pid {proc.pid}: {' '.join(proc.cmdline())}"
     except (psutil.NoSuchProcess, psutil.AccessDenied):
         return f"pid {proc.pid}"
+
+
+def _revision_of(path: Path) -> str | None:
+    match = _REVISION_RE.search(path.read_text()) if path.exists() else None
+    return match.group(1) if match else None
+
+
+def uncommitted_revisions() -> set[str]:
+    """Revisions whose version file is untracked or differs from git HEAD: written but not yet
+    reviewed. Empty when git or the repository is unavailable (an installed copy), where every
+    migration counts as committed."""
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=all", "--", str(_VERSIONS_DIR)],
+            cwd=KB_DIR,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return set()
+    revisions = set()
+    for line in result.stdout.splitlines():
+        path = KB_DIR / line[3:].strip()
+        if path.suffix == ".py" and (revision := _revision_of(path)) is not None:
+            revisions.add(revision)
+    return revisions
+
+
+def committed_graph(graph: dict[str, set[str]], uncommitted: set[str]) -> dict[str, set[str]]:
+    """The graph without the uncommitted revisions and every revision that follows one: what
+    the server's startup migration may apply."""
+    excluded = set(uncommitted)
+    grew = True
+    while grew:
+        grew = False
+        for rev, follows in graph.items():
+            if rev not in excluded and follows & excluded:
+                excluded.add(rev)
+                grew = True
+    return {rev: follows for rev, follows in graph.items() if rev not in excluded}

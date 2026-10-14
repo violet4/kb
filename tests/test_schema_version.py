@@ -3,6 +3,7 @@ directory, so its head must match alembic's, and pending_count must count exactl
 migrations between the database's stamp and that head."""
 
 import sqlite3
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -64,3 +65,31 @@ def test_never_migrated_database_has_everything_pending(chain: Path) -> None:
 def test_unknown_revision_counts_as_current(chain: Path) -> None:
     _stamp(chain, "zz9")
     assert schema_version.pending_count() == 0
+
+
+def test_committed_graph_drops_uncommitted_and_what_follows(chain: Path) -> None:
+    graph = schema_version.revision_graph()
+    committed = schema_version.committed_graph(graph, {"c3"})
+    assert set(committed) == {"a1", "b2"}  # d4 merges c3, so it waits too
+    assert schema_version.code_heads(committed) == {"b2"}
+    _stamp(chain, "a1")
+    assert schema_version.pending_count(committed) == 1
+
+
+def test_uncommitted_revisions_reads_git_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    versions = tmp_path / "alembic" / "versions"
+    versions.mkdir(parents=True)
+    _version(versions, "a1", "None")
+    _version(versions, "b2", "'a1'")
+
+    def run(*args: str) -> None:
+        subprocess.run(["git", *args], cwd=tmp_path, check=True, capture_output=True)
+
+    run("init", "-q")
+    run("add", "alembic/versions/a1_x.py")
+    run("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "a1")
+    monkeypatch.setattr(schema_version, "KB_DIR", tmp_path)
+    monkeypatch.setattr(schema_version, "_VERSIONS_DIR", versions)
+    assert schema_version.uncommitted_revisions() == {"b2"}  # untracked
+    (versions / "a1_x.py").write_text((versions / "a1_x.py").read_text() + "# edited\n")
+    assert schema_version.uncommitted_revisions() == {"a1", "b2"}  # modified, untracked

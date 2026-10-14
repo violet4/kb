@@ -107,12 +107,29 @@ def _migrate() -> None:
     """Bring the schema up to this code's head before serving, the way a self-hosted app
     migrates on startup: these models cannot run against an older schema. alembic/env.py waits
     for other processes to close the database first and backs it up; a migration that cannot
-    run exits here, so the server never serves a half-migrated schema."""
-    pending = schema_version.pending_count()
+    run exits here, so the server never serves a half-migrated schema.
+
+    Only committed migrations apply here. The dev server restarts on every file change, so a
+    migration file would otherwise migrate the live database the moment it is written, before
+    it was reviewed or tried on a copy. An uncommitted one waits for its commit, or for an
+    explicit scripts/db/upgrade."""
+    graph = schema_version.revision_graph()
+    uncommitted = schema_version.uncommitted_revisions()
+    committed = schema_version.committed_graph(graph, uncommitted)
+    held = schema_version.pending_count(graph) - schema_version.pending_count(committed)
+    if held:
+        print(
+            f"kb server: not applying {held} uncommitted migration(s) ({', '.join(sorted(set(graph) - set(committed)))});"
+            f" commit them or run {schema_version.UPGRADE_SCRIPT}",
+            flush=True,
+        )
+    pending = schema_version.pending_count(committed)
     if pending == 0:
         return
     print(f"kb server: applying {pending} pending migration(s) before serving", flush=True)
-    alembic_command.upgrade(AlembicConfig(str(schema_version.ALEMBIC_INI)), "head")
+    config = AlembicConfig(str(schema_version.ALEMBIC_INI))
+    for head in sorted(schema_version.code_heads(committed)):
+        alembic_command.upgrade(config, head)
 
 
 def main() -> None:

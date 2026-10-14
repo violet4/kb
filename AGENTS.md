@@ -97,7 +97,7 @@ scripts/db/upgrade                   # alembic upgrade head
 scripts/db/status                    # alembic current
 ```
 
-The server applies pending migrations on startup, before serving ([schema_version.py](schema_version.py)). Every `kb` command refuses to run against a schema older than its models and prints the upgrade command. An upgrade, from the server or `scripts/db/upgrade`, first waits up to 30 s for other processes to close the database and exits naming them if they have not.
+The server applies pending migrations on startup, before serving ([schema_version.py](schema_version.py)), but only committed ones: the dev server restarts on every file change, so a migration file still untracked or modified waits, named in the server log, until it is committed or applied with `scripts/db/upgrade`. Test a new migration on a `KB_DB_PATH` copy before committing it. Every `kb` command refuses to run against a schema older than its models and prints the upgrade command. An upgrade, from the server or `scripts/db/upgrade`, first waits up to 30 s for other processes to close the database and exits naming them if they have not.
 
 Autogenerate misses column renames (sees drop+add, write those by hand), table renames' own constraints (see below), data migrations (add a manual step), and Enum CHECK constraint changes on SQLite (see kb-engineering-10).
 

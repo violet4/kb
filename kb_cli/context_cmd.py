@@ -279,13 +279,18 @@ def cmd_show(args: argparse.Namespace) -> None:
         print("No connected entities.")
         return
     scope = f" across {len(nodes)} contexts" if args.subtree else ""
-    print(f"{len(entities)} connected entit{'y' if len(entities) == 1 else 'ies'}{scope}:")
+    # Soft-deleted rows still reference the context (rm and merge must count them), so show lists
+    # them too, marked, rather than leaving them looking live.
+    deleted = sum(1 for _, (_, _, row) in entities if row.deleted_at is not None)
+    of_which = f" ({deleted} soft-deleted)" if deleted else ""
+    print(f"{len(entities)} connected entit{'y' if len(entities) == 1 else 'ies'}{scope}{of_which}:")
     if args.subtree:
         counts = Counter(type_name for _, (type_name, _, _) in entities)
         print("  " + ", ".join(f"{type_name}: {count}" for type_name, count in sorted(counts.items())))
     for node, (type_name, entity_id, row) in entities:
         where = f"  [{node.name}]" if args.subtree else ""
-        print(f"  {type_name}:{entity_id} {row!r}{where}")
+        mark = " [deleted]" if row.deleted_at is not None else ""
+        print(f"  {type_name}:{entity_id} {row!r}{mark}{where}")
 
 
 def cmd_reassign(args: argparse.Namespace) -> None:

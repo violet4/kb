@@ -3,7 +3,8 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import AgentContentTabs, { AgentTabBar, type AgentContentTab } from './AgentContentTabs';
 import Popover from '../shared/Popover';
-import { isBoolean, useStoredState } from '../shared/useStoredState';
+import { isBoolean, isHexColor, RAW_STRING, useStoredState } from '../shared/useStoredState';
+import BarColorSetting from './BarColorSetting';
 import { interruptSession, sendSessionInput } from './api';
 import InterruptButton from './InterruptButton';
 import MessageComposer from '../channels/components/MessageComposer';
@@ -36,6 +37,12 @@ export default function AgentPage() {
   const [showTags, setShowTags] = useStoredState('kb-agents-transcript-show-tags', false, isBoolean);
   const [showThinking, setShowThinking] = useStoredState('kb-agents-transcript-show-thinking', true, isBoolean);
   const [collapsedAsBars, setCollapsedAsBars] = useStoredState('kb-agents-transcript-collapsed-as-bars', false, isBoolean);
+  const [barColor, setBarColor] = useStoredState(
+    'kb-agents-transcript-bar-color',
+    tokens.color.textMuted,
+    isHexColor,
+    RAW_STRING,
+  );
   const [intervalSeconds] = useChannelListRefreshInterval();
   const { channels, refresh: refreshChannels } = useChannelList(displayName, intervalSeconds);
   const dmChannel = useMemo(
@@ -155,6 +162,7 @@ export default function AgentPage() {
                 <input type="checkbox" checked={collapsedAsBars} onChange={(e) => setCollapsedAsBars(e.target.checked)} />
                 Collapsed cards as bars
               </label>
+              {collapsedAsBars && <BarColorSetting value={barColor} onChange={setBarColor} />}
             </div>
           </Popover>
         )}
@@ -164,6 +172,7 @@ export default function AgentPage() {
         showTags={showTags}
         showThinking={showThinking}
         collapsedAsBars={collapsedAsBars}
+        barColor={barColor}
         agentSessionId={sessionId}
         channelId={channelId}
         displayName={displayName}

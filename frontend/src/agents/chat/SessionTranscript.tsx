@@ -368,6 +368,7 @@ interface SessionTranscriptProps {
   showThinking?: boolean;
   // On: every stretch of collapsed cards, a lone one included, is a small colored bar with no text.
   collapsedAsBars?: boolean;
+  barColor?: string; // a #rrggbb color for those bars
 }
 
 // The raw Claude Code JSONL transcript for one session -- every user/assistant message,
@@ -383,6 +384,7 @@ export default function SessionTranscript({
   showTags = false,
   showThinking = true,
   collapsedAsBars = false,
+  barColor = tokens.color.textMuted,
 }: SessionTranscriptProps) {
   const [intervalSeconds] = useRefreshIntervalSetting();
   const { entries, loading, error } = useSessionChat(sessionId, intervalSeconds);
@@ -485,7 +487,12 @@ export default function SessionTranscript({
               return (
                 <div key={`run-${segment.start}`} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {collapsedAsBars ? (
-                    <RunBar count={segment.indices.length} open={open} onToggle={() => toggleRun(segment.start)} />
+                    <RunBar
+                      count={segment.indices.length}
+                      open={open}
+                      color={barColor}
+                      onToggle={() => toggleRun(segment.start)}
+                    />
                   ) : (
                     <button type="button" onClick={() => toggleRun(segment.start)} style={runToggleStyle}>
                       {open ? '▾' : '▸'} {segment.indices.length} collapsed cards
@@ -503,11 +510,11 @@ export default function SessionTranscript({
   );
 }
 
-function RunBar({ count, open, onToggle }: { count: number; open: boolean; onToggle: () => void }) {
+function RunBar({ count, open, color, onToggle }: { count: number; open: boolean; color: string; onToggle: () => void }) {
   const label = `${open ? 'Hide' : 'Show'} ${count} collapsed card${count === 1 ? '' : 's'}`;
   return (
     <button type="button" onClick={onToggle} aria-expanded={open} aria-label={label} title={label} style={runBarStyle}>
-      <span style={{ display: 'block', height: 2, background: tokens.color.textMuted, opacity: open ? 1 : 0.6 }} />
+      <span style={{ display: 'block', height: 2, background: color, opacity: open ? 1 : 0.6 }} />
     </button>
   );
 }

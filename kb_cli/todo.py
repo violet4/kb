@@ -97,10 +97,13 @@ def cmd_add(args: argparse.Namespace) -> None:
     severity = TodoSeverity(args.severity) if args.severity else None
     resolution_distance = TodoResolutionDistance(args.resolution_distance) if args.resolution_distance else None
     defer_until = _parse_defer_until(args.defer_until) if args.defer_until else None
+    if args.body is not None and args.notes is not None:
+        sys.exit("kb: give the notes once, as BODY or as --notes, not both")
+    notes = args.body if args.body is not None else args.notes
     todo = Todo.create(
         args.session,
         resolve_text_arg(args.title),
-        notes=resolve_text_arg(args.notes) if args.notes else args.notes,
+        notes=resolve_text_arg(notes) if notes else notes,
         effort=effort,
         kind=kind,
         defer_until=defer_until,
@@ -255,6 +258,9 @@ def add_subparser(
     p_add = sub.add_parser("add", help=f"Add a {help_prefix}")
     add_placement_argument(p_add)
     p_add.add_argument("title")
+    p_add.add_argument(
+        "body", nargs="?", default=None, help="Longer explanation, stored as notes (optional; same as --notes)"
+    )
     p_add.add_argument(
         "--effort",
         choices=[e.value for e in WishlistEffort],

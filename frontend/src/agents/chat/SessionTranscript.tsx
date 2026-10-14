@@ -305,16 +305,15 @@ function isHumanText(message: ChatMessage): boolean {
 // A card folds into a run when every block it shows starts collapsed, so by default it shows
 // nothing but headers. The default, not the current state, decides: expanding one card inside
 // an open run leaves the run whole. A Bash call never folds: its command shows even while collapsed. A card with no
-// blocks shows nothing and does not break a run. Fewer than RUN_MIN cards stay as is.
-const RUN_MIN = 2;
+// blocks shows nothing and does not break a run. A stretch shorter than minRun cards stays as is.
 
 type Segment = { kind: 'entry'; index: number } | { kind: 'run'; start: number; indices: number[] };
 
-function segmentEntries(entries: TranscriptEntry[], showThinking: boolean): Segment[] {
+function segmentEntries(entries: TranscriptEntry[], showThinking: boolean, minRun: number): Segment[] {
   const segments: Segment[] = [];
   let run: number[] = [];
   const flush = () => {
-    if (run.length >= RUN_MIN) segments.push({ kind: 'run', start: run[0], indices: run });
+    if (run.length >= minRun) segments.push({ kind: 'run', start: run[0], indices: run });
     else segments.push(...run.map((index): Segment => ({ kind: 'entry', index })));
     run = [];
   };
@@ -342,6 +341,16 @@ const runToggleStyle = {
   cursor: 'pointer',
 } as const;
 
+// The bar form of a run toggle: a padded hit area, so the thin stripe is still easy to click.
+const runBarStyle = {
+  alignSelf: 'flex-start',
+  display: 'flex',
+  padding: '2px 6px',
+  border: 'none',
+  background: 'transparent',
+  cursor: 'pointer',
+} as const;
+
 // Distance from the bottom, in pixels, within which the message pane counts as scrolled to
 // the bottom and keeps following new messages.
 const FOLLOW_THRESHOLD_PX = 40;
@@ -354,6 +363,8 @@ interface SessionTranscriptProps {
   showTags?: boolean;
   // Off: thinking blocks start collapsed like tool calls, so they fold into collapsed runs.
   showThinking?: boolean;
+  // On: every stretch of collapsed cards, a lone one included, is a small colored bar with no text.
+  collapsedAsBars?: boolean;
 }
 
 // The raw Claude Code JSONL transcript for one session -- every user/assistant message,
@@ -368,11 +379,15 @@ export default function SessionTranscript({
   startAtBottom = false,
   showTags = false,
   showThinking = true,
+  collapsedAsBars = false,
 }: SessionTranscriptProps) {
   const [intervalSeconds] = useRefreshIntervalSetting();
   const { entries, loading, error } = useSessionChat(sessionId, intervalSeconds);
   const { isCollapsed, toggle } = useCollapseState(showThinking);
-  const segments = useMemo(() => segmentEntries(entries, showThinking), [entries, showThinking]);
+  const segments = useMemo(
+    () => segmentEntries(entries, showThinking, collapsedAsBars ? 1 : 2),
+    [entries, showThinking, collapsedAsBars],
+  );
   // Runs the user opened, by the index of their first entry: stable while a live transcript
   // appends, since new entries only extend the last run.
   const [openRuns, setOpenRuns] = useState<Set<number>>(new Set());
@@ -448,9 +463,13 @@ export default function SessionTranscript({
               const open = openRuns.has(segment.start);
               return (
                 <div key={`run-${segment.start}`} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <button type="button" onClick={() => toggleRun(segment.start)} style={runToggleStyle}>
-                    {open ? '▾' : '▸'} {segment.indices.length} collapsed cards
-                  </button>
+                  {collapsedAsBars ? (
+                    <RunBar count={segment.indices.length} open={open} onToggle={() => toggleRun(segment.start)} />
+                  ) : (
+                    <button type="button" onClick={() => toggleRun(segment.start)} style={runToggleStyle}>
+                      {open ? '▾' : '▸'} {segment.indices.length} collapsed cards
+                    </button>
+                  )}
                   {open && segment.indices.map(row)}
                 </div>
               );
@@ -460,5 +479,16 @@ export default function SessionTranscript({
 
       </div>
     </div>
+  );
+}
+
+function RunBar({ count, open, onToggle }: { count: number; open: boolean; onToggle: () => void }) {
+  const label = `${open ? 'Hide' : 'Show'} ${count} collapsed card${count === 1 ? '' : 's'}`;
+  return (
+    <button type="button" onClick={onToggle} aria-expanded={open} aria-label={label} title={label} style={runBarStyle}>
+      <span
+        style={{ width: 4, height: 14, borderRadius: 2, background: tokens.color.accent, opacity: open ? 1 : 0.5 }}
+      />
+    </button>
   );
 }

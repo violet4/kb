@@ -35,6 +35,7 @@ export default function AgentPage() {
   const [displayName] = useDisplayName();
   const [showTags, setShowTags] = useStoredState('kb-agents-transcript-show-tags', false, isBoolean);
   const [showThinking, setShowThinking] = useStoredState('kb-agents-transcript-show-thinking', true, isBoolean);
+  const [collapsedAsBars, setCollapsedAsBars] = useStoredState('kb-agents-transcript-collapsed-as-bars', false, isBoolean);
   const [intervalSeconds] = useChannelListRefreshInterval();
   const { channels, refresh: refreshChannels } = useChannelList(displayName, intervalSeconds);
   const dmChannel = useMemo(
@@ -150,6 +151,10 @@ export default function AgentPage() {
                 <input type="checkbox" checked={showTags} onChange={(e) => setShowTags(e.target.checked)} />
                 Show transcript fields
               </label>
+              <label style={settingStyle}>
+                <input type="checkbox" checked={collapsedAsBars} onChange={(e) => setCollapsedAsBars(e.target.checked)} />
+                Collapsed cards as bars
+              </label>
             </div>
           </Popover>
         )}
@@ -158,6 +163,7 @@ export default function AgentPage() {
         hideTabBar
         showTags={showTags}
         showThinking={showThinking}
+        collapsedAsBars={collapsedAsBars}
         agentSessionId={sessionId}
         channelId={channelId}
         displayName={displayName}

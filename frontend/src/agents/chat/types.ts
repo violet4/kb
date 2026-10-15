@@ -6,6 +6,8 @@ export interface ChatBlock {
   tool_input: Record<string, unknown> | null;
   tool_output: string | null;
   is_error: boolean;
+  // A tool call's id on its tool_use block, and on the tool_result answering it.
+  tool_use_id: string | null;
   // Every scalar field kb_cli/sessions.py's _flatten_tags found on this block and its
   // parent message -- deliberately open-ended, so the transcript fields view shows whatever
   // keys/values actually occur, with no fixed field list on this side either.

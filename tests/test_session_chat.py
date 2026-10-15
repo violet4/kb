@@ -124,3 +124,22 @@ def test_mid_turn_message_with_an_image_is_a_user_message(tmp_path: Path) -> Non
     assert image_tags["media_type"] == "image/png"
     assert image_tags["delivered"] == "mid-turn"
     assert "QUJD" not in "".join(image_tags.values())
+
+
+def test_tool_result_carries_the_id_of_its_tool_use(tmp_path: Path) -> None:
+    """The viewer pairs a tool call with its result by id: a call whose result is not written
+    yet is still running."""
+    call = {"type": "tool_use", "id": "toolu_1", "name": "Bash", "input": {"command": "sleep 60"}}
+    result = {"type": "tool_result", "tool_use_id": "toolu_1", "content": "done"}
+    path = tmp_path / "s.jsonl"
+    path.write_text(
+        json.dumps({"type": "assistant", "timestamp": "t", "message": {"role": "assistant", "content": [call]}})
+        + "\n"
+        + json.dumps({"type": "user", "timestamp": "t", "message": {"role": "user", "content": [result]}})
+        + "\n"
+    )
+    messages, _ = list_chat_messages(path)
+    assert [(b.kind, b.tool_use_id) for m in messages for b in m.blocks] == [
+        ("tool_use", "toolu_1"),
+        ("tool_result", "toolu_1"),
+    ]

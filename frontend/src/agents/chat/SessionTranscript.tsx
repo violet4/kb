@@ -44,6 +44,27 @@ function bashInput(
 // expanding shows all of it.
 const BASH_PREVIEW_LINES = 6;
 
+// The ids of tool calls with no tool_result yet: the harness writes a call to the transcript
+// before running it and its result only once it finishes, so these are the calls still running
+// (or, in a session that ended mid-call, never answered).
+function runningToolCalls(entries: TranscriptEntry[]): ReadonlySet<string> {
+  const running = new Set<string>();
+  for (const { blocks } of entries) {
+    for (const { block } of blocks) {
+      if (block.tool_use_id === null) continue;
+      if (block.kind === 'tool_use') running.add(block.tool_use_id);
+      else if (block.kind === 'tool_result') running.delete(block.tool_use_id);
+    }
+  }
+  return running;
+}
+
+const NONE_RUNNING: ReadonlySet<string> = new Set();
+
+function isRunning(block: ChatBlock, running: ReadonlySet<string>): boolean {
+  return block.kind === 'tool_use' && block.tool_use_id !== null && running.has(block.tool_use_id);
+}
+
 function showsBashWhileCollapsed(block: ChatBlock, expandBash: boolean): boolean {
   return expandBash && bashInput(block) !== null;
 }
@@ -255,12 +276,16 @@ const MessageRow = memo(function MessageRow({
   onToggle,
   showTags,
   expandBash,
+  running,
 }: {
   entry: TranscriptEntry;
   showTags: boolean;
   expandBash: boolean;
-  isCollapsed: (block: AddressedBlock) => boolean;
-  onToggle: (block: AddressedBlock) => void;
+  // Running tool call ids; NONE_RUNNING for a row with none, so an appended message re-renders
+  // only the rows whose calls it starts or finishes.
+  running: ReadonlySet<string>;
+  isCollapsed: (block: AddressedBlock, running: boolean) => boolean;
+  onToggle: (block: AddressedBlock, running: boolean) => void;
 }) {
   const { message } = entry;
   const addressedBlocks = entry.blocks;
@@ -283,8 +308,8 @@ const MessageRow = memo(function MessageRow({
         <BlockRow
           key={addressed.id}
           addressed={addressed}
-          collapsed={isCollapsed(addressed)}
-          onToggle={() => onToggle(addressed)}
+          collapsed={isCollapsed(addressed, isRunning(addressed.block, running))}
+          onToggle={() => onToggle(addressed, isRunning(addressed.block, running))}
           showTags={showTags}
           expandBash={expandBash}
           lead={
@@ -326,6 +351,7 @@ function segmentEntries(
   entries: TranscriptEntry[],
   showThinking: boolean,
   expandBash: boolean,
+  running: ReadonlySet<string>,
   minRun: number,
 ): Segment[] {
   const segments: Segment[] = [];
@@ -338,8 +364,9 @@ function segmentEntries(
   entries.forEach((entry, index) => {
     const shown = entry.blocks;
     if (shown.length === 0) return;
-    if (shown.every((a) => defaultCollapsed(a, showThinking) && !showsBashWhileCollapsed(a.block, expandBash)))
-      run.push(index);
+    const foldable = (a: AddressedBlock) =>
+      defaultCollapsed(a, showThinking, isRunning(a.block, running)) && !showsBashWhileCollapsed(a.block, expandBash);
+    if (shown.every(foldable)) run.push(index);
     else {
       flush();
       segments.push({ kind: 'entry', index });
@@ -395,9 +422,10 @@ export default function SessionTranscript({ sessionId, startAtBottom = false }: 
   const [intervalSeconds] = useRefreshIntervalSetting();
   const { entries, loading, error } = useSessionChat(sessionId, intervalSeconds);
   const { isCollapsed, toggle } = useCollapseState(showThinking);
+  const running = useMemo(() => runningToolCalls(entries), [entries]);
   const segments = useMemo(
-    () => segmentEntries(entries, showThinking, expandBash, collapsedAsBars ? 1 : 2),
-    [entries, showThinking, expandBash, collapsedAsBars],
+    () => segmentEntries(entries, showThinking, expandBash, running, collapsedAsBars ? 1 : 2),
+    [entries, showThinking, expandBash, running, collapsedAsBars],
   );
   // Runs the user opened, by the index of their first entry: stable while a live transcript
   // appends, since new entries only extend the last run.
@@ -424,9 +452,9 @@ export default function SessionTranscript({ sessionId, startAtBottom = false }: 
     followRef.current = false;
   }
   const toggleCard = useCallback(
-    (block: AddressedBlock) => {
+    (block: AddressedBlock, blockRunning: boolean) => {
       stopFollowing();
-      toggle(block);
+      toggle(block, blockRunning);
     },
     [toggle],
   );
@@ -487,6 +515,7 @@ export default function SessionTranscript({ sessionId, startAtBottom = false }: 
                   onToggle={toggleCard}
                   showTags={showTags}
                   expandBash={expandBash}
+                  running={entries[i].blocks.some((a) => isRunning(a.block, running)) ? running : NONE_RUNNING}
                 />
               );
               if (segment.kind === 'entry') return row(segment.index);

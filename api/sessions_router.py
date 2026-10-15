@@ -149,6 +149,7 @@ class ChatBlockOut(BaseModel):
     tool_input: Optional[dict[str, Any]] = None
     tool_output: Optional[str] = None
     is_error: bool = False
+    tool_use_id: Optional[str] = None
     tags: dict[str, str] = {}
 
 

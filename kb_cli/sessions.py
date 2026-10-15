@@ -444,6 +444,9 @@ class ChatBlock(NamedTuple):
     tool_input: Optional[dict[str, Any]] = None  # for kind == "tool_use"
     tool_output: Optional[str] = None  # for kind == "tool_result"
     is_error: bool = False  # for kind == "tool_result"
+    # A tool call's id on its tool_use block, and on the tool_result answering it; a tool_use
+    # with no tool_result carrying its id yet is still running.
+    tool_use_id: Optional[str] = None
     tags: dict[str, str] = {}
 
 
@@ -573,7 +576,13 @@ def _extract_blocks(content: object, message_tags: dict[str, str]) -> list[ChatB
                 if len(parts) == 3:
                     block_tags = {**block_tags, "mcp.server": parts[1], "mcp.tool": parts[2]}
             blocks.append(
-                ChatBlock(kind="tool_use", tool_name=tool_name, tool_input=item.get("input"), tags=block_tags)
+                ChatBlock(
+                    kind="tool_use",
+                    tool_name=tool_name,
+                    tool_input=item.get("input"),
+                    tool_use_id=item.get("id"),
+                    tags=block_tags,
+                )
             )
         elif item_type == "tool_result":
             result_content = item.get("content")
@@ -585,7 +594,11 @@ def _extract_blocks(content: object, message_tags: dict[str, str]) -> list[ChatB
                 result_text = str(result_content) if result_content is not None else ""
             blocks.append(
                 ChatBlock(
-                    kind="tool_result", tool_output=result_text, is_error=bool(item.get("is_error")), tags=block_tags
+                    kind="tool_result",
+                    tool_output=result_text,
+                    is_error=bool(item.get("is_error")),
+                    tool_use_id=item.get("tool_use_id"),
+                    tags=block_tags,
                 )
             )
         else:

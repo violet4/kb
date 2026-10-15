@@ -12,9 +12,10 @@ from models.base import Base, UtcDateTime, _now
 from models.behaviors.embedding import HasEmbedding
 from models.context import Context
 from models.journal.tracking import HasJournal
+from models.links.auto_links import HasAutoLinks
 
 
-class LogEntry(Base, HasEmbedding, HasJournal):
+class LogEntry(Base, HasEmbedding, HasAutoLinks, HasJournal):
     """A timestamped observation — a fact or set of facts about a moment, not durable reference
     knowledge and not work with a status. Append-only; the point is to build a queryable history
     (health, events, commits referenced by free text) that reveals patterns over time. domain is

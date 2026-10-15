@@ -3,6 +3,7 @@ import { useEffect, useState, type KeyboardEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { fetchContextTree } from '../contexts/api';
 import { isoDateTime } from '../shared/isoDate';
+import { isSubmitShortcut } from '../shared/submitShortcut';
 import { tokens } from '../shared/tokens';
 import { usePolling } from '../shared/usePolling';
 import { createLogEntry, fetchRecentLog } from './api';
@@ -48,7 +49,7 @@ export default function LogView() {
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+    if (isSubmitShortcut(e)) {
       e.preventDefault();
       void submit();
     }

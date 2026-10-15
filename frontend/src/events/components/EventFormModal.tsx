@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import Modal from '../../shared/Modal';
+import { isSubmitShortcut } from '../../shared/submitShortcut';
 import { tokens } from '../../shared/tokens';
 import { useEventForm } from '../hooks/useEventForm';
 import type { Event } from '../types';
@@ -173,7 +174,18 @@ function DateTimeFields({
 function NotesField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
     <FormField label="Notes">
-      <textarea value={value} onChange={(e) => onChange(e.target.value)} style={{ ...inputStyle, resize: 'vertical' }} rows={2} />
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (isSubmitShortcut(e)) {
+            e.preventDefault();
+            e.currentTarget.form?.requestSubmit();
+          }
+        }}
+        style={{ ...inputStyle, resize: 'vertical' }}
+        rows={2}
+      />
     </FormField>
   );
 }

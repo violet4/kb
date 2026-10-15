@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import Markdown from '../../../shared/Markdown';
+import { isSubmitShortcut } from '../../../shared/submitShortcut';
 import { tokens } from '../../../shared/tokens';
 import { useFieldEdit } from '../../hooks/useFieldEdit';
 import type { ColumnSchema, EntityRow, EntityType } from '../../types';
@@ -31,6 +32,10 @@ export default function EditableFieldControl({ type, id, schema, initialValue, o
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') onCancel();
+    if (isSubmitShortcut(e)) {
+      e.preventDefault();
+      handleSave();
+    }
   };
 
   const textarea = (

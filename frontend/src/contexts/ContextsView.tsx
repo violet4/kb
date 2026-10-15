@@ -216,11 +216,7 @@ export default function ContextsView() {
           )}
           {pageError && <p style={{ color: tokens.color.danger }}>{pageError}</p>}
           {filterHits && showAllHits ? (
-            followedId !== null ? (
-              <RecordsByType hits={filterHits} tree={tree ?? []} />
-            ) : (
-              <RecordList hits={filterHits} describe={describeRecord} />
-            )
+            <RecordsByType hits={filterHits} tree={tree ?? []} />
           ) : (
             page &&
             page.context.id === selectedId && (
@@ -798,16 +794,17 @@ function WishlistRow({ item, here }: { item: WishlistItem; here: number }) {
 }
 
 // Records grouped into the page's own sections, in its order, then one section per other
-// type present; each section is sub-grouped by context.
+// type present; each section is sub-grouped by context. A type with no records gets no section.
 function RecordsByType({ hits, tree }: { hits: RecordHit[]; tree: ContextNode[] }) {
   const paths = useMemo(() => contextPaths(tree), [tree]);
   const otherTypes = [...new Set(hits.map((h) => h.type).filter((t) => !PAGE_TYPES.has(t)))].sort();
   const sections: (readonly [string, string])[] = [...PAGE_TYPE_SECTIONS, ...otherTypes.map((t) => [t, t] as const)];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 960 }}>
-      {sections.map(([type, title]) => (
-        <TypeSection key={type} title={title} hits={hits.filter((h) => h.type === type)} paths={paths} />
-      ))}
+      {sections.map(([type, title]) => {
+        const ofType = hits.filter((h) => h.type === type);
+        return ofType.length > 0 && <TypeSection key={type} title={title} hits={ofType} paths={paths} />;
+      })}
     </div>
   );
 }

@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from api.deps import get_session
+from models.context import Context, Tag
 from models.work.event import Event
 
 router = APIRouter(prefix="/events")
@@ -66,14 +67,22 @@ class EventCreateIn(BaseModel):
     is_all_day: bool = False
     recurrence: Optional[str] = None
     notes: Optional[str] = None
+    context_id: Optional[int] = None
+    tag_id: Optional[int] = None  # exactly one of context_id and tag_id
 
 
 @router.post("", response_model=EventOut)
 async def create_event(body: EventCreateIn, session: Session = Depends(get_session)) -> EventOut:
+    context = session.get(Context, body.context_id) if body.context_id is not None else None
+    tag = session.get(Tag, body.tag_id) if body.tag_id is not None else None
+    if (context is None) == (tag is None) or (context is not None and context.deleted_at is not None):
+        raise HTTPException(status_code=400, detail="an event needs exactly one existing context or tag")
     event = Event.create(
         session,
         body.title,
         body.starts_at,
+        context=context,
+        tag=tag,
         is_all_day=body.is_all_day,
         recurrence=body.recurrence,
         notes=body.notes,

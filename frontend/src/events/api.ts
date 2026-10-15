@@ -30,7 +30,13 @@ export interface NewEvent {
   notes: string | null;
 }
 
-export async function createEvent(input: NewEvent): Promise<Event> {
+// A new event goes in exactly one context or on one tag; an edit keeps its placement.
+export interface EventPlacement {
+  context_id?: number;
+  tag_id?: number;
+}
+
+export async function createEvent(input: NewEvent & EventPlacement): Promise<Event> {
   const response = await fetch(`${API_BASE}/events`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

@@ -1,7 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { fetchContextTree, fetchTags } from '../../contexts/api';
+import type { ContextRef, Placement, PlacementChoice } from '../../contexts/types';
 import { createEvent, deleteEvent, updateEvent } from '../api';
 import type { Event } from '../types';
 import { useRecurrenceField } from './useRecurrenceField';
+
+const INBOX = 'inbox';
 
 interface UseEventFormResult {
   title: string;
@@ -15,6 +19,9 @@ interface UseEventFormResult {
   recurrenceField: ReturnType<typeof useRecurrenceField>;
   notes: string;
   setNotes: (value: string) => void;
+  /** Where a new event goes (inbox until changed); null for an edit, which keeps its own. */
+  placement: Placement | null;
+  choosePlacement: (choice: PlacementChoice) => void;
   submitting: boolean;
   error: string | null;
   dirty: boolean;
@@ -40,6 +47,8 @@ export function useEventForm(initialDate: Date, existing: Event | null, onSaved:
   const [isAllDay, setIsAllDay] = useState(initial.isAllDay);
   const recurrenceField = useRecurrenceField(parseDateInput(date), initial.recurrence);
   const [notes, setNotes] = useState(initial.notes);
+  const [placement, setPlacement] = useState<Placement | null>(null);
+  const [placeNames, setPlaceNames] = useState<{ contexts: ContextRef[]; tags: ContextRef[] }>({ contexts: [], tags: [] });
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,9 +61,34 @@ export function useEventForm(initialDate: Date, existing: Event | null, onSaved:
     recurrenceField.rrule !== initial.recurrence ||
     notes !== initial.notes;
 
+  useEffect(() => {
+    if (existing) return;
+    Promise.all([fetchContextTree(), fetchTags()])
+      .then(([contexts, tags]) => {
+        setPlaceNames({ contexts, tags });
+        const inbox = contexts.find((c) => c.name === INBOX);
+        if (inbox) setPlacement({ context: { id: inbox.id, name: inbox.name }, tag: null, tag_allowed: true });
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+  }, [existing]);
+
+  const choosePlacement = (choice: PlacementChoice) => {
+    const context = 'context_id' in choice ? placeNames.contexts.find((c) => c.id === choice.context_id) : undefined;
+    const tag = 'tag_id' in choice ? placeNames.tags.find((t) => t.id === choice.tag_id) : undefined;
+    setPlacement({
+      context: context ? { id: context.id, name: context.name } : null,
+      tag: tag ? { id: tag.id, name: tag.name } : null,
+      tag_allowed: true,
+    });
+  };
+
   const submit = async (): Promise<boolean> => {
     if (!title.trim()) {
       setError('Title is required.');
+      return false;
+    }
+    if (!existing && !placement?.context && !placement?.tag) {
+      setError('Pick a context or tag.');
       return false;
     }
     setSubmitting(true);
@@ -68,7 +102,7 @@ export function useEventForm(initialDate: Date, existing: Event | null, onSaved:
         notes: notes.trim() || null,
       };
       if (existing) await updateEvent(existing.id, payload);
-      else await createEvent(payload);
+      else await createEvent({ ...payload, context_id: placement?.context?.id, tag_id: placement?.tag?.id });
       onSaved();
       return true;
     } catch (e) {
@@ -107,6 +141,8 @@ export function useEventForm(initialDate: Date, existing: Event | null, onSaved:
     recurrenceField,
     notes,
     setNotes,
+    placement,
+    choosePlacement,
     submitting,
     error,
     dirty,

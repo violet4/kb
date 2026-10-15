@@ -1,5 +1,8 @@
 import { useRef, useState } from 'react';
+import ContextPicker from '../../contexts/components/ContextPicker';
+import type { Placement, PlacementChoice } from '../../contexts/types';
 import Modal from '../../shared/Modal';
+import Popover from '../../shared/Popover';
 import { isSubmitShortcut } from '../../shared/submitShortcut';
 import { tokens } from '../../shared/tokens';
 import { useEventForm } from '../hooks/useEventForm';
@@ -77,6 +80,7 @@ function EventForm({
       <AllDayField checked={form.isAllDay} onChange={form.setIsAllDay} />
       <RecurrenceField field={form.recurrenceField} date={parseDateInput(form.date)} />
       <NotesField value={form.notes} onChange={form.setNotes} />
+      {form.placement && <PlacementField placement={form.placement} onPick={form.choosePlacement} />}
       {form.error && <p style={{ color: tokens.color.danger, margin: 0, fontSize: 13 }}>{form.error}</p>}
       <ModalActions
         submitting={form.submitting}
@@ -187,6 +191,36 @@ function NotesField({ value, onChange }: { value: string; onChange: (v: string) 
         rows={2}
       />
     </FormField>
+  );
+}
+
+// A new event's context or tag, shown as @context or #tag with the shared picker behind the pencil.
+function PlacementField({ placement, onPick }: { placement: Placement; onPick: (choice: PlacementChoice) => void }) {
+  const label = placement.tag ? `#${placement.tag.name}` : placement.context ? `@${placement.context.name}` : 'none';
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+      <span style={{ color: tokens.color.textMuted }}>Context</span>
+      <span>{label}</span>
+      <Popover
+        label="✎"
+        align="start"
+        title="Change context"
+        ariaLabel="Change context"
+        triggerStyle={{ background: 'none', border: 'none', padding: 0, color: tokens.color.textMuted, cursor: 'pointer' }}
+      >
+        {(close) => (
+          <ContextPicker
+            value={placement}
+            nullable={false}
+            onCancel={close}
+            onPick={(choice) => {
+              close();
+              onPick(choice);
+            }}
+          />
+        )}
+      </Popover>
+    </div>
   );
 }
 

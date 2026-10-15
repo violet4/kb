@@ -1,0 +1,25 @@
+#!/bin/sh
+# PreToolUse adapter for a blocking `kb hooks CHECK [ARGS]`: stdin goes to the check, and its
+# stdout, when non-empty, is the reason to deny the tool call.
+#
+# Fails closed. If the check cannot run (kb exits non-zero: an unapplied migration, a broken
+# import mid-edit), the call is denied with kb's own error. Claude Code reads empty output as
+# "allow", so swallowing the failure would switch the guard off with no sign that it is off.
+# Plain sh rather than Python, so this still runs when kb's own environment is what broke.
+root=$(dirname "$(dirname "$(dirname "$(readlink -f "$0")")")")
+err=$(mktemp)
+trap 'rm -f "$err"' EXIT
+
+reason=$("$root/kb" hooks "$@" 2>"$err")
+status=$?
+if [ "$status" -ne 0 ]; then
+  reason="kb hooks $1 could not run (exit $status), so this call is blocked instead of going through unchecked. kb's error ends:
+$(tail -n 5 "$err")
+Fix kb, then retry. If the fix itself is blocked, ask the user to run it with the ! prefix (an unapplied migration: ! $root/scripts/db/upgrade)."
+fi
+
+if [ -n "$reason" ]; then
+  jq -n --arg r "$reason" '{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: $r}}'
+else
+  printf '{}'
+fi

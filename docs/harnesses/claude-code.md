@@ -128,9 +128,15 @@ See `kb hooks --help` / `kb_cli/hooks.py` for what this detects and why (points 
 
 Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/user/kb/kb`).
 
+## deny-check (harness-specific adapter for every blocking detector)
+
+`harnesses/claude-code/deny-check CHECK [ARGS]` runs `kb hooks CHECK [ARGS]` on its stdin and turns non-empty stdout into a `PreToolUse` `permissionDecision: "deny"` with that text as the reason, or prints `{}`. Every blocking detector below is wired through it.
+
+It fails closed. Claude Code reads empty output as "allow", so a detector that cannot run (kb exiting non-zero on an unapplied migration or a half-finished edit) would otherwise switch its guard off with no visible sign. `deny-check` denies the call instead, quoting the end of kb's error and naming `scripts/db/upgrade` for the user to run with `!` if the agent is locked out. Each entry also sets `"onFailure": "block"` (Claude Code 2.1.295 or later), so Claude Code blocks the call when `deny-check` itself cannot start or times out. It is plain `sh`, so it still runs when kb's Python environment is what broke.
+
 ## find-root-check (harness-agnostic detector, blocking)
 
-See `kb hooks --help` / `kb_cli/hooks.py` for what this detects and why (a root-scoped `find`). This section is only the Claude Code wiring: pipes a `Bash` command's `.tool_input.command` through on `PreToolUse`, and — unlike `mypy-check`/`tree-reminder`, which only ever add context — the adapter emits `permissionDecision: "deny"` when the detector's stdout is non-empty, instead of always emitting `additionalContext`/`{}`.
+See `kb hooks --help` / `kb_cli/hooks.py` for what this detects and why (a root-scoped `find`). This section is only the Claude Code wiring: pipes a `Bash` command's `.tool_input.command` through on `PreToolUse`, and — unlike `mypy-check`/`tree-reminder`, which only ever add context — the entry pipes it through `deny-check` (above), which denies the call when the detector's stdout is non-empty, instead of always emitting `additionalContext`/`{}`.
 
 ```json
 {
@@ -141,7 +147,7 @@ See `kb hooks --help` / `kb_cli/hooks.py` for what this detects and why (a root-
         "hooks": [
           {
             "type": "command",
-            "command": "reason=$(jq -r '.tool_input.command' | /path/to/kb hooks find-root-check 2>/dev/null); if [ -n \"$reason\" ]; then jq -n --arg r \"$reason\" '{hookSpecificOutput: {hookEventName: \"PreToolUse\", permissionDecision: \"deny\", permissionDecisionReason: $r}}'; else printf '{}'; fi"
+            "command": "jq -r '.tool_input.command' | /path/to/kb-repo/harnesses/claude-code/deny-check find-root-check", "onFailure": "block"
           }
         ]
       }
@@ -165,7 +171,7 @@ See `kb hooks --help` / `kb_cli/hooks.py` for what this detects and why (a `git 
         "hooks": [
           {
             "type": "command",
-            "command": "reason=$(jq -r '.tool_input.command' | /path/to/kb hooks commit-check 2>/dev/null); if [ -n \"$reason\" ]; then jq -n --arg r \"$reason\" '{hookSpecificOutput: {hookEventName: \"PreToolUse\", permissionDecision: \"deny\", permissionDecisionReason: $r}}'; else printf '{}'; fi"
+            "command": "jq -r '.tool_input.command' | /path/to/kb-repo/harnesses/claude-code/deny-check commit-check", "onFailure": "block"
           }
         ]
       }
@@ -189,11 +195,11 @@ Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/
         "hooks": [
           {
             "type": "command",
-            "command": "reason=$(jq -r '.tool_input.command' | /path/to/kb hooks doc-command-check 2>/dev/null); if [ -n \"$reason\" ]; then jq -n --arg r \"$reason\" '{hookSpecificOutput: {hookEventName: \"PreToolUse\", permissionDecision: \"deny\", permissionDecisionReason: $r}}'; else printf '{}'; fi"
+            "command": "jq -r '.tool_input.command' | /path/to/kb-repo/harnesses/claude-code/deny-check doc-command-check", "onFailure": "block"
           },
           {
             "type": "command",
-            "command": "reason=$(jq -r '.tool_input.command + \"\\n\" + .cwd' | /path/to/kb hooks required-reading-check --command --with-cwd 2>/dev/null); if [ -n \"$reason\" ]; then jq -n --arg r \"$reason\" '{hookSpecificOutput: {hookEventName: \"PreToolUse\", permissionDecision: \"deny\", permissionDecisionReason: $r}}'; else printf '{}'; fi"
+            "command": "jq -r '.tool_input.command + \"\\n\" + .cwd' | /path/to/kb-repo/harnesses/claude-code/deny-check required-reading-check --command --with-cwd", "onFailure": "block"
           }
         ]
       },
@@ -202,7 +208,7 @@ Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/
         "hooks": [
           {
             "type": "command",
-            "command": "reason=$(jq -r '.tool_input.file_path' | /path/to/kb hooks required-reading-check 2>/dev/null); if [ -n \"$reason\" ]; then jq -n --arg r \"$reason\" '{hookSpecificOutput: {hookEventName: \"PreToolUse\", permissionDecision: \"deny\", permissionDecisionReason: $r}}'; else printf '{}'; fi"
+            "command": "jq -r '.tool_input.file_path' | /path/to/kb-repo/harnesses/claude-code/deny-check required-reading-check", "onFailure": "block"
           }
         ]
       }
@@ -226,7 +232,7 @@ See `kb hooks --help` / `kb_cli/hooks.py` for what this detects and why (a `pkil
         "hooks": [
           {
             "type": "command",
-            "command": "reason=$(jq -r '.tool_input.command' | /path/to/kb hooks pkill-check 2>/dev/null); if [ -n \"$reason\" ]; then jq -n --arg r \"$reason\" '{hookSpecificOutput: {hookEventName: \"PreToolUse\", permissionDecision: \"deny\", permissionDecisionReason: $r}}'; else printf '{}'; fi"
+            "command": "jq -r '.tool_input.command' | /path/to/kb-repo/harnesses/claude-code/deny-check pkill-check", "onFailure": "block"
           }
         ]
       }
@@ -250,7 +256,7 @@ See `kb hooks --help` / `kb_cli/hooks.py` for what this detects and why (points 
         "hooks": [
           {
             "type": "command",
-            "command": "reason=$(jq -r '.tool_input.file_path' | /path/to/kb hooks memory-md-check 2>/dev/null); if [ -n \"$reason\" ]; then jq -n --arg r \"$reason\" '{hookSpecificOutput: {hookEventName: \"PreToolUse\", permissionDecision: \"deny\", permissionDecisionReason: $r}}'; else printf '{}'; fi"
+            "command": "jq -r '.tool_input.file_path' | /path/to/kb-repo/harnesses/claude-code/deny-check memory-md-check", "onFailure": "block"
           }
         ]
       }
@@ -298,7 +304,7 @@ See `kb hooks --help` / `kb_cli/hooks.py` for what this detects and why: `uv syn
         "hooks": [
           {
             "type": "command",
-            "command": "reason=$(jq -r '.tool_input.command + \"\\n\" + .cwd' | /path/to/kb hooks uv-sync-check 2>/dev/null); if [ -n \"$reason\" ]; then jq -n --arg r \"$reason\" '{hookSpecificOutput: {hookEventName: \"PreToolUse\", permissionDecision: \"deny\", permissionDecisionReason: $r}}'; else printf '{}'; fi"
+            "command": "jq -r '.tool_input.command + \"\\n\" + .cwd' | /path/to/kb-repo/harnesses/claude-code/deny-check uv-sync-check", "onFailure": "block"
           }
         ]
       }
@@ -384,7 +390,7 @@ Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/
 
 ## session-register, session-inbox-check, session-stop, permission-request (session tracking)
 
-`kb hooks session-register` records the session in `harness_session`. Every Journal row a session writes points at that row, so without this hook a session's creates, changes, and reads are journaled with no session and are missing from `kb journal session`; `kb health` reports an unregistered session. It also subscribes the session to cross-session messaging. It runs on every `SessionStart` with no matcher: `/clear` starts a new session id that needs its own row, and a resumed session's re-registration is an upsert. `session-inbox-check` marks the session as working and prints unread messages on each prompt; `session-stop` marks it idle when a turn ends. `permission-request` runs before Claude Code shows a permission dialog and records that one may be open, so the web UI's agent page holds a mid-turn prompt that would otherwise answer the dialog; the prompt and stop hooks clear it. It must print nothing, so the dialog proceeds as usual. Configure it together with `session-register --reports-permission-prompts`: the flag tells kb this session runs the hook, and a session without it is never sent a prompt mid-turn. Claude Code reads hooks when a session starts, so a session already running when they are added needs a restart (`kb claude --resume ID`). `kb hooks --help` describes each.
+`kb hooks session-register` records the session in `harness_session`. Every Journal row a session writes points at that row, so without this hook a session's creates, changes, and reads are journaled with no session and are missing from `kb journal session`; `kb health` reports an unregistered session. It also subscribes the session to cross-session messaging. It runs on every `SessionStart` with no matcher: `/clear` starts a new session id that needs its own row, and a resumed session's re-registration is an upsert. `session-inbox-check` marks the session as working and prints unread messages on each prompt; `session-stop` marks it idle when a turn ends. `permission-request` runs before Claude Code shows a permission dialog and records that one may be open, so the web UI's agent page holds a mid-turn prompt that would otherwise answer the dialog; the prompt and stop hooks clear it. It must print nothing, so the dialog proceeds as usual. Its entry sets `"onFailure": "block"`, so when it cannot run, Claude Code denies the permission request instead of showing a dialog the web UI does not know is open. Configure it together with `session-register --reports-permission-prompts`: the flag tells kb this session runs the hook, and a session without it is never sent a prompt mid-turn. Claude Code reads hooks when a session starts, so a session already running when they are added needs a restart (`kb claude --resume ID`). `kb hooks --help` describes each.
 
 ```json
 {
@@ -424,7 +430,7 @@ Replace `/path/to/kb` with this repo's `kb` script's absolute path (e.g. `/home/
         "hooks": [
           {
             "type": "command",
-            "command": "/path/to/kb hooks permission-request 2>/dev/null; true"
+            "command": "/path/to/kb hooks permission-request", "onFailure": "block"
           }
         ]
       }

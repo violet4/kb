@@ -138,3 +138,15 @@ def test_recent_pages_newest_first_without_reads(db_session: Session, agent_sess
     rest = Journal.recent(db_session, 2, before_id=first[-1].id)
     assert [e.entity_id for e in rest] == [todos[0].id]
     assert Journal.recent(db_session, 1, include_reads=True)[0].action is JournalAction.READ
+
+
+def test_foreign_key_values_are_shown_by_name(db_session: Session, no_agent_session: None) -> None:
+    todo = make_todo(db_session, "t")
+    db_session.commit()
+    old_id, home = todo.context_id, Context.get_or_create(db_session, "home")
+    todo.context = home
+    todo.title = "7"
+    db_session.commit()
+    changes = {e.field: e.shown_values() for e in Journal.for_entity(db_session, "Todo", todo.id) if e.field}
+    assert changes["context_id"] == (f"inbox (#{old_id})", f"home (#{home.id})")
+    assert changes["title"] == ("t", "7")

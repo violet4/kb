@@ -125,6 +125,27 @@ class Journal(Base):
         )
         return [TouchedRecord(t, i, bool(n), at) for t, i, n, at in rows]
 
+    def shown_values(self) -> tuple[Optional[str], Optional[str]]:
+        """old_value and new_value as a reader should see them: when field is a foreign key, each
+        id becomes the referenced row's name or title with its id, e.g. context_id 89 ->
+        'inbox (#89)'. Any other field, or an id whose row no longer exists, is returned as
+        stored."""
+        target = self._referenced_model()
+        session = Session.object_session(self)
+        if target is None or session is None:
+            return self.old_value, self.new_value
+        return _label(session, target, self.old_value), _label(session, target, self.new_value)
+
+    def _referenced_model(self) -> Optional[type[Base]]:
+        """The model that field's foreign key points at, or None when field is not one."""
+        models = {m.class_.__name__: m for m in Base.registry.mappers}
+        mapper = models.get(self.entity_type)
+        column = mapper.columns.get(self.field) if mapper is not None and self.field else None
+        if column is None or len(column.foreign_keys) != 1:
+            return None
+        table = next(iter(column.foreign_keys)).column.table
+        return next((m.class_ for m in models.values() if m.local_table is table), None)
+
     def describe(self, clip: Optional[int] = None) -> str:
         """One line naming what happened, without timestamp or session. clip shortens each old and
         new value to that many characters, for a listing that only needs to show what changed."""
@@ -135,7 +156,8 @@ class Journal(Base):
             return repr(value)
 
         if self.action is JournalAction.UPDATE and self.field:
-            text = f"{self.field}: {shown(self.old_value)} -> {shown(self.new_value)}"
+            old, new = self.shown_values()
+            text = f"{self.field}: {shown(old)} -> {shown(new)}"
         elif self.action is JournalAction.NOTE:
             text = self.note or ""
         else:
@@ -188,6 +210,12 @@ class Journal(Base):
         if self.field:
             return f"<Journal {self.action.value} {target}.{self.field}>"
         return f"<Journal {self.action.value} {target}>"
+
+
+def _label(session: Session, model: type[Base], value: Optional[str]) -> Optional[str]:
+    row = session.get(model, int(value)) if value is not None and value.isdigit() else None
+    name = getattr(row, "name", None) or getattr(row, "title", None)
+    return f"{name} (#{value})" if name else value
 
 
 # The integer key of each harness session already looked up by this process. A session's

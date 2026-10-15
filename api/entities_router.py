@@ -551,8 +551,8 @@ async def get_entity_journal(
             action=e.action.value,
             session_id=e.harness_session.harness_id if e.harness_session else None,
             field=e.field,
-            old_value=e.old_value,
-            new_value=e.new_value,
+            old_value=e.shown_values()[0],
+            new_value=e.shown_values()[1],
             note=e.note,
             created_at_utc=e.created_at.isoformat(),
         )

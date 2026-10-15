@@ -5,6 +5,7 @@ from typing import Iterator
 
 import pytest
 from sqlalchemy import Table, delete, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from conftest import make_todo
@@ -150,3 +151,25 @@ def test_foreign_key_values_are_shown_by_name(db_session: Session, no_agent_sess
     changes = {e.field: e.shown_values() for e in Journal.for_entity(db_session, "Todo", todo.id) if e.field}
     assert changes["context_id"] == (f"inbox (#{old_id})", f"home (#{home.id})")
     assert changes["title"] == ("t", "7")
+
+
+def test_failed_flush_does_not_poison_other_sessions(db_session: Session, no_agent_session: None) -> None:
+    """A row whose insert fails never gets an id; nothing queued for it may outlive that flush."""
+    from models.work.event import Event
+
+    db_session.add(Event(title="no context or tag", starts_at=_now()))  # violates ck_event_context_xor_tag
+    with pytest.raises(IntegrityError):
+        db_session.flush()
+    db_session.rollback()
+
+    same = make_todo(db_session, "same session, after the failure")
+    db_session.commit()
+    assert _actions(db_session, same.id) == [(JournalAction.CREATE, None, None, None)]
+
+    other = Session(bind=db_session.get_bind())
+    try:
+        todo = make_todo(other, "after the failure")
+        other.commit()
+        assert _actions(other, todo.id) == [(JournalAction.CREATE, None, None, None)]
+    finally:
+        other.close()

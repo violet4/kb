@@ -8,6 +8,7 @@ from typing import Any, Optional, Sequence
 from sqlalchemy import event, inspect
 from sqlalchemy.orm import Mapped, Session, UOWTransaction
 
+from models import flush_pending
 from models.behaviors.embedding import HasEmbedding
 from models.links.entity_link import EntityLink
 
@@ -124,9 +125,6 @@ class HasAutoLinks:
                 session.delete(link)
 
 
-_auto_link_candidates: list[Any] = []
-
-
 @event.listens_for(Session, "before_flush")
 def _collect_auto_link_candidates(
     session: Session, flush_context: UOWTransaction, instances: Optional[Sequence[Any]]
@@ -142,13 +140,10 @@ def _collect_auto_link_candidates(
             assert state is not None
             changed = {attr.key for attr in state.attrs if attr.history.has_changes()}
             if obj in session.new or changed & obj._link_fields():
-                _auto_link_candidates.append(obj)
+                flush_pending.queue(session, "auto_links").append(obj)
 
 
 @event.listens_for(Session, "after_flush")
 def _sync_auto_links_dirty(session: Session, flush_context: UOWTransaction) -> None:
-    if not _auto_link_candidates:
-        return
-    candidates, _auto_link_candidates[:] = list(_auto_link_candidates), []
-    for obj in candidates:
+    for obj in flush_pending.take(session, "auto_links"):
         obj.sync_auto_links(session)

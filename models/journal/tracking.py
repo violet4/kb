@@ -10,6 +10,7 @@ from sqlalchemy import Delete, Table, Update, delete, event, inspect, select
 from sqlalchemy.orm import MANYTOONE, Mapped, ORMExecuteState, Session, UOWTransaction
 from sqlalchemy.orm.base import NO_VALUE
 
+from models import flush_pending
 from models.base import Base
 from models.journal.journal import Journal, JournalAction
 
@@ -98,14 +99,11 @@ def _journal_changes(session: Session, obj: HasJournal) -> list[Journal]:
     return rows
 
 
-_journal_created: list[HasJournal] = []
-
-
 @event.listens_for(Session, "before_flush")
 def _journal_flush(session: Session, flush_context: UOWTransaction, instances: Optional[Sequence[Any]]) -> None:
     # A new row has no id until the flush, so its CREATE row is written in after_flush;
     # changes and deletes are written here, while attribute history still holds old values.
-    _journal_created.extend(obj for obj in session.new if isinstance(obj, HasJournal))
+    flush_pending.queue(session, "journal_created").extend(obj for obj in session.new if isinstance(obj, HasJournal))
     for obj in list(session.dirty):
         if isinstance(obj, HasJournal):
             session.add_all(_journal_changes(session, obj))
@@ -118,10 +116,7 @@ def _journal_flush(session: Session, flush_context: UOWTransaction, instances: O
 
 @event.listens_for(Session, "after_flush")
 def _journal_created_rows(session: Session, flush_context: UOWTransaction) -> None:
-    if not _journal_created:
-        return
-    created, _journal_created[:] = list(_journal_created), []
-    for obj in created:
+    for obj in flush_pending.take(session, "journal_created"):
         session.add(Journal(entity_type=type(obj).__name__, entity_id=obj.id, action=JournalAction.CREATE))
 
 

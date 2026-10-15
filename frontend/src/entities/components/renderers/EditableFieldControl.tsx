@@ -38,38 +38,52 @@ export default function EditableFieldControl({ type, id, schema, initialValue, o
     }
   };
 
-  const textarea = (
+  const textarea = (sizing: React.CSSProperties) => (
     <textarea
       value={value}
       onChange={(e) => setValue(e.target.value)}
       onKeyDown={handleKeyDown}
       autoFocus
       rows={textareaRows(value)}
-      style={{ ...inputStyle, width: '100%', resize: 'vertical', whiteSpace: 'pre-wrap' }}
+      style={{ ...inputStyle, width: '100%', whiteSpace: 'pre-wrap', ...sizing }}
     />
   );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%' }}>
       {markdown ? (
-        <div style={{ display: 'flex', gap: 16, width: '100%', alignItems: 'stretch' }}>
-          <div style={{ flex: 1, minWidth: 0 }}>{textarea}</div>
+        // One height for both panes, set by the outer box's own resize handle, so the source and
+        // its preview always line up; each pane scrolls on its own inside it.
+        <div
+          style={{
+            display: 'flex',
+            gap: 16,
+            width: '100%',
+            height: `min(60vh, ${splitHeightEm(initialValue)}em)`,
+            minHeight: '8em',
+            resize: 'vertical',
+            overflow: 'hidden',
+          }}
+        >
+          <div style={{ flex: '1 1 0', minWidth: 0 }}>
+            {textarea({ height: '100%', resize: 'none', boxSizing: 'border-box' })}
+          </div>
           <div
             style={{
-              flex: 1,
+              flex: '1 1 0',
               minWidth: 0,
               border: `1px solid ${tokens.color.border}`,
               borderRadius: 4,
               padding: '4px 8px',
               overflowY: 'auto',
-              maxHeight: textareaRows(value) * 20 + 16,
+              boxSizing: 'border-box',
             }}
           >
             <Markdown text={value} />
           </div>
         </div>
       ) : (
-        textarea
+        textarea({ resize: 'vertical' })
       )}
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         <button onClick={handleSave} disabled={saving} style={buttonStyle}>
@@ -92,6 +106,15 @@ function textareaRows(value: string): number {
   const explicitLines = value.split('\n').length;
   const wrappedLines = Math.ceil(value.length / CHARS_PER_LINE);
   return Math.min(24, Math.max(3, explicitLines, wrappedLines));
+}
+
+// Starting height of the side-by-side editor, from the same estimate at half the width; 60vh
+// caps it and the user's drag overrides it.
+function splitHeightEm(value: string): number {
+  const CHARS_PER_LINE = 45;
+  const LINE_EM = 1.7; // the preview's line, which is taller than the textarea's
+  const lines = value.split('\n').reduce((n, line) => n + Math.max(1, Math.ceil(line.length / CHARS_PER_LINE)), 0);
+  return lines * LINE_EM + 2;
 }
 
 const inputStyle = {

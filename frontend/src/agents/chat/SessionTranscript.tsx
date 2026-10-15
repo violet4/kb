@@ -2,6 +2,7 @@ import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState, type Rea
 import Markdown from '../../shared/Markdown';
 import { tokens } from '../../shared/tokens';
 import { useRefreshIntervalSetting } from '../hooks/useRefreshIntervalSetting';
+import { useTranscriptSettings } from '../hooks/useTranscriptSettings';
 import type { AddressedBlock } from './blockAddress';
 import { defaultCollapsed, useCollapseState } from './hooks/useCollapseState';
 import { useSessionChat, type TranscriptEntry } from './hooks/useSessionChat';
@@ -362,13 +363,6 @@ interface SessionTranscriptProps {
   sessionId: string;
   // Open at the newest message and follow, for a live session; otherwise open at the top.
   startAtBottom?: boolean;
-  // Each block's raw transcript fields (kind, isSidechain, model, ...) under its content.
-  showTags?: boolean;
-  // Off: thinking blocks start collapsed like tool calls, so they fold into collapsed runs.
-  showThinking?: boolean;
-  // On: every stretch of collapsed cards, a lone one included, is a small colored bar with no text.
-  collapsedAsBars?: boolean;
-  barColor?: string; // a #rrggbb color for those bars
 }
 
 // The raw Claude Code JSONL transcript for one session -- every user/assistant message,
@@ -381,11 +375,8 @@ interface SessionTranscriptProps {
 export default function SessionTranscript({
   sessionId,
   startAtBottom = false,
-  showTags = false,
-  showThinking = true,
-  collapsedAsBars = false,
-  barColor = tokens.color.textMuted,
 }: SessionTranscriptProps) {
+  const { showTags, showThinking, collapsedAsBars, barColor } = useTranscriptSettings();
   const [intervalSeconds] = useRefreshIntervalSetting();
   const { entries, loading, error } = useSessionChat(sessionId, intervalSeconds);
   const { isCollapsed, toggle } = useCollapseState(showThinking);

@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import AgentContentTabs, { AgentTabBar, type AgentContentTab } from './AgentContentTabs';
 import Popover from '../shared/Popover';
-import { isBoolean, isHexColor, RAW_STRING, useStoredState } from '../shared/useStoredState';
 import BarColorSetting from './BarColorSetting';
 import { interruptSession, sendSessionInput } from './api';
 import InterruptButton from './InterruptButton';
@@ -11,6 +10,7 @@ import MessageComposer from '../channels/components/MessageComposer';
 import { formatSeconds } from './formatSeconds';
 import { useAgentSessions } from './hooks/useAgentSessions';
 import { useRefreshIntervalSetting } from './hooks/useRefreshIntervalSetting';
+import { useTranscriptSettings } from './hooks/useTranscriptSettings';
 import { useChannelList } from '../channels/hooks/useChannelList';
 import { useChannelListRefreshInterval } from '../channels/hooks/useChannelListRefreshInterval';
 import { tokens } from '../shared/tokens';
@@ -34,15 +34,8 @@ export default function AgentPage() {
   const backLabel = fromHistoryProject ? '← Project' : '← Agents';
 
   const [displayName] = useDisplayName();
-  const [showTags, setShowTags] = useStoredState('kb-agents-transcript-show-tags', false, isBoolean);
-  const [showThinking, setShowThinking] = useStoredState('kb-agents-transcript-show-thinking', true, isBoolean);
-  const [collapsedAsBars, setCollapsedAsBars] = useStoredState('kb-agents-transcript-collapsed-as-bars', false, isBoolean);
-  const [barColor, setBarColor] = useStoredState(
-    'kb-agents-transcript-bar-color',
-    tokens.color.textMuted,
-    isHexColor,
-    RAW_STRING,
-  );
+  const { showTags, setShowTags, showThinking, setShowThinking, collapsedAsBars, setCollapsedAsBars, barColor, setBarColor } =
+    useTranscriptSettings();
   const [intervalSeconds] = useChannelListRefreshInterval();
   const { channels, refresh: refreshChannels } = useChannelList(displayName, intervalSeconds);
   const dmChannel = useMemo(
@@ -169,10 +162,6 @@ export default function AgentPage() {
       </div>
       <AgentContentTabs
         hideTabBar
-        showTags={showTags}
-        showThinking={showThinking}
-        collapsedAsBars={collapsedAsBars}
-        barColor={barColor}
         agentSessionId={sessionId}
         channelId={channelId}
         displayName={displayName}

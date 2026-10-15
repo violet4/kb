@@ -14,10 +14,6 @@ interface AgentContentTabsProps {
   isLive?: boolean;
   // Set when the page renders AgentTabBar itself (e.g. in its header row).
   hideTabBar?: boolean;
-  showTags?: boolean;
-  showThinking?: boolean;
-  collapsedAsBars?: boolean;
-  barColor?: string;
 }
 
 // The Chat/Session tab switch for one live agent -- shared by AgentPage's standalone
@@ -37,10 +33,6 @@ export default function AgentContentTabs({
   onSent,
   isLive = false,
   hideTabBar = false,
-  showTags = false,
-  showThinking = true,
-  collapsedAsBars = false,
-  barColor,
 }: AgentContentTabsProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minHeight: 0, flex: 1 }}>
@@ -50,7 +42,7 @@ export default function AgentContentTabs({
         </div>
       )}
       {tab === 'session' ? (
-        <SessionTranscript sessionId={agentSessionId} startAtBottom={isLive} showTags={showTags} showThinking={showThinking} collapsedAsBars={collapsedAsBars} barColor={barColor} />
+        <SessionTranscript sessionId={agentSessionId} startAtBottom={isLive} />
       ) : (
         <DmChatPanel
           agentSessionId={agentSessionId}

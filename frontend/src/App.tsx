@@ -13,6 +13,7 @@ import JournalView from './journal/JournalView';
 import LogView from './log/LogView';
 import SearchView from './search/SearchView';
 import NavBar from './shared/NavBar';
+import TranscriptSettingsProvider from './agents/TranscriptSettingsProvider';
 import UsageView from './usage/UsageView';
 
 export default function App() {
@@ -38,27 +39,29 @@ export default function App() {
           boxSizing: 'border-box',
         }}
       >
-        <Routes>
-          <Route path="/" element={<DailiesView />} />
-          <Route path="/contexts" element={<ContextsView />} />
-          <Route path="/contexts/:id" element={<ContextsView />} />
-          <Route path="/log" element={<LogView />} />
-          <Route path="/journal" element={<JournalView />} />
-          <Route path="/events" element={<EventsView />} />
-          <Route path="/usage" element={<UsageView />} />
-          <Route element={<AgentsLayout />}>
-            <Route path="/agents" element={<AgentsView />} />
-            <Route path="/agents/history" element={<AgentHistoryView />} />
-            <Route path="/agents/history/recent" element={<AgentHistoryView />} />
-            <Route path="/agents/history/:project" element={<AgentHistoryView />} />
-          </Route>
-          <Route path="/agents/:sessionId" element={<AgentPage />} />
-          <Route path="/channels" element={<ChannelsView />} />
-          <Route path="/browse/:type" element={<BrowseView />} />
-          <Route path="/browse" element={<BrowseView />} />
-          <Route path="/search" element={<SearchView />} />
-          <Route path="/entities/:type/:id" element={<EntityView />} />
-        </Routes>
+        <TranscriptSettingsProvider>
+          <Routes>
+            <Route path="/" element={<DailiesView />} />
+            <Route path="/contexts" element={<ContextsView />} />
+            <Route path="/contexts/:id" element={<ContextsView />} />
+            <Route path="/log" element={<LogView />} />
+            <Route path="/journal" element={<JournalView />} />
+            <Route path="/events" element={<EventsView />} />
+            <Route path="/usage" element={<UsageView />} />
+            <Route element={<AgentsLayout />}>
+              <Route path="/agents" element={<AgentsView />} />
+              <Route path="/agents/history" element={<AgentHistoryView />} />
+              <Route path="/agents/history/recent" element={<AgentHistoryView />} />
+              <Route path="/agents/history/:project" element={<AgentHistoryView />} />
+            </Route>
+            <Route path="/agents/:sessionId" element={<AgentPage />} />
+            <Route path="/channels" element={<ChannelsView />} />
+            <Route path="/browse/:type" element={<BrowseView />} />
+            <Route path="/browse" element={<BrowseView />} />
+            <Route path="/search" element={<SearchView />} />
+            <Route path="/entities/:type/:id" element={<EntityView />} />
+          </Routes>
+        </TranscriptSettingsProvider>
       </div>
     </div>
   );

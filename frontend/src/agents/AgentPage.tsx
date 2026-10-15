@@ -34,8 +34,18 @@ export default function AgentPage() {
   const backLabel = fromHistoryProject ? '← Project' : '← Agents';
 
   const [displayName] = useDisplayName();
-  const { showTags, setShowTags, showThinking, setShowThinking, collapsedAsBars, setCollapsedAsBars, barColor, setBarColor } =
-    useTranscriptSettings();
+  const {
+    showTags,
+    setShowTags,
+    showThinking,
+    setShowThinking,
+    collapsedAsBars,
+    setCollapsedAsBars,
+    barColor,
+    setBarColor,
+    collapseBash,
+    setCollapseBash,
+  } = useTranscriptSettings();
   const [intervalSeconds] = useChannelListRefreshInterval();
   const { channels, refresh: refreshChannels } = useChannelList(displayName, intervalSeconds);
   const dmChannel = useMemo(
@@ -152,7 +162,15 @@ export default function AgentPage() {
                 Show transcript fields
               </label>
               <label style={settingStyle}>
-                <input type="checkbox" checked={collapsedAsBars} onChange={(e) => setCollapsedAsBars(e.target.checked)} />
+                <input type="checkbox" checked={collapseBash} onChange={(e) => setCollapseBash(e.target.checked)} />
+                Collapse Bash commands
+              </label>
+              <label style={settingStyle}>
+                <input
+                  type="checkbox"
+                  checked={collapsedAsBars}
+                  onChange={(e) => setCollapsedAsBars(e.target.checked)}
+                />
                 Collapsed cards as bars
               </label>
               {collapsedAsBars && <BarColorSetting value={barColor} onChange={setBarColor} />}

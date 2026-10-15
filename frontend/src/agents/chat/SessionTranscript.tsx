@@ -40,8 +40,13 @@ function bashInput(
 }
 
 // Collapsed blocks still show the command, clipped to its first lines, since a session is read
-// mostly by what it ran; expanding shows all of it.
+// mostly by what it ran; expanding shows all of it. With collapseBash, a collapsed block shows
+// only its header, like any other tool call.
 const BASH_PREVIEW_LINES = 6;
+
+function showsBashWhileCollapsed(block: ChatBlock, collapseBash: boolean): boolean {
+  return !collapseBash && bashInput(block) !== null;
+}
 
 function BashCommand({ command, full }: { command: string; full: boolean }) {
   const lines = command.split('\n');
@@ -83,6 +88,7 @@ function BlockRow({
   collapsed,
   onToggle,
   showTags,
+  collapseBash,
   lead,
   trail,
 }: {
@@ -90,6 +96,7 @@ function BlockRow({
   collapsed: boolean;
   onToggle: () => void;
   showTags: boolean;
+  collapseBash: boolean;
   lead?: ReactNode;
   trail?: ReactNode;
 }) {
@@ -114,20 +121,20 @@ function BlockRow({
           aria-expanded={!collapsed}
           aria-label={`Toggle ${summary} block ${addressed.id}`}
           style={{
-          flexShrink: 0,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          padding: 0,
-          border: 'none',
-          background: 'transparent',
-          color: block.is_error ? tokens.color.danger : tokens.color.accent,
-          fontSize: 12,
-          cursor: 'pointer',
-        }}
-      >
-        <span>{collapsed ? '▸' : '▾'}</span>
-        <span>{summary}</span>
+            flexShrink: 0,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: 0,
+            border: 'none',
+            background: 'transparent',
+            color: block.is_error ? tokens.color.danger : tokens.color.accent,
+            fontSize: 12,
+            cursor: 'pointer',
+          }}
+        >
+          <span>{collapsed ? '▸' : '▾'}</span>
+          <span>{summary}</span>
         </button>
         <span
           title={bash?.description ?? undefined}
@@ -144,13 +151,13 @@ function BlockRow({
         </span>
         {trail}
       </div>
-      {bash && <BashCommand command={bash.command} full={!collapsed} />}
+      {bash && (!collapsed || showsBashWhileCollapsed(block, collapseBash)) && (
+        <BashCommand command={bash.command} full={!collapsed} />
+      )}
       {!collapsed && (
         <>
           {block.kind === 'text' && <Markdown text={block.text ?? ''} />}
-          {block.kind === 'thinking' && (
-            <Markdown text={block.text ?? ''} color={tokens.color.thinking} />
-          )}
+          {block.kind === 'thinking' && <Markdown text={block.text ?? ''} color={tokens.color.thinking} />}
           {block.kind === 'tool_use' && (!bash || bash.rest) && (
             <pre
               style={{
@@ -247,9 +254,11 @@ const MessageRow = memo(function MessageRow({
   isCollapsed,
   onToggle,
   showTags,
+  collapseBash,
 }: {
   entry: TranscriptEntry;
   showTags: boolean;
+  collapseBash: boolean;
   isCollapsed: (block: AddressedBlock) => boolean;
   onToggle: (block: AddressedBlock) => void;
 }) {
@@ -277,6 +286,7 @@ const MessageRow = memo(function MessageRow({
           collapsed={isCollapsed(addressed)}
           onToggle={() => onToggle(addressed)}
           showTags={showTags}
+          collapseBash={collapseBash}
           lead={
             i === 0 && (
               <span style={{ flexShrink: 0, fontWeight: 600, color: isUser ? tokens.color.accent : tokens.color.text }}>
@@ -286,7 +296,9 @@ const MessageRow = memo(function MessageRow({
           }
           trail={
             i === 0 && (
-              <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8, color: tokens.color.textMuted }}>
+              <div
+                style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8, color: tokens.color.textMuted }}
+              >
                 <span>{message.timestamp}</span>
                 <CopyMarkdownButton getText={() => messageToMarkdown(message, addressedBlocks)} />
               </div>
@@ -305,12 +317,17 @@ function isHumanText(message: ChatMessage): boolean {
 
 // A card folds into a run when every block it shows starts collapsed, so by default it shows
 // nothing but headers. The default, not the current state, decides: expanding one card inside
-// an open run leaves the run whole. A Bash call never folds: its command shows even while collapsed. A card with no
-// blocks shows nothing and does not break a run. A stretch shorter than minRun cards stays as is.
+// an open run leaves the run whole. A Bash call folds only with collapseBash, since otherwise its
+// command shows while collapsed. A card with no blocks shows nothing and does not break a run. A stretch shorter than minRun cards stays as is.
 
 type Segment = { kind: 'entry'; index: number } | { kind: 'run'; start: number; indices: number[] };
 
-function segmentEntries(entries: TranscriptEntry[], showThinking: boolean, minRun: number): Segment[] {
+function segmentEntries(
+  entries: TranscriptEntry[],
+  showThinking: boolean,
+  collapseBash: boolean,
+  minRun: number,
+): Segment[] {
   const segments: Segment[] = [];
   let run: number[] = [];
   const flush = () => {
@@ -321,7 +338,8 @@ function segmentEntries(entries: TranscriptEntry[], showThinking: boolean, minRu
   entries.forEach((entry, index) => {
     const shown = entry.blocks;
     if (shown.length === 0) return;
-    if (shown.every((a) => defaultCollapsed(a, showThinking) && !bashInput(a.block))) run.push(index);
+    if (shown.every((a) => defaultCollapsed(a, showThinking) && !showsBashWhileCollapsed(a.block, collapseBash)))
+      run.push(index);
     else {
       flush();
       segments.push({ kind: 'entry', index });
@@ -372,17 +390,14 @@ interface SessionTranscriptProps {
 // must never be conflated into one view. A live session's new messages are appended at the
 // bottom as they are written (see useSessionChat); while the message pane is scrolled to the
 // bottom it follows them.
-export default function SessionTranscript({
-  sessionId,
-  startAtBottom = false,
-}: SessionTranscriptProps) {
-  const { showTags, showThinking, collapsedAsBars, barColor } = useTranscriptSettings();
+export default function SessionTranscript({ sessionId, startAtBottom = false }: SessionTranscriptProps) {
+  const { showTags, showThinking, collapsedAsBars, barColor, collapseBash } = useTranscriptSettings();
   const [intervalSeconds] = useRefreshIntervalSetting();
   const { entries, loading, error } = useSessionChat(sessionId, intervalSeconds);
   const { isCollapsed, toggle } = useCollapseState(showThinking);
   const segments = useMemo(
-    () => segmentEntries(entries, showThinking, collapsedAsBars ? 1 : 2),
-    [entries, showThinking, collapsedAsBars],
+    () => segmentEntries(entries, showThinking, collapseBash, collapsedAsBars ? 1 : 2),
+    [entries, showThinking, collapseBash, collapsedAsBars],
   );
   // Runs the user opened, by the index of their first entry: stable while a live transcript
   // appends, since new entries only extend the last run.
@@ -471,6 +486,7 @@ export default function SessionTranscript({
                   isCollapsed={isCollapsed}
                   onToggle={toggleCard}
                   showTags={showTags}
+                  collapseBash={collapseBash}
                 />
               );
               if (segment.kind === 'entry') return row(segment.index);
@@ -495,13 +511,22 @@ export default function SessionTranscript({
             })}
           </div>
         </div>
-
       </div>
     </div>
   );
 }
 
-function RunBar({ count, open, color, onToggle }: { count: number; open: boolean; color: string; onToggle: () => void }) {
+function RunBar({
+  count,
+  open,
+  color,
+  onToggle,
+}: {
+  count: number;
+  open: boolean;
+  color: string;
+  onToggle: () => void;
+}) {
   const label = `${open ? 'Hide' : 'Show'} ${count} collapsed card${count === 1 ? '' : 's'}`;
   return (
     <button type="button" onClick={onToggle} aria-expanded={open} aria-label={label} title={label} style={runBarStyle}>

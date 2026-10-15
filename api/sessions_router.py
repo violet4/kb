@@ -23,6 +23,7 @@ from kb_cli.sessions import (
     list_history_sessions,
     list_live_sessions,
     prompt_blocker,
+    rename_blocker,
 )
 from models.agents.harness_session import HarnessSession, HarnessSessionStatus
 from models.journal.journal import Journal
@@ -42,6 +43,7 @@ class SessionOut(BaseModel):
     title: str
     prompt_blocker: str | None
     interrupt_blocker: str | None
+    rename_blocker: str | None
 
 
 @router.get("", response_model=list[SessionOut])
@@ -95,6 +97,33 @@ def post_session_interrupt(session_id: str, session: Session = Depends(get_sessi
     row.status = HarnessSessionStatus.IDLE
     row.awaiting_permission = False
     session.commit()
+    return {"ok": True}
+
+
+class SessionRenameIn(BaseModel):
+    title: str
+
+
+@router.post("/{session_id}/rename")
+def post_session_rename(
+    session_id: str, body: SessionRenameIn, session: Session = Depends(get_session)
+) -> dict[str, bool]:
+    """Send `/rename TITLE` to a live idle `kb claude` session. Leaves status alone: the
+    command runs locally, so no turn starts and no hook would mark the session idle again. The
+    new title reaches the listing through the transcript's custom-title event. 404 when the
+    session is not live, 409 when rename_blocker refuses or the wrapper is unreachable, 422
+    when the title is empty once control characters are removed."""
+    row = _live_row(session, session_id)
+    if blocker := rename_blocker(row):
+        raise HTTPException(status_code=409, detail=blocker)
+    # Every whitespace run becomes one space, so a newline cannot submit part of the title.
+    title = " ".join(harness_input.clean(body.title).split())
+    if not title:
+        raise HTTPException(status_code=422, detail="Title is empty")
+    try:
+        harness_input.send(row.pid, f"/rename {title}")
+    except harness_input.InputError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {"ok": True}
 
 

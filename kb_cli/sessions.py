@@ -177,6 +177,7 @@ class LiveSessionInfo(NamedTuple):
     title: str
     prompt_blocker: Optional[str]  # see prompt_blocker()
     interrupt_blocker: Optional[str]  # see interrupt_blocker()
+    rename_blocker: Optional[str]  # see rename_blocker()
 
 
 def _not_wrapped(row: HarnessSession) -> Optional[str]:
@@ -215,6 +216,17 @@ def interrupt_blocker(row: HarnessSession) -> Optional[str]:
         return blocker
     if row.status != HarnessSessionStatus.INFERRING:
         return "Nothing to interrupt: the session is idle."
+    return None
+
+
+def rename_blocker(row: HarnessSession) -> Optional[str]:
+    """Why the web UI must not send `/rename` to this live session now, or None if it may.
+    Only when idle: mid-turn, the command would wait in Claude Code's queue behind the turn,
+    or its Enter would answer an open permission dialog."""
+    if blocker := _not_wrapped(row):
+        return blocker
+    if row.status != HarnessSessionStatus.IDLE:
+        return "Busy: rename once this turn ends."
     return None
 
 
@@ -257,6 +269,7 @@ def list_live_sessions(session: Session) -> tuple[list[LiveSessionInfo], int]:
                 title=row.title or "",
                 prompt_blocker=prompt_blocker(row),
                 interrupt_blocker=interrupt_blocker(row),
+                rename_blocker=rename_blocker(row),
             )
         )
     return infos, len(cleared)

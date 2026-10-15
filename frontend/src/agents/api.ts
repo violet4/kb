@@ -31,3 +31,7 @@ export async function sendSessionInput(sessionId: string, text: string): Promise
 export async function interruptSession(sessionId: string): Promise<void> {
   await sendJson('POST', `/sessions/${encodeURIComponent(sessionId)}/interrupt`, {});
 }
+
+export async function renameSession(sessionId: string, title: string): Promise<void> {
+  await sendJson('POST', `/sessions/${encodeURIComponent(sessionId)}/rename`, { title });
+}

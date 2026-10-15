@@ -7,11 +7,13 @@ import argparse
 import os
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 import harness_input
 from kb_cli.hooks import cmd_permission_request, cmd_session_inbox_check, cmd_session_stop
-from kb_cli.sessions import interrupt_blocker, prompt_blocker
+from api.sessions_router import SessionRenameIn, post_session_rename
+from kb_cli.sessions import interrupt_blocker, prompt_blocker, rename_blocker
 from models.agents.harness_session import HarnessSession, HarnessSessionStatus
 
 
@@ -57,6 +59,29 @@ def test_flagged_permission_prompt_blocks_prompts_but_not_esc(db_session: Sessio
     row = _row(db_session, HarnessSessionStatus.INFERRING, awaiting=True)
     assert "permission prompt" in (prompt_blocker(row) or "")
     assert interrupt_blocker(row) is None
+
+
+def test_only_an_idle_session_takes_a_rename(db_session: Session, wrapped: None) -> None:
+    assert rename_blocker(_row(db_session, HarnessSessionStatus.IDLE)) is None
+    assert rename_blocker(_row(db_session, HarnessSessionStatus.INFERRING)) is not None
+
+
+def test_rename_sends_one_line_and_leaves_the_session_idle(
+    db_session: Session, wrapped: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sent: list[str] = []
+    monkeypatch.setattr(harness_input, "send", lambda pid, text: sent.append(text))
+    row = _row(db_session, HarnessSessionStatus.IDLE)
+    post_session_rename("s", SessionRenameIn(title="  new\nname\t here "), session=db_session)
+    assert sent == ["/rename new name here"]
+    assert row.status == HarnessSessionStatus.IDLE
+
+
+def test_rename_refuses_an_empty_title(db_session: Session, wrapped: None) -> None:
+    _row(db_session, HarnessSessionStatus.IDLE)
+    with pytest.raises(HTTPException) as exc:
+        post_session_rename("s", SessionRenameIn(title=" \n\x01 "), session=db_session)
+    assert exc.value.status_code == 422
 
 
 @pytest.fixture

@@ -8,9 +8,11 @@ export interface AgentSession {
   last_message_seconds: number | null;
   cwd: string;
   title: string;
-  // Why the page must not send a prompt / press Esc now, or null when it may (kb_cli/sessions.py).
+  // Why the page must not send a prompt / press Esc / rename now, or null when it may
+  // (kb_cli/sessions.py).
   prompt_blocker: string | null;
   interrupt_blocker: string | null;
+  rename_blocker: string | null;
 }
 
 // Mirrors api/sessions_router.py's HistorySessionOut Pydantic model.

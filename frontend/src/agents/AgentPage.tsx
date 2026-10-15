@@ -4,8 +4,9 @@ import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom'
 import AgentContentTabs, { AgentTabBar, type AgentContentTab } from './AgentContentTabs';
 import Popover from '../shared/Popover';
 import BarColorSetting from './BarColorSetting';
-import { interruptSession, sendSessionInput } from './api';
+import { interruptSession, renameSession, sendSessionInput } from './api';
 import InterruptButton from './InterruptButton';
+import SessionTitle from './SessionTitle';
 import MessageComposer from '../channels/components/MessageComposer';
 import { formatSeconds } from './formatSeconds';
 import { useAgentSessions } from './hooks/useAgentSessions';
@@ -66,6 +67,15 @@ export default function AgentPage() {
     refreshLiveSessions();
   }, [sessionId, refreshLiveSessions]);
 
+  const rename = useCallback(
+    async (title: string) => {
+      if (!sessionId) return;
+      await renameSession(sessionId, title);
+      refreshLiveSessions();
+    },
+    [sessionId, refreshLiveSessions],
+  );
+
   // Escape anywhere on the Session tab presses Esc in the session, as it would in its terminal.
   // An open popover or dialog takes Escape first (closing it), and so does text mid-composition
   // in an input method.
@@ -114,20 +124,12 @@ export default function AgentPage() {
           {backLabel}
         </Link>
         <AgentTabBar tab={tab} onChangeTab={setTab} />
-        <h1
-          style={{
-            margin: 0,
-            minWidth: 0,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            fontSize: 18,
-            fontFamily: 'monospace',
-          }}
-          title={sessionId}
-        >
-          {liveSession?.title || dmChannel?.agent_title || sessionId}
-        </h1>
+        <SessionTitle
+          title={liveSession?.title || dmChannel?.agent_title || sessionId}
+          sessionId={sessionId}
+          onRename={liveSession ? rename : undefined}
+          renameBlocker={liveSession?.rename_blocker}
+        />
         {liveSession && (
           <span
             title={`Live session, registered ${formatSeconds(liveSession.age_seconds)} ago`}

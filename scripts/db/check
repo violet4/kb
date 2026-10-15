@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Report whether the models differ from the migrated schema, without writing a migration file.
+# Exits non-zero on drift. A generated file would make every kb command refuse to run until applied.
+set -euo pipefail
+cd "$(dirname "$0")/../.."
+
+scripts/dev/check-schema > /dev/null
+uv run alembic check

@@ -14,10 +14,10 @@ export interface TranscriptSettings {
   setCollapsedAsBars: (value: boolean) => void;
   barColor: string; // #rrggbb, for those bars
   setBarColor: (value: string) => void;
-  // On: a collapsed Bash call shows only its header, like any other tool call, so it folds into
-  // collapsed runs. Off: its command shows even while collapsed, so it never folds.
-  collapseBash: boolean;
-  setCollapseBash: (value: boolean) => void;
+  // On: a Bash call shows its command even while collapsed, so it never folds into collapsed runs.
+  // Off: a collapsed Bash call shows only its header and folds like any other tool call.
+  expandBash: boolean;
+  setExpandBash: (value: boolean) => void;
 }
 
 export const TranscriptSettingsContext = createContext<TranscriptSettings | null>(null);

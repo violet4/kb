@@ -43,8 +43,8 @@ export default function AgentPage() {
     setCollapsedAsBars,
     barColor,
     setBarColor,
-    collapseBash,
-    setCollapseBash,
+    expandBash,
+    setExpandBash,
   } = useTranscriptSettings();
   const [intervalSeconds] = useChannelListRefreshInterval();
   const { channels, refresh: refreshChannels } = useChannelList(displayName, intervalSeconds);
@@ -162,8 +162,8 @@ export default function AgentPage() {
                 Show transcript fields
               </label>
               <label style={settingStyle}>
-                <input type="checkbox" checked={collapseBash} onChange={(e) => setCollapseBash(e.target.checked)} />
-                Collapse Bash commands
+                <input type="checkbox" checked={expandBash} onChange={(e) => setExpandBash(e.target.checked)} />
+                Expand Bash commands
               </label>
               <label style={settingStyle}>
                 <input

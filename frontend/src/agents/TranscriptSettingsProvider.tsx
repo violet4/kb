@@ -20,7 +20,7 @@ export default function TranscriptSettingsProvider({ children }: { children: Rea
     isHexColor,
     RAW_STRING,
   );
-  const [collapseBash, setCollapseBash] = useStoredState('kb-agents-transcript-collapse-bash', false, isBoolean);
+  const [expandBash, setExpandBash] = useStoredState('kb-agents-transcript-expand-bash', false, isBoolean);
   return (
     <TranscriptSettingsContext.Provider
       value={{
@@ -32,8 +32,8 @@ export default function TranscriptSettingsProvider({ children }: { children: Rea
         setCollapsedAsBars,
         barColor,
         setBarColor,
-        collapseBash,
-        setCollapseBash,
+        expandBash,
+        setExpandBash,
       }}
     >
       {children}

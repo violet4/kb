@@ -39,13 +39,13 @@ function bashInput(
   };
 }
 
-// Collapsed blocks still show the command, clipped to its first lines, since a session is read
-// mostly by what it ran; expanding shows all of it. With collapseBash, a collapsed block shows
-// only its header, like any other tool call.
+// A collapsed block shows only its header, like any other tool call. With expandBash it still
+// shows the command, clipped to its first lines, for reading a session by what it ran;
+// expanding shows all of it.
 const BASH_PREVIEW_LINES = 6;
 
-function showsBashWhileCollapsed(block: ChatBlock, collapseBash: boolean): boolean {
-  return !collapseBash && bashInput(block) !== null;
+function showsBashWhileCollapsed(block: ChatBlock, expandBash: boolean): boolean {
+  return expandBash && bashInput(block) !== null;
 }
 
 function BashCommand({ command, full }: { command: string; full: boolean }) {
@@ -88,7 +88,7 @@ function BlockRow({
   collapsed,
   onToggle,
   showTags,
-  collapseBash,
+  expandBash,
   lead,
   trail,
 }: {
@@ -96,7 +96,7 @@ function BlockRow({
   collapsed: boolean;
   onToggle: () => void;
   showTags: boolean;
-  collapseBash: boolean;
+  expandBash: boolean;
   lead?: ReactNode;
   trail?: ReactNode;
 }) {
@@ -151,7 +151,7 @@ function BlockRow({
         </span>
         {trail}
       </div>
-      {bash && (!collapsed || showsBashWhileCollapsed(block, collapseBash)) && (
+      {bash && (!collapsed || showsBashWhileCollapsed(block, expandBash)) && (
         <BashCommand command={bash.command} full={!collapsed} />
       )}
       {!collapsed && (
@@ -254,11 +254,11 @@ const MessageRow = memo(function MessageRow({
   isCollapsed,
   onToggle,
   showTags,
-  collapseBash,
+  expandBash,
 }: {
   entry: TranscriptEntry;
   showTags: boolean;
-  collapseBash: boolean;
+  expandBash: boolean;
   isCollapsed: (block: AddressedBlock) => boolean;
   onToggle: (block: AddressedBlock) => void;
 }) {
@@ -286,7 +286,7 @@ const MessageRow = memo(function MessageRow({
           collapsed={isCollapsed(addressed)}
           onToggle={() => onToggle(addressed)}
           showTags={showTags}
-          collapseBash={collapseBash}
+          expandBash={expandBash}
           lead={
             i === 0 && (
               <span style={{ flexShrink: 0, fontWeight: 600, color: isUser ? tokens.color.accent : tokens.color.text }}>
@@ -317,15 +317,15 @@ function isHumanText(message: ChatMessage): boolean {
 
 // A card folds into a run when every block it shows starts collapsed, so by default it shows
 // nothing but headers. The default, not the current state, decides: expanding one card inside
-// an open run leaves the run whole. A Bash call folds only with collapseBash, since otherwise its
-// command shows while collapsed. A card with no blocks shows nothing and does not break a run. A stretch shorter than minRun cards stays as is.
+// an open run leaves the run whole. A Bash call never folds with expandBash, since then its command
+// shows while collapsed. A card with no blocks shows nothing and does not break a run. A stretch shorter than minRun cards stays as is.
 
 type Segment = { kind: 'entry'; index: number } | { kind: 'run'; start: number; indices: number[] };
 
 function segmentEntries(
   entries: TranscriptEntry[],
   showThinking: boolean,
-  collapseBash: boolean,
+  expandBash: boolean,
   minRun: number,
 ): Segment[] {
   const segments: Segment[] = [];
@@ -338,7 +338,7 @@ function segmentEntries(
   entries.forEach((entry, index) => {
     const shown = entry.blocks;
     if (shown.length === 0) return;
-    if (shown.every((a) => defaultCollapsed(a, showThinking) && !showsBashWhileCollapsed(a.block, collapseBash)))
+    if (shown.every((a) => defaultCollapsed(a, showThinking) && !showsBashWhileCollapsed(a.block, expandBash)))
       run.push(index);
     else {
       flush();
@@ -391,13 +391,13 @@ interface SessionTranscriptProps {
 // bottom as they are written (see useSessionChat); while the message pane is scrolled to the
 // bottom it follows them.
 export default function SessionTranscript({ sessionId, startAtBottom = false }: SessionTranscriptProps) {
-  const { showTags, showThinking, collapsedAsBars, barColor, collapseBash } = useTranscriptSettings();
+  const { showTags, showThinking, collapsedAsBars, barColor, expandBash } = useTranscriptSettings();
   const [intervalSeconds] = useRefreshIntervalSetting();
   const { entries, loading, error } = useSessionChat(sessionId, intervalSeconds);
   const { isCollapsed, toggle } = useCollapseState(showThinking);
   const segments = useMemo(
-    () => segmentEntries(entries, showThinking, collapseBash, collapsedAsBars ? 1 : 2),
-    [entries, showThinking, collapseBash, collapsedAsBars],
+    () => segmentEntries(entries, showThinking, expandBash, collapsedAsBars ? 1 : 2),
+    [entries, showThinking, expandBash, collapsedAsBars],
   );
   // Runs the user opened, by the index of their first entry: stable while a live transcript
   // appends, since new entries only extend the last run.
@@ -486,7 +486,7 @@ export default function SessionTranscript({ sessionId, startAtBottom = false }: 
                   isCollapsed={isCollapsed}
                   onToggle={toggleCard}
                   showTags={showTags}
-                  collapseBash={collapseBash}
+                  expandBash={expandBash}
                 />
               );
               if (segment.kind === 'entry') return row(segment.index);

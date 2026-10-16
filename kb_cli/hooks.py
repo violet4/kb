@@ -309,12 +309,21 @@ def _session_si_reads(session: Session) -> Optional[set[str]]:
     return None if read is None else {f"{entity_id:04d}" for entity_id in read}
 
 
+_USER_TREE_UNOPENED_REMINDER = "The user Instruction tree is unopened: run `kb i show root`."
+
+_USER_TREE_FRONTIER_REMINDER = (
+    "Unopened children of the user Instruction-tree nodes this session has read: {titles}. "
+    "Open (`kb i show TITLE`) any that bears on what you're about to do now."
+)
+
+
 def _tree_reminder_text(session: Session) -> str:
-    """The frontier of the system instruction tree for this agent session: the titles of
-    every node whose parent the session has read with `kb si show` and which it has not read
-    itself. Titles only, since each child's trigger is already in context from its parent's
-    `show` output. Falls back to the generic reminder when no session is detectable or the
-    session has not read the root yet, and is empty once every reachable node is read."""
+    """The frontier of both instruction trees for this agent session: `kb si` (system) and
+    `kb i` (user). Each lists the titles of every node whose parent the session has read and
+    which it has not read itself; titles only, since each child's trigger is already in
+    context from its parent's `show` output. Falls back to the generic reminder when no
+    session is detectable or the session has not read the si root yet, and is empty once
+    every reachable node of both trees is read."""
     from kb_cli import si_files
 
     read = _session_si_reads(session)
@@ -322,9 +331,31 @@ def _tree_reminder_text(session: Session) -> str:
     if read is None or root is None or root.id not in read:
         return _TREE_REMINDER
     frontier = si_files.unexpanded_children(read)
-    if not frontier:
+    parts = [_TREE_FRONTIER_REMINDER.format(titles=", ".join(node.title for node in frontier))] if frontier else []
+    user_part = _user_tree_reminder_text(session)
+    if user_part:
+        parts.append(user_part)
+    return " ".join(parts)
+
+
+def _user_tree_reminder_text(session: Session) -> str:
+    """The `kb i` half of _tree_reminder_text: a prompt to open the user tree's root while no
+    user node has been read, then the unread, undeleted children of every user node read."""
+    from kb_cli.required_reading import session_reads
+    from models.knowledge.instruction import Instruction
+
+    read = session_reads(session, "Instruction") or set()
+    if not read:
+        return _USER_TREE_UNOPENED_REMINDER
+    titles = [
+        child.title
+        for node_id in sorted(read)
+        for child in Instruction.children(session, node_id)
+        if child.id not in read and child.deleted_at is None
+    ]
+    if not titles:
         return ""
-    return _TREE_FRONTIER_REMINDER.format(titles=", ".join(node.title for node in frontier))
+    return _USER_TREE_FRONTIER_REMINDER.format(titles=", ".join(titles))
 
 
 _UNREAD_NODE_HINT = "Blocked: this session has not read the {purpose}. Run `kb si show {title}`, then retry."

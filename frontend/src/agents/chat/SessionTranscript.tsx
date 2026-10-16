@@ -317,6 +317,7 @@ const MessageRow = memo(function MessageRow({
   if (addressedBlocks.length === 0) return null;
   const isUser = message.role === 'user';
   const isHuman = isUser && isHumanText(message);
+  const isFinal = !isUser && isTurnFinal(message);
   return (
     <div
       aria-busy={running}
@@ -329,11 +330,13 @@ const MessageRow = memo(function MessageRow({
         border: `1px solid ${tokens.color.border}`,
         background: running
           ? tokens.color.runningCall
-          : isHuman
-            ? tokens.color.humanMessage
-            : isUser
-              ? tokens.color.surface
-              : 'transparent',
+          : isFinal
+            ? tokens.color.turnFinal
+            : isHuman
+              ? tokens.color.humanMessage
+              : isUser
+                ? tokens.color.surface
+                : 'transparent',
       }}
     >
       {addressedBlocks.map((addressed, i) => (
@@ -371,6 +374,18 @@ const MessageRow = memo(function MessageRow({
     </div>
   );
 });
+
+// The assistant's last message of a turn, after which it stops and waits for a reply (from a
+// person, or from an agent or background task). Claude Code writes each content block of a
+// message as its own transcript line, and every line carries the whole message's stop_reason,
+// so each card of a final message (its thinking and its text) is marked. Only end_turn counts:
+// tool_use leads into a tool call; stop_sequence and refusal occur on the harness's synthetic
+// API-error messages, which are errors rather than replies; max_tokens is a reply cut off, not
+// finished; and lines with no stop_reason come
+// from messages the harness never finished writing.
+function isTurnFinal(message: ChatMessage): boolean {
+  return message.blocks.some((b) => b.tags.stop_reason === 'end_turn');
+}
 
 // Text a person typed, as opposed to a tool result or text the harness injected (isMeta) on the user's turn.
 function isHumanText(message: ChatMessage): boolean {

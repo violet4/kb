@@ -20,6 +20,7 @@ const color = {
   shellBackground: '#0a0d0f', // a shell command, styled as a terminal
   shellPrompt: '#3fb950',
   runningCall: '#2b2416', // a tool call still running past the hang threshold: a dark tint of due
+  turnFinal: '#1b2c21', // the assistant's last message of a turn, where it waits for a reply: a dark tint of shellPrompt
 };
 
 export const tokens = {

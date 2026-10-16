@@ -18,6 +18,10 @@ export interface TranscriptSettings {
   // Off: a collapsed Bash call shows only its header and folds like any other tool call.
   expandBash: boolean;
   setExpandBash: (value: boolean) => void;
+  // A tool call of any kind still pending after this many seconds counts as hung and shows
+  // expanded until its result arrives; one that finishes sooner never opens.
+  hungCallSeconds: number;
+  setHungCallSeconds: (value: number) => void;
 }
 
 export const TranscriptSettingsContext = createContext<TranscriptSettings | null>(null);

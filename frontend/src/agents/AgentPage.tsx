@@ -46,6 +46,8 @@ export default function AgentPage() {
     setBarColor,
     expandBash,
     setExpandBash,
+    hungCallSeconds,
+    setHungCallSeconds,
   } = useTranscriptSettings();
   const [intervalSeconds] = useChannelListRefreshInterval();
   const { channels, refresh: refreshChannels } = useChannelList(displayName, intervalSeconds);
@@ -166,6 +168,32 @@ export default function AgentPage() {
               <label style={settingStyle}>
                 <input type="checkbox" checked={expandBash} onChange={(e) => setExpandBash(e.target.checked)} />
                 Expand Bash commands
+              </label>
+              <label
+                style={settingStyle}
+                title="A tool call still pending after this long opens until its result arrives"
+              >
+                Show tool calls pending ≥
+                <input
+                  type="number"
+                  min={0}
+                  step={0.5}
+                  value={hungCallSeconds}
+                  onChange={(e) => {
+                    const value = e.target.valueAsNumber;
+                    if (Number.isFinite(value) && value >= 0) setHungCallSeconds(value);
+                  }}
+                  style={{
+                    width: 56,
+                    padding: '2px 6px',
+                    fontSize: 13,
+                    borderRadius: 4,
+                    border: `1px solid ${tokens.color.border}`,
+                    background: tokens.color.surface,
+                    color: tokens.color.text,
+                  }}
+                />
+                s
               </label>
               <label style={settingStyle}>
                 <input

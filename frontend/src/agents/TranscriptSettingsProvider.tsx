@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react';
 import { tokens } from '../shared/tokens';
-import { RAW_STRING, isBoolean, isHexColor, useStoredState } from '../shared/useStoredState';
+import { RAW_STRING, isBoolean, isHexColor, isNonNegativeNumber, useStoredState } from '../shared/useStoredState';
 import { TranscriptSettingsContext } from './hooks/useTranscriptSettings';
+
+const DEFAULT_HUNG_CALL_SECONDS = 2;
 
 // The one owner of the transcript display settings. Each is a stored preference; holding them
 // here, above every page that shows a transcript, means a change in the ⚙ popover reaches the
@@ -21,6 +23,11 @@ export default function TranscriptSettingsProvider({ children }: { children: Rea
     RAW_STRING,
   );
   const [expandBash, setExpandBash] = useStoredState('kb-agents-transcript-expand-bash', false, isBoolean);
+  const [hungCallSeconds, setHungCallSeconds] = useStoredState(
+    'kb-agents-transcript-hung-call-seconds',
+    DEFAULT_HUNG_CALL_SECONDS,
+    isNonNegativeNumber,
+  );
   return (
     <TranscriptSettingsContext.Provider
       value={{
@@ -34,6 +41,8 @@ export default function TranscriptSettingsProvider({ children }: { children: Rea
         setBarColor,
         expandBash,
         setExpandBash,
+        hungCallSeconds,
+        setHungCallSeconds,
       }}
     >
       {children}

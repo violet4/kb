@@ -46,4 +46,6 @@ export function useStoredState<T>(
 export const isBoolean = (value: unknown): value is boolean => typeof value === 'boolean';
 export const isString = (value: unknown): value is string => typeof value === 'string';
 export const isPositiveNumber = (value: unknown): value is number => typeof value === 'number' && value > 0;
+export const isNonNegativeNumber = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0;
 export const isHexColor = (value: unknown): value is string => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value);

@@ -9,11 +9,14 @@ interface UseCollapseStateResult {
 // Collapsed-by-default rule: text, and thinking unless the viewer hides it, start expanded,
 // since they are the part of a transcript worth reading immediately; every other kind (tool
 // calls/results and any future unrecognized block kind) starts collapsed as the bulky,
-// skim-later part. A tool call still running starts expanded, so a long-running or hung call
-// shows what it is doing; it collapses once its result arrives.
+// skim-later part. Text the harness injected on the user's turn (tagged isMeta, such as a
+// loaded skill's instructions) is bulky too, so it starts collapsed like a tool result. A tool
+// call still running starts expanded, so a long-running or hung call shows what it is doing; it
+// collapses once its result arrives.
 export function defaultCollapsed(block: AddressedBlock, showThinking: boolean, running: boolean): boolean {
-  const kind = block.block.kind;
-  return !(running || kind === 'text' || (kind === 'thinking' && showThinking));
+  const { kind, tags } = block.block;
+  const readable = (kind === 'text' && tags.isMeta !== 'true') || (kind === 'thinking' && showThinking);
+  return !(running || readable);
 }
 
 // The default is derived from the block itself rather than from a map over every block, so

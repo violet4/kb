@@ -1,21 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { TranscriptEntry } from './useSessionChat';
+import type { ToolCallTime } from '../toolCallTimes';
 
 export const NONE_HUNG: ReadonlySet<string> = new Set();
 
-// The tool calls with no tool_result yet, by id, each with the time it was written: the harness
-// writes a call to the transcript before running it and its result only once it finishes, so
-// these are the calls still running (or, in a session that ended mid-call, never answered). A
-// call whose message has no parseable timestamp counts as pending since forever.
-function pendingToolCalls(entries: TranscriptEntry[]): ReadonlyMap<string, number> {
+// The calls with no result yet, by id, each with the time it was written. A call whose message
+// has no parseable timestamp counts as pending since forever.
+function pendingSince(times: ReadonlyMap<string, ToolCallTime>): ReadonlyMap<string, number> {
   const pending = new Map<string, number>();
-  for (const { message, blocks } of entries) {
-    const since = Date.parse(message.timestamp);
-    for (const { block } of blocks) {
-      if (block.tool_use_id === null) continue;
-      if (block.kind === 'tool_use') pending.set(block.tool_use_id, Number.isNaN(since) ? -Infinity : since);
-      else if (block.kind === 'tool_result') pending.delete(block.tool_use_id);
-    }
+  for (const [id, { start, end }] of times) {
+    if (end === null) pending.set(id, Number.isNaN(start) ? -Infinity : start);
   }
   return pending;
 }
@@ -36,8 +29,8 @@ export interface HungToolCalls {
 // A call that finishes sooner is never reported, so quick calls do not flash open and shut. A
 // timer re-checks at the moment the next pending call crosses the threshold, so a call is
 // reported on time even when no new transcript data arrives.
-export function useHungToolCalls(entries: TranscriptEntry[], thresholdSeconds: number): HungToolCalls {
-  const pending = useMemo(() => pendingToolCalls(entries), [entries]);
+export function useHungToolCalls(times: ReadonlyMap<string, ToolCallTime>, thresholdSeconds: number): HungToolCalls {
+  const pending = useMemo(() => pendingSince(times), [times]);
   const [hung, setHung] = useState<ReadonlySet<string>>(NONE_HUNG);
   const [ever, setEver] = useState<ReadonlySet<string>>(NONE_HUNG);
 

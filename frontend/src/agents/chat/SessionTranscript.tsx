@@ -1,4 +1,4 @@
-import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Markdown from '../../shared/Markdown';
 import { tokens } from '../../shared/tokens';
 import { useRefreshIntervalSetting } from '../hooks/useRefreshIntervalSetting';
@@ -7,6 +7,7 @@ import type { AddressedBlock } from './blockAddress';
 import { defaultCollapsed, useCollapseState } from './hooks/useCollapseState';
 import { NONE_HUNG, useHungToolCalls } from './hooks/useHungToolCalls';
 import { useSessionChat, type TranscriptEntry } from './hooks/useSessionChat';
+import { formatCallDuration, toolCallTimes, type ToolCallTime } from './toolCallTimes';
 import type { ChatBlock, ChatMessage } from './types';
 
 function TagList({ tags }: { tags: Record<string, string> }) {
@@ -44,6 +45,8 @@ function bashInput(
 // shows the command, clipped to its first lines, for reading a session by what it ran;
 // expanding shows all of it.
 const BASH_PREVIEW_LINES = 6;
+
+const NO_TIMES: ReadonlyMap<string, ToolCallTime> = new Map();
 
 function isHung(block: ChatBlock, hung: ReadonlySet<string>): boolean {
   return block.kind === 'tool_use' && block.tool_use_id !== null && hung.has(block.tool_use_id);
@@ -86,6 +89,33 @@ function BashCommand({ command, full }: { command: string; full: boolean }) {
   );
 }
 
+// A hung tool call's time: counting up while it runs, with no new transcript data needed, then
+// its total from the call's transcript timestamp to its result's. Ticks in tenths while the
+// display shows tenths, then once a second; only this span re-renders on a tick.
+function CallDuration({ timing }: { timing: ToolCallTime }) {
+  const { start, end } = timing;
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (end !== null || Number.isNaN(start)) return;
+    const timer = setTimeout(() => setNow(Date.now()), now - start < 10_000 ? 100 : 1000);
+    return () => clearTimeout(timer);
+  }, [start, end, now]);
+  if (Number.isNaN(start) || (end !== null && Number.isNaN(end))) return null;
+  const running = end === null;
+  return (
+    <span
+      title={running ? 'Running for' : 'Took'}
+      style={{
+        flexShrink: 0,
+        fontVariantNumeric: 'tabular-nums',
+        color: running ? tokens.color.due : tokens.color.textMuted,
+      }}
+    >
+      {formatCallDuration((end ?? now) - start)}
+    </span>
+  );
+}
+
 // lead and trail are the message's own header (role; timestamp and Copy), carried on the first
 // block's toggle line so a message spends no line on a header of its own.
 function BlockRow({
@@ -96,6 +126,7 @@ function BlockRow({
   expandBash,
   lead,
   trail,
+  timing,
 }: {
   addressed: AddressedBlock;
   collapsed: boolean;
@@ -104,6 +135,8 @@ function BlockRow({
   expandBash: boolean;
   lead?: ReactNode;
   trail?: ReactNode;
+  // Present for a tool call that hung: its header shows how long it has run, or took.
+  timing?: ToolCallTime;
 }) {
   const { block } = addressed;
   const bash = bashInput(block);
@@ -141,6 +174,7 @@ function BlockRow({
           <span>{collapsed ? '▸' : '▾'}</span>
           <span>{summary}</span>
         </button>
+        {timing && <CallDuration timing={timing} />}
         <span
           title={bash?.description ?? undefined}
           style={{
@@ -262,6 +296,7 @@ const MessageRow = memo(function MessageRow({
   expandBash,
   openCalls,
   running,
+  hungTimes,
 }: {
   entry: TranscriptEntry;
   showTags: boolean;
@@ -272,6 +307,8 @@ const MessageRow = memo(function MessageRow({
   openCalls: ReadonlySet<string>;
   // A hung call in this row is still pending: the card takes the running background.
   running: boolean;
+  // Times of the calls in this row that have hung; NO_TIMES for a row with none.
+  hungTimes: ReadonlyMap<string, ToolCallTime>;
   isCollapsed: (block: AddressedBlock, hung: boolean) => boolean;
   onToggle: (block: AddressedBlock, hung: boolean) => void;
 }) {
@@ -307,6 +344,11 @@ const MessageRow = memo(function MessageRow({
           onToggle={() => onToggle(addressed, isHung(addressed.block, openCalls))}
           showTags={showTags}
           expandBash={expandBash}
+          timing={
+            addressed.block.kind === 'tool_use' && addressed.block.tool_use_id !== null
+              ? hungTimes.get(addressed.block.tool_use_id)
+              : undefined
+          }
           lead={
             i === 0 && (
               <span style={{ flexShrink: 0, fontWeight: 600, color: isUser ? tokens.color.accent : tokens.color.text }}>
@@ -418,7 +460,10 @@ export default function SessionTranscript({ sessionId, startAtBottom = false }: 
   const [intervalSeconds] = useRefreshIntervalSetting();
   const { entries, loading, error } = useSessionChat(sessionId, intervalSeconds);
   const { isCollapsed, toggle } = useCollapseState(showThinking);
-  const hung = useHungToolCalls(entries, hungCallSeconds);
+  const times = useMemo(() => toolCallTimes(entries), [entries]);
+  const hung = useHungToolCalls(times, hungCallSeconds);
+  // Only calls that hung show a time: a call that never hung stays out of the way, timing and all.
+  const hungTimes = useMemo(() => new Map([...times].filter(([id]) => hung.ever.has(id))), [hung.ever, times]);
   // A hung call starts expanded while it runs; with keepHungCallsOpen it stays expanded after it
   // finishes, so what it did remains in view, and only its running background goes.
   const openCalls = keepHungCallsOpen ? hung.ever : hung.running;
@@ -516,6 +561,7 @@ export default function SessionTranscript({ sessionId, startAtBottom = false }: 
                   expandBash={expandBash}
                   openCalls={entries[i].blocks.some((a) => isHung(a.block, openCalls)) ? openCalls : NONE_HUNG}
                   running={entries[i].blocks.some((a) => isHung(a.block, hung.running))}
+                  hungTimes={entries[i].blocks.some((a) => isHung(a.block, hung.ever)) ? hungTimes : NO_TIMES}
                 />
               );
               if (segment.kind === 'entry') return row(segment.index);

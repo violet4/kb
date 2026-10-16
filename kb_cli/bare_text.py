@@ -40,7 +40,9 @@ handled in the order given: `kb todo show 12 15 19`, `kb todo complete 12 15`; `
 irreversible `purge` take one. A stated fact
 usually means `add`; "I finished/fixed/no longer need X" usually means `complete` or `update`
 on an EXISTING record, not a fresh `add` -- check `kb <noun> pending`/`list`/`search` for the
-existing record first rather than creating a duplicate. Run `kb <noun> --help` to see the real
+existing record first rather than creating a duplicate. After an `add`, kb prints any close
+existing record of the same type as "similar existing ... -- same record?"; when it is the same,
+delete the new one and update the existing one instead. Run `kb <noun> --help` to see the real
 verb set for that noun; it isn't identical everywhere.
 
 ## Context: Every Record Has a Home

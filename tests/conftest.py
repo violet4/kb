@@ -10,12 +10,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterator
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from models.base import Base
+from models.db import load_sqlite_vec
 
 if TYPE_CHECKING:
     from models.agents.harness_session import HarnessSession
@@ -27,6 +28,7 @@ if TYPE_CHECKING:
 @pytest.fixture
 def db_session() -> Iterator[Session]:
     engine = create_engine("sqlite:///:memory:")
+    event.listen(engine, "connect", load_sqlite_vec)
     Base.metadata.create_all(engine)
 
     session = sessionmaker(bind=engine)()

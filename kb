@@ -120,6 +120,7 @@ from kb_cli import (
     wishlist,
 )
 from kb_cli.bare_text import BARE_INSTRUCTIONS as _BARE_INSTRUCTIONS
+from kb_cli.similar import print_similar, track_new_records
 import schema_version
 from models.db import SessionFactory
 
@@ -218,11 +219,13 @@ def _record_invocation(payload: dict[str, Any]) -> None:
 
 
 def _run(args: argparse.Namespace) -> None:
+    track_new_records(args.session)
     try:
         args.func(args)
     except ContextError as e:
         print(e, file=sys.stderr)
         sys.exit(1)
+    print_similar(args.session)
 
 
 attach_recording(parser, record=_record_invocation)

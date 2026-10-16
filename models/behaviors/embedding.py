@@ -11,7 +11,6 @@ from sqlalchemy.orm import Mapped, Session, UOWTransaction, mapped_column
 
 from models.behaviors.placement import HasContextOrTag
 from models.context import Context
-from models.db import _engine
 
 
 class HasEmbedding:
@@ -90,8 +89,9 @@ class HasEmbedding:
             f"SELECT id, vec_distance_cosine(embedding, ?) AS dist FROM {table} "
             f"WHERE {' AND '.join(where_clauses)} ORDER BY dist ASC LIMIT {int(fetch_limit)}"
         )
-        with _engine.connect() as conn:
-            rows = conn.connection.execute(sql, params).fetchall()
+        # On the session's own connection, so the search sees this session's database and its
+        # flushed-but-uncommitted rows.
+        rows = session.connection().exec_driver_sql(sql, tuple(params)).fetchall()
         objs = {o.id: o for o in session.scalars(select(cls).where(cls.id.in_([r[0] for r in rows]))).all()}
         results = [(objs[r[0]], r[1]) for r in rows if r[0] in objs]
         if context is not None:

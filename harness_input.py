@@ -162,12 +162,25 @@ def _read_request(conn: socket.socket) -> _Input | None:
     return _Input(_PASTE_START + text.encode() + _PASTE_END, submit=True) if text else None
 
 
+def session_environment(env: dict[str, str]) -> dict[str, str]:
+    """`env` without what `uv run` adds for kb's own process: kb's venv activation and uv's
+    bookkeeping. `kb` runs under `uv run --project ~/kb`, and a session started from it would
+    otherwise hand kb's venv to every shell it opens, so `python3`, `uv run --active`, and
+    other projects' tools would resolve to kb's environment."""
+    session_env = {k: v for k, v in env.items() if k not in ("UV", "UV_RUN_RECURSION_DEPTH")}
+    venv = session_env.pop("VIRTUAL_ENV", None)
+    if venv and "PATH" in session_env:
+        venv_bin = os.path.join(venv, "bin")
+        session_env["PATH"] = os.pathsep.join(p for p in session_env["PATH"].split(os.pathsep) if p != venv_bin)
+    return session_env
+
+
 def run(argv: list[str]) -> int:
     """Run `claude argv...` in a pseudo-terminal until it exits; return its exit status."""
     child_pid, master_fd = pty.fork()
     if child_pid == 0:
         try:
-            os.execvp("claude", ["claude", *argv])
+            os.execvpe("claude", ["claude", *argv], session_environment(dict(os.environ)))
         finally:
             os._exit(127)
 

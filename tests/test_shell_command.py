@@ -39,3 +39,14 @@ def test_here_string_and_shift_are_not_heredocs() -> None:
 
 def test_command_without_heredoc_is_unchanged() -> None:
     assert without_heredoc_bodies("echo a > b && uv sync") == "echo a > b && uv sync"
+
+
+def test_heredoc_fed_to_a_shell_or_interpreter_is_kept() -> None:
+    # A body a shell or interpreter runs is code, not data.
+    for command in [
+        "bash <<'EOF'\nuv sync\nEOF\n",
+        "cat <<EOF | sh\nuv sync\nEOF\n",
+        "ssh host <<EOF\nuv sync\nEOF\n",
+        "python3 - <<'EOF'\nimport os\nEOF\n",
+    ]:
+        assert without_heredoc_bodies(command) == command

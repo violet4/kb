@@ -3,7 +3,13 @@ the same type, so a duplicate is noticed when it is made rather than later.
 
 Structural rather than per-command: `track_new_records` hooks the CLI session's flushes, so every
 `add`-style command (and any added later) is covered without calling anything itself.
+
+The notice goes to stderr: stdout is a command's result, and a caller that reads it (a
+`kb hooks` adapter, for which any stdout is a block reason or hint, or a script capturing an
+`add`'s output) must get only that.
 """
+
+import sys
 
 from sqlalchemy import event
 from sqlalchemy.orm import Session
@@ -50,4 +56,4 @@ def print_similar(session: Session) -> None:
             break
         for row, dist in similar_records(session, record):
             title = getattr(row, "title", None) or getattr(row, "name", None) or ""
-            print(f"similar existing {key[0]} #{row.id} {title!r} (dist={dist:.2f}) -- same record?")
+            print(f"similar existing {key[0]} #{row.id} {title!r} (dist={dist:.2f}) -- same record?", file=sys.stderr)

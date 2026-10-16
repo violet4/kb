@@ -179,7 +179,7 @@ def cmd_plan_md_check(args: argparse.Namespace) -> None:
 
 
 _DEPENDENCY_INSTALL_RE = re.compile(
-    r"(?:^|[;&|]\s*)"
+    r"(?:^|[;&|(])\s*"  # where a command starts: any line's beginning or after a shell separator
     r"(?:\w+=\S+\s+)*"  # skip leading env-var assignments (e.g. AUDITED=note215 npm install ...)
     r"(?:npm\s+(?:install|i|add)|"
     r"pnpm\s+(?:install|i|add)|"
@@ -189,7 +189,10 @@ _DEPENDENCY_INSTALL_RE = re.compile(
     r"cargo\s+add|"
     r"gem\s+install|"
     r"go\s+get)"
-    r"\s+\S"  # require at least one argument -- bare `npm install` (no target) installs the existing lockfile, not a new dependency
+    # At least one argument on the same line: a bare `npm install` (no target) installs the
+    # existing lockfile, not a new dependency.
+    r"[ \t]+\S",
+    re.MULTILINE,
 )
 
 _AUDITED_RE = re.compile(r"\bAUDITED=(\S+)")
@@ -214,12 +217,15 @@ def cmd_dependency_install_check(args: argparse.Namespace) -> None:
     tool call). Token present: log a LogEntry linking this exact install command to the named
     Note (the audit record) via `kb link add`, so the audit-then-install claim is independently
     checkable later rather than a bare self-report -- then print nothing so the command proceeds.
-    See kb instructions #27 (security) for the audit checklist itself."""
+    See kb instructions #27 (security) for the audit checklist itself. A heredoc body is data
+    (a record's text, a commit message), so an install command quoted in one is not matched;
+    a body fed to a shell or interpreter still is."""
     command = sys.stdin.read()
-    if not _DEPENDENCY_INSTALL_RE.search(command):
+    runs = without_heredoc_bodies(command)
+    if not _DEPENDENCY_INSTALL_RE.search(runs):
         return
 
-    audited_match = _AUDITED_RE.search(command)
+    audited_match = _AUDITED_RE.search(runs)
     if not audited_match:
         print(_DEPENDENCY_INSTALL_BLOCK)
         return

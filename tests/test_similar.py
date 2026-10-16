@@ -17,7 +17,9 @@ def test_new_record_names_a_close_existing_one(db_session: Session, capsys: pyte
 
     print_similar(db_session)
 
-    assert f"similar existing Todo #{existing.id} 'buy salt'" in capsys.readouterr().out
+    # On stderr: stdout is the command's result, which a hook adapter reads as a block reason.
+    captured = capsys.readouterr()
+    assert f"similar existing Todo #{existing.id} 'buy salt'" in captured.err and captured.out == ""
 
 
 def test_unrelated_record_prints_nothing(db_session: Session, capsys: pytest.CaptureFixture[str]) -> None:
@@ -29,7 +31,7 @@ def test_unrelated_record_prints_nothing(db_session: Session, capsys: pytest.Cap
 
     print_similar(db_session)
 
-    assert capsys.readouterr().out == ""
+    assert capsys.readouterr().err == ""
 
 
 def test_records_created_before_tracking_are_not_reported(
@@ -42,4 +44,4 @@ def test_records_created_before_tracking_are_not_reported(
 
     print_similar(db_session)
 
-    assert capsys.readouterr().out == ""
+    assert capsys.readouterr().err == ""

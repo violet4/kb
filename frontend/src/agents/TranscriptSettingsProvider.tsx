@@ -28,6 +28,11 @@ export default function TranscriptSettingsProvider({ children }: { children: Rea
     DEFAULT_HUNG_CALL_SECONDS,
     isNonNegativeNumber,
   );
+  const [keepHungCallsOpen, setKeepHungCallsOpen] = useStoredState(
+    'kb-agents-transcript-keep-hung-calls-open',
+    true,
+    isBoolean,
+  );
   return (
     <TranscriptSettingsContext.Provider
       value={{
@@ -43,6 +48,8 @@ export default function TranscriptSettingsProvider({ children }: { children: Rea
         setExpandBash,
         hungCallSeconds,
         setHungCallSeconds,
+        keepHungCallsOpen,
+        setKeepHungCallsOpen,
       }}
     >
       {children}

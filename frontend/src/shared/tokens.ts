@@ -19,6 +19,7 @@ const color = {
   thinking: '#b8a6e6', // a model's thinking, set apart from its reply by hue instead of italics
   shellBackground: '#0a0d0f', // a shell command, styled as a terminal
   shellPrompt: '#3fb950',
+  runningCall: '#2b2416', // a tool call still running past the hang threshold: a dark tint of due
 };
 
 export const tokens = {

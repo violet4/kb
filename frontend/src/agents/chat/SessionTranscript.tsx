@@ -260,14 +260,18 @@ const MessageRow = memo(function MessageRow({
   onToggle,
   showTags,
   expandBash,
-  hung,
+  openCalls,
+  running,
 }: {
   entry: TranscriptEntry;
   showTags: boolean;
   expandBash: boolean;
-  // Hung tool call ids (see useHungToolCalls); NONE_HUNG for a row with none, so a change in
-  // which calls hang re-renders only the rows holding them.
-  hung: ReadonlySet<string>;
+  // Ids of the tool calls that start expanded for having hung (see SessionTranscript);
+  // NONE_HUNG for a row with none, so a change in which calls hang re-renders only the rows
+  // holding them.
+  openCalls: ReadonlySet<string>;
+  // A hung call in this row is still pending: the card takes the running background.
+  running: boolean;
   isCollapsed: (block: AddressedBlock, hung: boolean) => boolean;
   onToggle: (block: AddressedBlock, hung: boolean) => void;
 }) {
@@ -278,6 +282,7 @@ const MessageRow = memo(function MessageRow({
   const isHuman = isUser && isHumanText(message);
   return (
     <div
+      aria-busy={running}
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -285,15 +290,21 @@ const MessageRow = memo(function MessageRow({
         padding: 12,
         borderRadius: 8,
         border: `1px solid ${tokens.color.border}`,
-        background: isHuman ? tokens.color.humanMessage : isUser ? tokens.color.surface : 'transparent',
+        background: running
+          ? tokens.color.runningCall
+          : isHuman
+            ? tokens.color.humanMessage
+            : isUser
+              ? tokens.color.surface
+              : 'transparent',
       }}
     >
       {addressedBlocks.map((addressed, i) => (
         <BlockRow
           key={addressed.id}
           addressed={addressed}
-          collapsed={isCollapsed(addressed, isHung(addressed.block, hung))}
-          onToggle={() => onToggle(addressed, isHung(addressed.block, hung))}
+          collapsed={isCollapsed(addressed, isHung(addressed.block, openCalls))}
+          onToggle={() => onToggle(addressed, isHung(addressed.block, openCalls))}
           showTags={showTags}
           expandBash={expandBash}
           lead={
@@ -335,7 +346,7 @@ function segmentEntries(
   entries: TranscriptEntry[],
   showThinking: boolean,
   expandBash: boolean,
-  hung: ReadonlySet<string>,
+  openCalls: ReadonlySet<string>,
   minRun: number,
 ): Segment[] {
   const segments: Segment[] = [];
@@ -349,7 +360,7 @@ function segmentEntries(
     const shown = entry.blocks;
     if (shown.length === 0) return;
     const foldable = (a: AddressedBlock) =>
-      defaultCollapsed(a, showThinking, isHung(a.block, hung)) && !showsBashWhileCollapsed(a.block, expandBash);
+      defaultCollapsed(a, showThinking, isHung(a.block, openCalls)) && !showsBashWhileCollapsed(a.block, expandBash);
     if (shown.every(foldable)) run.push(index);
     else {
       flush();
@@ -402,14 +413,18 @@ interface SessionTranscriptProps {
 // bottom as they are written (see useSessionChat); while the message pane is scrolled to the
 // bottom it follows them.
 export default function SessionTranscript({ sessionId, startAtBottom = false }: SessionTranscriptProps) {
-  const { showTags, showThinking, collapsedAsBars, barColor, expandBash, hungCallSeconds } = useTranscriptSettings();
+  const { showTags, showThinking, collapsedAsBars, barColor, expandBash, hungCallSeconds, keepHungCallsOpen } =
+    useTranscriptSettings();
   const [intervalSeconds] = useRefreshIntervalSetting();
   const { entries, loading, error } = useSessionChat(sessionId, intervalSeconds);
   const { isCollapsed, toggle } = useCollapseState(showThinking);
   const hung = useHungToolCalls(entries, hungCallSeconds);
+  // A hung call starts expanded while it runs; with keepHungCallsOpen it stays expanded after it
+  // finishes, so what it did remains in view, and only its running background goes.
+  const openCalls = keepHungCallsOpen ? hung.ever : hung.running;
   const segments = useMemo(
-    () => segmentEntries(entries, showThinking, expandBash, hung, collapsedAsBars ? 1 : 2),
-    [entries, showThinking, expandBash, hung, collapsedAsBars],
+    () => segmentEntries(entries, showThinking, expandBash, openCalls, collapsedAsBars ? 1 : 2),
+    [entries, showThinking, expandBash, openCalls, collapsedAsBars],
   );
   // Runs the user opened, by the index of their first entry: stable while a live transcript
   // appends, since new entries only extend the last run.
@@ -499,7 +514,8 @@ export default function SessionTranscript({ sessionId, startAtBottom = false }: 
                   onToggle={toggleCard}
                   showTags={showTags}
                   expandBash={expandBash}
-                  hung={entries[i].blocks.some((a) => isHung(a.block, hung)) ? hung : NONE_HUNG}
+                  openCalls={entries[i].blocks.some((a) => isHung(a.block, openCalls)) ? openCalls : NONE_HUNG}
+                  running={entries[i].blocks.some((a) => isHung(a.block, hung.running))}
                 />
               );
               if (segment.kind === 'entry') return row(segment.index);

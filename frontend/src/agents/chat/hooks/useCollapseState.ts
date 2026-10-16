@@ -12,8 +12,8 @@ interface UseCollapseStateResult {
 // skim-later part. Text the harness injected on the user's turn (tagged isMeta, such as a
 // loaded skill's instructions) is bulky too, so it starts collapsed like a tool result. A hung
 // tool call (pending past the viewer's threshold, see useHungToolCalls) starts expanded, so it
-// shows what it is stuck on; it collapses again once its result arrives, since a finished
-// call's content matters no more than any other's.
+// shows what it is stuck on; whether it stays expanded after it finishes is the viewer's
+// keepHungCallsOpen setting, applied by the caller.
 export function defaultCollapsed(block: AddressedBlock, showThinking: boolean, hung: boolean): boolean {
   const { kind, tags } = block.block;
   const readable = (kind === 'text' && tags.isMeta !== 'true') || (kind === 'thinking' && showThinking);

@@ -48,6 +48,8 @@ export default function AgentPage() {
     setExpandBash,
     hungCallSeconds,
     setHungCallSeconds,
+    keepHungCallsOpen,
+    setKeepHungCallsOpen,
   } = useTranscriptSettings();
   const [intervalSeconds] = useChannelListRefreshInterval();
   const { channels, refresh: refreshChannels } = useChannelList(displayName, intervalSeconds);
@@ -169,10 +171,7 @@ export default function AgentPage() {
                 <input type="checkbox" checked={expandBash} onChange={(e) => setExpandBash(e.target.checked)} />
                 Expand Bash commands
               </label>
-              <label
-                style={settingStyle}
-                title="A tool call still pending after this long opens until its result arrives"
-              >
+              <label style={settingStyle} title="A tool call still pending after this long opens, tinted while it runs">
                 Show tool calls pending ≥
                 <input
                   type="number"
@@ -194,6 +193,14 @@ export default function AgentPage() {
                   }}
                 />
                 s
+              </label>
+              <label style={settingStyle}>
+                <input
+                  type="checkbox"
+                  checked={keepHungCallsOpen}
+                  onChange={(e) => setKeepHungCallsOpen(e.target.checked)}
+                />
+                Keep hung calls open when done
               </label>
               <label style={settingStyle}>
                 <input

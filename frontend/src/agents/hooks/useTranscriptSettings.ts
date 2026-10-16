@@ -22,6 +22,9 @@ export interface TranscriptSettings {
   // expanded until its result arrives; one that finishes sooner never opens.
   hungCallSeconds: number;
   setHungCallSeconds: (value: number) => void;
+  // On: a hung call stays expanded after its result arrives. Off: it collapses like any other.
+  keepHungCallsOpen: boolean;
+  setKeepHungCallsOpen: (value: boolean) => void;
 }
 
 export const TranscriptSettingsContext = createContext<TranscriptSettings | null>(null);

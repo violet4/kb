@@ -296,6 +296,7 @@ const MessageRow = memo(function MessageRow({
   expandBash,
   openCalls,
   running,
+  hungDone,
   hungTimes,
 }: {
   entry: TranscriptEntry;
@@ -307,6 +308,8 @@ const MessageRow = memo(function MessageRow({
   openCalls: ReadonlySet<string>;
   // A hung call in this row is still pending: the card takes the running background.
   running: boolean;
+  // A call in this row hung and has finished: the card keeps a faint trace of the running tint.
+  hungDone: boolean;
   // Times of the calls in this row that have hung; NO_TIMES for a row with none.
   hungTimes: ReadonlyMap<string, ToolCallTime>;
   isCollapsed: (block: AddressedBlock, hung: boolean) => boolean;
@@ -330,13 +333,15 @@ const MessageRow = memo(function MessageRow({
         border: `1px solid ${tokens.color.border}`,
         background: running
           ? tokens.color.runningCall
-          : isFinal
-            ? tokens.color.turnFinal
-            : isHuman
-              ? tokens.color.humanMessage
-              : isUser
-                ? tokens.color.surface
-                : 'transparent',
+          : hungDone
+            ? tokens.color.hungCallDone
+            : isFinal
+              ? tokens.color.turnFinal
+              : isHuman
+                ? tokens.color.humanMessage
+                : isUser
+                  ? tokens.color.surface
+                  : 'transparent',
       }}
     >
       {addressedBlocks.map((addressed, i) => (
@@ -478,10 +483,10 @@ export default function SessionTranscript({ sessionId, startAtBottom = false }: 
   const times = useMemo(() => toolCallTimes(entries), [entries]);
   const hung = useHungToolCalls(times, hungCallSeconds);
   // Only calls that hung show a time: a call that never hung stays out of the way, timing and all.
-  const hungTimes = useMemo(() => new Map([...times].filter(([id]) => hung.ever.has(id))), [hung.ever, times]);
+  const hungTimes = useMemo(() => new Map([...times].filter(([id]) => hung.all.has(id))), [hung.all, times]);
   // A hung call starts expanded while it runs; with keepHungCallsOpen it stays expanded after it
-  // finishes, so what it did remains in view, and only its running background goes.
-  const openCalls = keepHungCallsOpen ? hung.ever : hung.running;
+  // finishes, so what it did remains in view, and its tint fades from runningCall to hungCallDone.
+  const openCalls = keepHungCallsOpen ? hung.all : hung.running;
   const segments = useMemo(
     () => segmentEntries(entries, showThinking, expandBash, openCalls, collapsedAsBars ? 1 : 2),
     [entries, showThinking, expandBash, openCalls, collapsedAsBars],
@@ -576,7 +581,8 @@ export default function SessionTranscript({ sessionId, startAtBottom = false }: 
                   expandBash={expandBash}
                   openCalls={entries[i].blocks.some((a) => isHung(a.block, openCalls)) ? openCalls : NONE_HUNG}
                   running={entries[i].blocks.some((a) => isHung(a.block, hung.running))}
-                  hungTimes={entries[i].blocks.some((a) => isHung(a.block, hung.ever)) ? hungTimes : NO_TIMES}
+                  hungDone={entries[i].blocks.some((a) => isHung(a.block, hung.finished))}
+                  hungTimes={entries[i].blocks.some((a) => isHung(a.block, hung.all)) ? hungTimes : NO_TIMES}
                 />
               );
               if (segment.kind === 'entry') return row(segment.index);

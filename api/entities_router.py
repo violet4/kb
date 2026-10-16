@@ -62,7 +62,7 @@ _HIDDEN_COLUMNS = {"embedding", "embedding_model"}
 _PLACEMENT_RELATIONSHIPS = {"context", "tag"}
 
 # Column names carrying record-lifecycle metadata rather than user-editable content --
-# structural (every model writes these via models/base.py's _now(), see CLAUDE.md), not a
+# structural (every model writes these via models/base.py's _now(), see AGENTS.md), not a
 # per-type editorial choice, so a new model needs no entry here to get this right.
 _TIMESTAMP_COLUMNS = {"created_at", "updated_at"}
 
